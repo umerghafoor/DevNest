@@ -59,56 +59,9 @@ jobs:
           path: src-tauri/target/release/bundle/**
           if-no-files-found: error
 
-  android:
-    name: Build Android APK
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - uses: android-actions/setup-android@v3
-
-      - name: Install Android build tools
-        run: |
-          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973"
-
-      - name: Add Android Rust targets
-        run: |
-          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-
-      - run: npm ci
-
-      - name: Initialize Tauri Android project
-        run: npm run tauri -- android init --ci --skip-targets-install
-
-      - name: Build Android APK
-        run: npm run tauri -- android build --apk --debug
-
-      - name: Collect APK
-        run: |
-          mkdir -p dist-android
-          find src-tauri/gen/android -type f -name "*.apk" -exec cp {} dist-android/ \;
-
-      - name: Upload Android APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: dist-android/*.apk
-          if-no-files-found: error
-
   publish:
     name: Publish GitHub release
-    needs: [desktop, android]
+    needs: [desktop]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
