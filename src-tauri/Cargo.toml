@@ -21,7 +21,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "fs", "net", "sync", "macros", "time", "io-util"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-keyring = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native", "linux-native-sync-persistent", "crypto-rust"] }
 ssh2 = "0.9"
 uuid = { version = "1", features = ["v4", "serde"] }
 rusqlite = { version = "0.32", features = ["bundled"] }

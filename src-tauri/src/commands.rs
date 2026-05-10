@@ -48,6 +48,34 @@ pub fn delete_device(state: State<'_, AppState>, id: String) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub fn set_use_sudo(state: State<'_, AppState>, id: String, value: bool) -> AppResult<Device> {
+    devices::set_use_sudo(&state.db, &id, value)?;
+    if !value {
+        secrets::delete_sudo(&id).ok();
+    }
+    require_device(&state, &id)
+}
+
+#[tauri::command]
+pub fn set_sudo_password(
+    _state: State<'_, AppState>,
+    id: String,
+    password: String,
+) -> AppResult<()> {
+    secrets::set_sudo(&id, &password)
+}
+
+#[tauri::command]
+pub fn has_sudo_password(_state: State<'_, AppState>, id: String) -> AppResult<bool> {
+    Ok(secrets::get_sudo(&id)?.is_some())
+}
+
+#[tauri::command]
+pub fn clear_sudo_password(_state: State<'_, AppState>, id: String) -> AppResult<()> {
+    secrets::delete_sudo(&id)
+}
+
+#[tauri::command]
 pub fn connect_device(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let device = require_device(&state, &id)?;
     if device.is_localhost {

@@ -2,9 +2,10 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use ssh2::Session;
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -27,11 +28,8 @@ pub struct SshSession {
 impl SshSession {
     pub fn connect(device: &Device) -> AppResult<Self> {
         let addr = format!("{}:{}", device.host, device.port);
-        let tcp = TcpStream::connect_timeout(
-            &addr.to_socket_addrs_one()?,
-            Duration::from_secs(8),
-        )
-        .map_err(|e| AppError::Ssh(format!("connect {addr}: {e}")))?;
+        let tcp = TcpStream::connect_timeout(&addr.to_socket_addrs_one()?, Duration::from_secs(8))
+            .map_err(|e| AppError::Ssh(format!("connect {addr}: {e}")))?;
         tcp.set_read_timeout(Some(Duration::from_secs(30))).ok();
         tcp.set_write_timeout(Some(Duration::from_secs(30))).ok();
 
@@ -50,12 +48,7 @@ impl SshSession {
                     .into();
                 let passphrase = secrets::get(&device.id).ok();
                 session
-                    .userauth_pubkey_file(
-                        &device.username,
-                        None,
-                        &key_path,
-                        passphrase.as_deref(),
-                    )
+                    .userauth_pubkey_file(&device.username, None, &key_path, passphrase.as_deref())
                     .map_err(|e| AppError::Ssh(format!("pubkey auth: {e}")))?;
             }
             AuthType::Password => {
@@ -66,9 +59,7 @@ impl SshSession {
                     .map_err(|e| AppError::Ssh(format!("password auth: {e}")))?;
             }
             AuthType::Localhost => {
-                return Err(AppError::Invalid(
-                    "localhost devices do not use SSH".into(),
-                ));
+                return Err(AppError::Invalid("localhost devices do not use SSH".into()));
             }
         }
 
@@ -79,7 +70,7 @@ impl SshSession {
         Ok(Self { session })
     }
 
-    pub fn run(&mut self, cmd: &str) -> AppResult<CommandOutput> {
+    pub fn run_with_stdin(&mut self, cmd: &str, stdin: Option<&str>) -> AppResult<CommandOutput> {
         let mut channel = self
             .session
             .channel_session()
@@ -87,6 +78,15 @@ impl SshSession {
         channel
             .exec(cmd)
             .map_err(|e| AppError::Ssh(format!("exec: {e}")))?;
+
+        if let Some(input) = stdin {
+            channel
+                .write_all(input.as_bytes())
+                .map_err(|e| AppError::Ssh(format!("write stdin: {e}")))?;
+            channel
+                .send_eof()
+                .map_err(|e| AppError::Ssh(format!("send eof: {e}")))?;
+        }
 
         let mut stdout = String::new();
         channel
@@ -174,33 +174,121 @@ impl SessionPool {
 
 /// Run a shell command on a device. For localhost devices this shells out
 /// locally with `sh -c`; for remote devices it uses the pooled SSH session.
-pub fn run_command(
-    pool: &SessionPool,
-    device: &Device,
-    cmd: &str,
-) -> AppResult<CommandOutput> {
-    let cmd = if let Some(prefix) = device.sudo_prefix.as_deref() {
+///
+/// When `device.use_sudo` is true, the command is wrapped with
+/// `sudo -S -p '' sh -c '<cmd>'` and the sudo password is read from the
+/// keychain and piped to stdin. If no sudo password is stored, this returns
+/// `AppError::SudoPasswordRequired` so the frontend can prompt and retry.
+pub fn run_command(pool: &SessionPool, device: &Device, cmd: &str) -> AppResult<CommandOutput> {
+    let raw = if let Some(prefix) = device.sudo_prefix.as_deref() {
         format!("{prefix} {cmd}")
     } else {
         cmd.to_string()
     };
 
-    if device.is_localhost {
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .output()
-            .map_err(|e| AppError::Ssh(format!("local exec: {e}")))?;
-        return Ok(CommandOutput {
-            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
-            exit_code: out.status.code().unwrap_or(-1),
-        });
+    let (final_cmd, stdin) = if device.use_sudo {
+        let pw = secrets::get_sudo(&device.id)?
+            .ok_or_else(|| AppError::SudoPasswordRequired(device.id.clone()))?;
+        // sudo reads the password from stdin (via -S) followed by a newline.
+        // We wrap the original command in `sh -c` and quote it safely so
+        // shell metacharacters (pipes, redirects) work as written. The
+        // password is piped *only* on stdin; sudo consumes one line and the
+        // rest of stdin is forwarded to the wrapped process.
+        let escaped = shell_single_quote(&raw);
+        let wrapped = format!("sudo -S -p '' sh -c {escaped}");
+        (wrapped, Some(format!("{pw}\n")))
+    } else {
+        (raw, None)
+    };
+
+    let out = if device.is_localhost {
+        run_local(&final_cmd, stdin.as_deref())?
+    } else {
+        let sess = pool
+            .get(&device.id)
+            .ok_or_else(|| AppError::Ssh("device not connected".into()))?;
+        let mut guard = sess.lock();
+        guard.run_with_stdin(&final_cmd, stdin.as_deref())?
+    };
+
+    if device.use_sudo && is_sudo_auth_failure(&out) {
+        // Stored password was rejected — clear it so the next call prompts.
+        secrets::delete_sudo(&device.id).ok();
+        return Err(AppError::SudoPasswordRequired(device.id.clone()));
+    }
+    Ok(out)
+}
+
+fn run_local(cmd: &str, stdin: Option<&str>) -> AppResult<CommandOutput> {
+    let mut child = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| AppError::Ssh(format!("local exec: {e}")))?;
+
+    if let Some(input) = stdin {
+        if let Some(mut c_stdin) = child.stdin.take() {
+            c_stdin
+                .write_all(input.as_bytes())
+                .map_err(|e| AppError::Ssh(format!("local stdin: {e}")))?;
+        }
     }
 
-    let sess = pool
-        .get(&device.id)
-        .ok_or_else(|| AppError::Ssh("device not connected".into()))?;
-    let mut guard = sess.lock();
-    guard.run(&cmd)
+    let out = child
+        .wait_with_output()
+        .map_err(|e| AppError::Ssh(format!("local wait: {e}")))?;
+
+    Ok(CommandOutput {
+        stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        exit_code: out.status.code().unwrap_or(-1),
+    })
+}
+
+/// Wrap a string in POSIX-safe single quotes. `'` becomes `'\''`.
+fn shell_single_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+fn is_sudo_auth_failure(out: &CommandOutput) -> bool {
+    // `sudo -S` exits with 1 and writes one of these to stderr when the
+    // password is wrong or missing. Different distros vary slightly.
+    let s = out.stderr.to_lowercase();
+    out.exit_code != 0
+        && (s.contains("incorrect password")
+            || s.contains("sorry, try again")
+            || s.contains("a password is required")
+            || s.contains("3 incorrect password attempts"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quotes_simple() {
+        assert_eq!(shell_single_quote("docker ps"), "'docker ps'");
+    }
+
+    #[test]
+    fn quotes_with_apostrophe() {
+        assert_eq!(shell_single_quote("a'b"), "'a'\\''b'");
+    }
 }

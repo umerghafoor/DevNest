@@ -1,27 +1,51 @@
 use crate::error::{AppError, AppResult};
 
-const SERVICE: &str = "devnest";
+const AUTH_SERVICE: &str = "devnest";
+const SUDO_SERVICE: &str = "devnest-sudo";
+
+fn entry(service: &str, id: &str) -> AppResult<keyring::Entry> {
+    keyring::Entry::new(service, id).map_err(|e| AppError::Ssh(format!("keyring: {e}")))
+}
 
 pub fn set(id: &str, secret: &str) -> AppResult<()> {
-    let entry =
-        keyring::Entry::new(SERVICE, id).map_err(|e| AppError::Ssh(format!("keyring: {e}")))?;
-    entry
+    entry(AUTH_SERVICE, id)?
         .set_password(secret)
         .map_err(|e| AppError::Ssh(format!("keyring set: {e}")))
 }
 
 pub fn get(id: &str) -> AppResult<String> {
-    let entry =
-        keyring::Entry::new(SERVICE, id).map_err(|e| AppError::Ssh(format!("keyring: {e}")))?;
-    entry
+    entry(AUTH_SERVICE, id)?
         .get_password()
         .map_err(|e| AppError::Ssh(format!("keyring get: {e}")))
 }
 
 pub fn delete(id: &str) -> AppResult<()> {
-    let entry =
-        keyring::Entry::new(SERVICE, id).map_err(|e| AppError::Ssh(format!("keyring: {e}")))?;
-    match entry.delete_credential() {
+    delete_from(AUTH_SERVICE, id)?;
+    delete_from(SUDO_SERVICE, id)?;
+    Ok(())
+}
+
+pub fn set_sudo(id: &str, secret: &str) -> AppResult<()> {
+    entry(SUDO_SERVICE, id)?
+        .set_password(secret)
+        .map_err(|e| AppError::Ssh(format!("keyring set sudo: {e}")))
+}
+
+pub fn get_sudo(id: &str) -> AppResult<Option<String>> {
+    match entry(SUDO_SERVICE, id)?.get_password() {
+        Ok(p) => Ok(Some(p)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(AppError::Ssh(format!("keyring get sudo: {e}"))),
+    }
+}
+
+pub fn delete_sudo(id: &str) -> AppResult<()> {
+    delete_from(SUDO_SERVICE, id)
+}
+
+fn delete_from(service: &str, id: &str) -> AppResult<()> {
+    let e = entry(service, id)?;
+    match e.delete_credential() {
         Ok(()) => Ok(()),
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(AppError::Ssh(format!("keyring delete: {e}"))),

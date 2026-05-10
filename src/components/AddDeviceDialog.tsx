@@ -23,6 +23,7 @@ const schema = z.object({
   keyPath: z.string().optional(),
   secret: z.string().optional(),
   sudoPrefix: z.string().optional(),
+  useSudo: z.boolean(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -36,6 +37,7 @@ const initial: FormValues = {
   keyPath: "",
   secret: "",
   sudoPrefix: "",
+  useSudo: false,
 };
 
 export function AddDeviceDialog({ open, onClose }: Props) {
@@ -97,6 +99,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
           authType: parsed.data.authType as AuthType,
           keyPath: parsed.data.keyPath || null,
           sudoPrefix: parsed.data.sudoPrefix || null,
+          useSudo: parsed.data.useSudo,
         },
         parsed.data.secret || null,
       );
@@ -226,14 +229,32 @@ export function AddDeviceDialog({ open, onClose }: Props) {
             className="input"
           />
         </Field>
+        <label className="flex items-start gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={values.useSudo}
+            onChange={(e) => set("useSudo", e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="block text-(--color-fg)">
+              Run commands with sudo
+            </span>
+            <span className="mt-0.5 block text-(--color-fg-muted)">
+              When enabled, DevNest wraps each command with{" "}
+              <code className="font-mono">sudo -S</code> and prompts for your
+              sudo password the first time it&apos;s needed.
+            </span>
+          </span>
+        </label>
         <Field
-          label="Sudo prefix (optional)"
-          hint="Prepended to remote commands. Useful when docker/tailscale need root."
+          label="Sudo prefix override (optional)"
+          hint="Advanced: prepended to commands instead of `sudo`. Leave blank for default."
         >
           <input
             value={values.sudoPrefix}
             onChange={(e) => set("sudoPrefix", e.target.value)}
-            placeholder="sudo -n"
+            placeholder=""
             className="input"
           />
         </Field>

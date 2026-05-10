@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAppStore } from "../store/app-store";
-import type { ConnectionStatus } from "../lib/api";
-import { api } from "../lib/api";
+import type { ConnectionStatus, Device } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
 import { AddDeviceDialog } from "./AddDeviceDialog";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -20,6 +20,7 @@ export function Sidebar() {
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
   const setActiveDevice = useAppStore((s) => s.setActiveDevice);
   const setStatus = useAppStore((s) => s.setStatus);
+  const upsertDevice = useAppStore((s) => s.upsertDevice);
   const removeDevice = useAppStore((s) => s.removeDevice);
   const [dialogOpen, setDialogOpen] = useState(false);
 
@@ -43,7 +44,16 @@ export function Sidebar() {
       await api.deleteDevice(id);
       removeDevice(id);
     } catch (e) {
-      alert(`Delete failed: ${e}`);
+      alert(`Delete failed: ${errorMessage(e)}`);
+    }
+  };
+
+  const onToggleSudo = async (device: Device) => {
+    try {
+      const updated = await api.setUseSudo(device.id, !device.useSudo);
+      upsertDevice(updated);
+    } catch (e) {
+      alert(`Could not toggle sudo: ${errorMessage(e)}`);
     }
   };
 
@@ -77,7 +87,7 @@ export function Sidebar() {
                 return (
                   <li key={d.id}>
                     <div
-                      className={`group flex items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-(--color-surface-2) ${
+                      className={`group flex items-center gap-1 rounded px-2 py-1.5 text-sm hover:bg-(--color-surface-2) ${
                         active
                           ? "bg-(--color-surface-2) text-(--color-fg)"
                           : "text-(--color-fg-muted)"
@@ -92,17 +102,43 @@ export function Sidebar() {
                           aria-label={status}
                         />
                         <span className="truncate">{d.name}</span>
+                        {d.useSudo && (
+                          <span
+                            title="sudo enabled"
+                            className="rounded bg-(--color-warn)/20 px-1 text-[9px] font-medium uppercase text-(--color-warn)"
+                          >
+                            sudo
+                          </span>
+                        )}
                       </button>
-                      {!d.isLocalhost && (
+                      <div className="flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
                         <button
-                          onClick={() => onDelete(d.id)}
-                          aria-label="Delete device"
-                          title="Delete"
-                          className="opacity-0 transition group-hover:opacity-100"
+                          onClick={() => onToggleSudo(d)}
+                          aria-label={
+                            d.useSudo ? "Disable sudo" : "Enable sudo"
+                          }
+                          title={
+                            d.useSudo
+                              ? "Disable sudo for this device"
+                              : "Enable sudo for this device"
+                          }
+                          className={`rounded px-1 text-[10px] hover:bg-(--color-surface) ${
+                            d.useSudo ? "text-(--color-warn)" : ""
+                          }`}
                         >
-                          ×
+                          ⚡
                         </button>
-                      )}
+                        {!d.isLocalhost && (
+                          <button
+                            onClick={() => onDelete(d.id)}
+                            aria-label="Delete device"
+                            title="Delete"
+                            className="rounded px-1 hover:bg-(--color-surface)"
+                          >
+                            ×
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </li>
                 );

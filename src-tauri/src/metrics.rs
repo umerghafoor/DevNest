@@ -52,7 +52,10 @@ pub fn snapshot(pool: &SessionPool, device: &Device) -> AppResult<MetricsSnapsho
 }
 
 fn split_sections(s: &str) -> (&str, &str) {
-    let cpu_start = s.find("##CPUMEM##").map(|i| i + "##CPUMEM##".len()).unwrap_or(0);
+    let cpu_start = s
+        .find("##CPUMEM##")
+        .map(|i| i + "##CPUMEM##".len())
+        .unwrap_or(0);
     let df_marker = s.find("##DF##").unwrap_or(s.len());
     let df_start = df_marker + "##DF##".len();
     let cpu = &s[cpu_start..df_marker.min(s.len())];
@@ -84,8 +87,12 @@ fn parse_cpu_mem(s: &str) -> (f32, u64, u64) {
             total = extract_field(l, "total").map(|v| v as u64).unwrap_or(0);
             used = extract_field(l, "used").map(|v| v as u64).unwrap_or(0);
         } else if l.starts_with("KiB Mem") {
-            total = extract_field(l, "total").map(|v| (v / 1024.0) as u64).unwrap_or(0);
-            used = extract_field(l, "used").map(|v| (v / 1024.0) as u64).unwrap_or(0);
+            total = extract_field(l, "total")
+                .map(|v| (v / 1024.0) as u64)
+                .unwrap_or(0);
+            used = extract_field(l, "used")
+                .map(|v| (v / 1024.0) as u64)
+                .unwrap_or(0);
         }
     }
 
@@ -122,10 +129,7 @@ fn parse_df(s: &str) -> Vec<DiskUsage> {
         } else {
             continue;
         };
-        let pct = pct_str
-            .trim_end_matches('%')
-            .parse::<f32>()
-            .unwrap_or(0.0);
+        let pct = pct_str.trim_end_matches('%').parse::<f32>().unwrap_or(0.0);
         out.push(DiskUsage {
             mount: mount.to_string(),
             total: total.to_string(),
@@ -142,7 +146,8 @@ mod tests {
 
     #[test]
     fn parses_top_cpu_idle() {
-        let sample = "%Cpu(s):  3.1 us,  1.4 sy,  0.0 ni, 95.4 id,  0.0 wa,  0.0 hi,  0.1 si,  0.0 st";
+        let sample =
+            "%Cpu(s):  3.1 us,  1.4 sy,  0.0 ni, 95.4 id,  0.0 wa,  0.0 hi,  0.1 si,  0.0 st";
         let (cpu, _, _) = parse_cpu_mem(sample);
         assert!((cpu - 4.6).abs() < 0.1, "got {cpu}");
     }

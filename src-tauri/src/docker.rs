@@ -34,10 +34,7 @@ struct DockerPsLine {
     created: String,
 }
 
-pub fn list_containers(
-    pool: &SessionPool,
-    device: &Device,
-) -> AppResult<Vec<ContainerSummary>> {
+pub fn list_containers(pool: &SessionPool, device: &Device) -> AppResult<Vec<ContainerSummary>> {
     let out = ssh::run_command(
         pool,
         device,

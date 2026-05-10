@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
 import type { MetricsSnapshot } from "../lib/api";
+import { withSudo } from "../lib/with-sudo";
 
 interface Props {
   deviceId: string;
@@ -17,7 +18,7 @@ export function MetricsPanel({ deviceId }: Props) {
 
   const poll = useCallback(async () => {
     try {
-      const s = await api.metricsSnapshot(deviceId);
+      const s = await withSudo(deviceId, () => api.metricsSnapshot(deviceId));
       cpuHistory.current.push(s.cpuPercent);
       if (cpuHistory.current.length > HISTORY) cpuHistory.current.shift();
       const memPct = s.memTotalMb ? (s.memUsedMb / s.memTotalMb) * 100 : 0;
@@ -27,7 +28,7 @@ export function MetricsPanel({ deviceId }: Props) {
       setError(null);
       setTick((t) => t + 1);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     }
   }, [deviceId]);
 

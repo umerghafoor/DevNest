@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { api } from "../lib/api";
+import { api, errorMessage } from "../lib/api";
 import type { ContainerSummary } from "../lib/api";
+import { withSudo } from "../lib/with-sudo";
 
 interface Props {
   deviceId: string;
@@ -17,11 +18,13 @@ export function DockerPanel({ deviceId }: Props) {
 
   const refresh = useCallback(async () => {
     try {
-      const list = await api.dockerListContainers(deviceId);
+      const list = await withSudo(deviceId, () =>
+        api.dockerListContainers(deviceId),
+      );
       setContainers(list);
       setError(null);
     } catch (e) {
-      setError(String(e));
+      setError(errorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -39,10 +42,10 @@ export function DockerPanel({ deviceId }: Props) {
       return;
     setBusyId(id);
     try {
-      await api.dockerAction(deviceId, id, action);
+      await withSudo(deviceId, () => api.dockerAction(deviceId, id, action));
       await refresh();
     } catch (e) {
-      alert(`${action} failed: ${e}`);
+      alert(`${action} failed: ${errorMessage(e)}`);
     } finally {
       setBusyId(null);
     }

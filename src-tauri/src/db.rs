@@ -17,5 +17,30 @@ pub fn open(app_data_dir: &std::path::Path) -> AppResult<Db> {
         .map_err(|e| AppError::Db(e.to_string()))?;
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(|e| AppError::Db(e.to_string()))?;
+    add_column_if_missing(&conn, "devices", "use_sudo", "INTEGER NOT NULL DEFAULT 0")?;
     Ok(Arc::new(Mutex::new(conn)))
+}
+
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    spec: &str,
+) -> AppResult<()> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| AppError::Db(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == column);
+    if !exists {
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {column} {spec}"),
+            [],
+        )
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    }
+    Ok(())
 }

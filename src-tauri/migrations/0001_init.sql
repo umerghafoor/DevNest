@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS devices (
     key_path TEXT,
     is_localhost INTEGER NOT NULL DEFAULT 0,
     sudo_prefix TEXT,
+    use_sudo INTEGER NOT NULL DEFAULT 0,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
