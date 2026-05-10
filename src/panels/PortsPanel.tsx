@@ -46,6 +46,20 @@ function parseSs(output: string): ListeningPort[] {
   return results.sort((a, b) => Number(a.port) - Number(b.port));
 }
 
+// Parse simple nmap/portgrep-style lines like: "631/tcp  open  ipp"
+function parseSimple(output: string): ListeningPort[] {
+  const results: ListeningPort[] = [];
+  const regex = /(\d+)\/(tcp|udp)\s+open\s+(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = regex.exec(output)) !== null) {
+    const port = m[1];
+    const proto = m[2];
+    const service = m[3];
+    results.push({ proto, localAddr: "0.0.0.0", port, process: service });
+  }
+  return results.sort((a, b) => Number(a.port) - Number(b.port));
+}
+
 // Well-known ports that are expected — anything outside this list is highlighted
 const COMMON_PORTS = new Set([
   "22", "80", "443", "3306", "5432", "6379", "8080", "8443", "27017",
@@ -68,7 +82,13 @@ export function PortsPanel({ deviceId }: Props) {
           cmd: "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null",
         },
       );
-      setPorts(parseSs(out.stdout));
+      const parsed = parseSs(out.stdout);
+      if (parsed.length > 0) {
+        setPorts(parsed);
+      } else {
+        const alt = parseSimple(out.stdout);
+        setPorts(alt);
+      }
       setError(null);
     } catch (e) {
       setError(errorMessage(e));
