@@ -3,6 +3,7 @@ mod db;
 mod devices;
 mod docker;
 mod error;
+mod log_stream;
 mod metrics;
 mod secrets;
 mod sftp;
@@ -128,6 +129,7 @@ pub fn run() {
                 db,
                 pool: ssh::SessionPool::new(),
                 terminals: terminal::TerminalPool::new(),
+                log_streams: log_stream::LogStreamPool::new(),
             });
             Ok(())
         })
@@ -161,6 +163,8 @@ pub fn run() {
             sftp_delete,
             tailscale_status,
             tailscale_set_exit_node,
+            log_stream::log_stream_start,
+            log_stream::log_stream_stop,
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");

@@ -116,6 +116,16 @@ impl SshSession {
     pub fn alive(&self) -> bool {
         self.session.authenticated()
     }
+
+    pub fn channel_session(&mut self) -> AppResult<ssh2::Channel> {
+        self.session
+            .channel_session()
+            .map_err(|e| AppError::Ssh(format!("channel: {e}")))
+    }
+
+    pub fn set_blocking(&self, blocking: bool) {
+        self.session.set_blocking(blocking);
+    }
 }
 
 trait SocketAddrExt {

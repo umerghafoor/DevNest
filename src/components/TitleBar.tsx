@@ -2,26 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
+import { PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const PANEL_ICONS: Record<PanelKind, string> = {
-  docker: "▣",
-  metrics: "◈",
-  terminal: "⌨",
-  files: "◫",
-  tailscale: "⬡",
-  logs: "≡",
-};
-
-const PANEL_LABELS: Record<PanelKind, string> = {
-  docker: "Docker",
-  metrics: "Metrics",
-  terminal: "Terminal",
-  files: "Files",
-  tailscale: "Tailscale",
-  logs: "Logs",
-};
 
 const ALL_PANELS: PanelKind[] = [
   "terminal",
@@ -30,6 +13,9 @@ const ALL_PANELS: PanelKind[] = [
   "files",
   "logs",
   "tailscale",
+  "processes",
+  "ports",
+  "cron",
 ];
 
 function makePane(deviceId: string, panel: PanelKind): Pane {

@@ -7,7 +7,10 @@ export type PanelKind =
   | "terminal"
   | "files"
   | "tailscale"
-  | "logs";
+  | "logs"
+  | "processes"
+  | "ports"
+  | "cron";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 

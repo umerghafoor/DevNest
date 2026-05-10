@@ -7,24 +7,33 @@ import { TerminalPanel } from "../panels/TerminalPanel";
 import { TailscalePanel } from "../panels/TailscalePanel";
 import { FileBrowserPanel } from "../panels/FileBrowserPanel";
 import { LogViewerPanel } from "../panels/LogViewerPanel";
+import { ProcessPanel } from "../panels/ProcessPanel";
+import { PortsPanel } from "../panels/PortsPanel";
+import { CronPanel } from "../panels/CronPanel";
 import type { PanelKind } from "../store/app-store";
 
-const PANEL_ICONS: Record<PanelKind, string> = {
+export const PANEL_ICONS: Record<PanelKind, string> = {
   docker: "▣",
   metrics: "◈",
   terminal: "⌨",
   files: "◫",
   tailscale: "⬡",
   logs: "≡",
+  processes: "◎",
+  ports: "⊕",
+  cron: "⏱",
 };
 
-const PANEL_LABELS: Record<PanelKind, string> = {
+export const PANEL_LABELS: Record<PanelKind, string> = {
   docker: "Docker",
   metrics: "Metrics",
   terminal: "Terminal",
   files: "Files",
   tailscale: "Tailscale",
   logs: "Logs",
+  processes: "Processes",
+  ports: "Ports",
+  cron: "Cron",
 };
 
 function PanelContent({ pane }: { pane: Pane }) {
@@ -41,6 +50,12 @@ function PanelContent({ pane }: { pane: Pane }) {
       return <FileBrowserPanel deviceId={pane.deviceId} />;
     case "logs":
       return <LogViewerPanel deviceId={pane.deviceId} />;
+    case "processes":
+      return <ProcessPanel deviceId={pane.deviceId} />;
+    case "ports":
+      return <PortsPanel deviceId={pane.deviceId} />;
+    case "cron":
+      return <CronPanel deviceId={pane.deviceId} />;
   }
 }
 
