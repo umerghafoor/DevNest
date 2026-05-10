@@ -50,6 +50,11 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
+### Releases
+
+Pushes to `main` automatically create a GitHub Release with Linux installers
+(`.deb`, `.rpm`, and `.AppImage`) attached.
+
 ## Layout
 
 ```text

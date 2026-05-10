@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "package": "tauri build",
+    "package:linux": "tauri build --bundles deb",
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint . --max-warnings 0",
