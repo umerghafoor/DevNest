@@ -120,9 +120,7 @@ export function Sidebar() {
                     : "hover:bg-(--color-surface-2) text-(--color-fg-muted)"
                 }`}
               >
-                <span
-                  className={`h-2 w-2 rounded-full ${statusDot[status]}`}
-                />
+                <span className={`h-2 w-2 rounded-full ${statusDot[status]}`} />
               </button>
             );
           })}

@@ -70,7 +70,9 @@ export function TabBar() {
       <div className="flex flex-1 items-stretch overflow-x-auto">
         {tabs.length === 0 ? (
           <div className="flex items-center px-3 text-xs text-(--color-fg-muted) select-none">
-            {activeDeviceId ? "Open a panel →" : "Select a device from the sidebar"}
+            {activeDeviceId
+              ? "Open a panel →"
+              : "Select a device from the sidebar"}
           </div>
         ) : (
           tabs.map((t) => {
@@ -89,9 +91,7 @@ export function TabBar() {
                 {active && (
                   <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-(--color-accent)" />
                 )}
-                <span className="opacity-60">
-                  {PANEL_ICONS[t.panel]}
-                </span>
+                <span className="opacity-60">{PANEL_ICONS[t.panel]}</span>
                 <span className="whitespace-nowrap">
                   {dev?.name ?? "?"}{" "}
                   <span className="text-(--color-fg-muted)">
@@ -116,13 +116,24 @@ export function TabBar() {
 
       {/* New panel button */}
       {activeDeviceId && (
-        <div ref={menuRef} className="relative flex items-center border-l border-(--color-border)">
+        <div
+          ref={menuRef}
+          className="relative flex items-center border-l border-(--color-border)"
+        >
           <button
             onClick={() => setMenuOpen((o) => !o)}
             title="Open panel"
             className="flex h-full items-center gap-1 px-3 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
           >
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            >
               <path d="M8 3v10M3 8h10" />
             </svg>
             <span>Panel</span>
@@ -135,7 +146,9 @@ export function TabBar() {
                   onClick={() => openPanel(kind)}
                   className="flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs text-(--color-fg) hover:bg-(--color-surface-2)"
                 >
-                  <span className="text-(--color-fg-muted)">{PANEL_ICONS[kind]}</span>
+                  <span className="text-(--color-fg-muted)">
+                    {PANEL_ICONS[kind]}
+                  </span>
                   {PANEL_LABELS[kind]}
                 </button>
               ))}
