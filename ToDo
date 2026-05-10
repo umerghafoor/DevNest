@@ -1,0 +1,21 @@
+# ToDo
+
+## Android Release Build
+
+- Set up Java/Android SDK/NDK in CI environment or local dev
+- Configure Tauri Android project initialization and signing
+- Build and publish APK artifacts to GitHub releases alongside desktop builds
+- Consider adding APK signing with keystore for production releases
+
+## DevDash
+
+- I want multiple terminals in one app
+- I want the integration of runing services and their logs in one app
+- I want to create new services and run them in one app
+- I want to pem connect to my servers
+- I want Ngrok integration to expose my local services
+- I want to see my system settings and their status in one app
+- I want to see my system information and their status in one app
+- I want UI to be more moduler and customizable
+- Start with Phase 3 features and iterate from there
+- It should have keyboard shortcuts for all the features and option to customize them

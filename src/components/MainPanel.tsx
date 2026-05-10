@@ -1,27 +1,17 @@
-import { useAppStore } from "../store/app-store";
-import type { PanelKind } from "../store/app-store";
-import { DockerPanel } from "../panels/DockerPanel";
-import { MetricsPanel } from "../panels/MetricsPanel";
-import { TerminalPanel } from "../panels/TerminalPanel";
-import { TailscalePanel } from "../panels/TailscalePanel";
-import { FileBrowserPanel } from "../panels/FileBrowserPanel";
-import { LogViewerPanel } from "../panels/LogViewerPanel";
-import { TabBar } from "./TabBar";
+import { useAppStore, selectActiveWorkspace } from "../store/app-store";
+import { PaneTile } from "./PaneTile";
 
 export function MainPanel() {
-  const activeTab = useAppStore((s) =>
-    s.tabs.find((t) => t.id === s.activeTabId),
-  );
+  const ws = useAppStore(selectActiveWorkspace);
   const activeDevice = useAppStore((s) =>
     s.devices.find((d) => d.id === s.activeDeviceId),
   );
 
   return (
-    <main className="flex h-full flex-1 flex-col overflow-hidden">
-      <TabBar />
-      <div className="flex-1 overflow-auto">
-        {activeTab ? (
-          <PanelView panel={activeTab.panel} deviceId={activeTab.deviceId} />
+    <main className="flex h-full flex-1 flex-col overflow-hidden min-w-0">
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {ws.paneRoot ? (
+          <PaneTile node={ws.paneRoot} />
         ) : (
           <EmptyState hasDevice={Boolean(activeDevice)} />
         )}
@@ -30,34 +20,10 @@ export function MainPanel() {
   );
 }
 
-function PanelView({
-  panel,
-  deviceId,
-}: {
-  panel: PanelKind;
-  deviceId: string;
-}) {
-  switch (panel) {
-    case "docker":
-      return <DockerPanel deviceId={deviceId} />;
-    case "metrics":
-      return <MetricsPanel deviceId={deviceId} />;
-    case "terminal":
-      return <TerminalPanel deviceId={deviceId} />;
-    case "tailscale":
-      return <TailscalePanel deviceId={deviceId} />;
-    case "files":
-      return <FileBrowserPanel deviceId={deviceId} />;
-    case "logs":
-      return <LogViewerPanel deviceId={deviceId} />;
-  }
-}
-
 function EmptyState({ hasDevice }: { hasDevice: boolean }) {
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-4 text-center">
-        {/* Cradle mark, large */}
         <svg
           width="56"
           height="56"
@@ -85,7 +51,7 @@ function EmptyState({ hasDevice }: { hasDevice: boolean }) {
           </h2>
           <p className="mt-1 max-w-xs text-xs text-(--color-fg-muted)">
             {hasDevice
-              ? "Click + Panel in the tab bar to open Terminal, Docker, Files, and more."
+              ? 'Click "Panel" in the title bar to open Terminal, Docker, Files, and more.'
               : "Add a device from the sidebar to get started."}
           </p>
         </div>

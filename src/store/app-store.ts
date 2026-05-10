@@ -9,19 +9,127 @@ export type PanelKind =
   | "tailscale"
   | "logs";
 
-export interface Tab {
+// ─── Pane leaf ───────────────────────────────────────────────────────────────
+
+export interface Pane {
   id: string;
   deviceId: string;
   panel: PanelKind;
+  instanceId: string; // unique per PTY / panel instance
 }
+
+// ─── Tiling tree ─────────────────────────────────────────────────────────────
+
+export type SplitDirection = "horizontal" | "vertical";
+
+export interface SplitNode {
+  type: "split";
+  id: string;
+  direction: SplitDirection;
+  ratio: number; // 0–1, fraction given to first child
+  first: PaneNode;
+  second: PaneNode;
+}
+
+export interface LeafNode {
+  type: "leaf";
+  pane: Pane;
+}
+
+export type PaneNode = SplitNode | LeafNode;
+
+// ─── Workspace ───────────────────────────────────────────────────────────────
+
+export interface Workspace {
+  id: string;
+  name: string;
+  paneRoot: PaneNode | null;
+  activePaneId: string | null;
+}
+
+// ─── Tree helpers (pure) ──────────────────────────────────────────────────────
+
+function makeLeaf(pane: Pane): LeafNode {
+  return { type: "leaf", pane };
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+function replaceLeaf(
+  root: PaneNode,
+  paneId: string,
+  replacement: PaneNode,
+): PaneNode {
+  if (root.type === "leaf") {
+    return root.pane.id === paneId ? replacement : root;
+  }
+  return {
+    ...root,
+    first: replaceLeaf(root.first, paneId, replacement),
+    second: replaceLeaf(root.second, paneId, replacement),
+  };
+}
+
+function removeLeaf(root: PaneNode, paneId: string): PaneNode | null {
+  if (root.type === "leaf") {
+    return root.pane.id === paneId ? null : root;
+  }
+  const first = removeLeaf(root.first, paneId);
+  const second = removeLeaf(root.second, paneId);
+  if (!first && !second) return null;
+  if (!first) return second;
+  if (!second) return first;
+  return { ...root, first, second };
+}
+
+export function collectPanes(root: PaneNode): Pane[] {
+  if (root.type === "leaf") return [root.pane];
+  return [...collectPanes(root.first), ...collectPanes(root.second)];
+}
+
+function updateRatio(root: PaneNode, splitNodeId: string, ratio: number): PaneNode {
+  if (root.type === "leaf") return root;
+  if (root.id === splitNodeId) return { ...root, ratio };
+  return {
+    ...root,
+    first: updateRatio(root.first, splitNodeId, ratio),
+    second: updateRatio(root.second, splitNodeId, ratio),
+  };
+}
+
+export function findPaneInTree(
+  root: PaneNode,
+  paneId: string | null,
+): Pane | undefined {
+  if (!paneId) return undefined;
+  if (root.type === "leaf") return root.pane.id === paneId ? root.pane : undefined;
+  return findPaneInTree(root.first, paneId) ?? findPaneInTree(root.second, paneId);
+}
+
+// ─── Workspace helpers ────────────────────────────────────────────────────────
+
+function defaultWorkspace(name = "Workspace 1"): Workspace {
+  return { id: uid(), name, paneRoot: null, activePaneId: null };
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
 
 interface AppState {
   devices: Device[];
   statuses: Record<string, ConnectionStatus | "connecting" | "error">;
   activeDeviceId: string | null;
-  tabs: Tab[];
-  activeTabId: string | null;
 
+  // Workspaces
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+
+  // Derived convenience (active workspace fields proxied)
+  readonly paneRoot: PaneNode | null;
+  readonly activePaneId: string | null;
+
+  // Device actions
   setDevices: (devices: Device[]) => void;
   upsertDevice: (device: Device) => void;
   removeDevice: (id: string) => void;
@@ -30,17 +138,42 @@ interface AppState {
     status: ConnectionStatus | "connecting" | "error",
   ) => void;
   setActiveDevice: (deviceId: string | null) => void;
-  openTab: (tab: Tab) => void;
-  closeTab: (tabId: string) => void;
-  setActiveTab: (tabId: string | null) => void;
+
+  // Workspace actions
+  addWorkspace: () => void;
+  removeWorkspace: (id: string) => void;
+  setActiveWorkspace: (id: string) => void;
+  renameWorkspace: (id: string, name: string) => void;
+
+  // Pane actions (operate on the active workspace)
+  openPane: (pane: Pane) => void;
+  splitPane: (paneId: string, direction: SplitDirection, newPane: Pane) => void;
+  closePane: (paneId: string) => void;
+  setActivePane: (paneId: string | null) => void;
+  updateSplitRatio: (splitId: string, ratio: number) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+const initial = defaultWorkspace();
+
+export const useAppStore = create<AppState>((set, get) => ({
   devices: [],
   statuses: {},
   activeDeviceId: null,
-  tabs: [],
-  activeTabId: null,
+
+  workspaces: [initial],
+  activeWorkspaceId: initial.id,
+
+  // Proxy getters — read active workspace fields directly
+  get paneRoot() {
+    const s = get();
+    return s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.paneRoot ?? null;
+  },
+  get activePaneId() {
+    const s = get();
+    return s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.activePaneId ?? null;
+  },
+
+  // ── Device ─────────────────────────────────────────────────────────────────
 
   setDevices: (devices) =>
     set((s) => ({
@@ -50,6 +183,7 @@ export const useAppStore = create<AppState>((set) => ({
           ? s.activeDeviceId
           : (devices[0]?.id ?? null),
     })),
+
   upsertDevice: (device) =>
     set((s) => {
       const idx = s.devices.findIndex((d) => d.id === device.id);
@@ -59,30 +193,143 @@ export const useAppStore = create<AppState>((set) => ({
           : s.devices.map((d) => (d.id === device.id ? device : d));
       return { devices };
     }),
+
   removeDevice: (id) =>
-    set((s) => ({
-      devices: s.devices.filter((d) => d.id !== id),
-      activeDeviceId: s.activeDeviceId === id ? null : s.activeDeviceId,
-      tabs: s.tabs.filter((t) => t.deviceId !== id),
-      statuses: Object.fromEntries(
-        Object.entries(s.statuses).filter(([k]) => k !== id),
-      ),
-    })),
+    set((s) => {
+      const workspaces = s.workspaces.map((w) => {
+        if (!w.paneRoot) return w;
+        let root: PaneNode | null = w.paneRoot;
+        for (const p of collectPanes(root)) {
+          if (p.deviceId === id) root = removeLeaf(root!, p.id);
+        }
+        const remaining = root ? collectPanes(root) : [];
+        return {
+          ...w,
+          paneRoot: root,
+          activePaneId: remaining.some((p) => p.id === w.activePaneId)
+            ? w.activePaneId
+            : (remaining.at(-1)?.id ?? null),
+        };
+      });
+      return {
+        devices: s.devices.filter((d) => d.id !== id),
+        activeDeviceId: s.activeDeviceId === id ? null : s.activeDeviceId,
+        workspaces,
+        statuses: Object.fromEntries(
+          Object.entries(s.statuses).filter(([k]) => k !== id),
+        ),
+      };
+    }),
+
   setStatus: (deviceId, status) =>
     set((s) => ({ statuses: { ...s.statuses, [deviceId]: status } })),
+
   setActiveDevice: (deviceId) => set({ activeDeviceId: deviceId }),
-  openTab: (tab) =>
-    set((s) =>
-      s.tabs.some((t) => t.id === tab.id)
-        ? { activeTabId: tab.id }
-        : { tabs: [...s.tabs, tab], activeTabId: tab.id },
-    ),
-  closeTab: (tabId) =>
+
+  // ── Workspaces ─────────────────────────────────────────────────────────────
+
+  addWorkspace: () =>
     set((s) => {
-      const tabs = s.tabs.filter((t) => t.id !== tabId);
-      const activeTabId =
-        s.activeTabId === tabId ? (tabs.at(-1)?.id ?? null) : s.activeTabId;
-      return { tabs, activeTabId };
+      const ws = defaultWorkspace(`Workspace ${s.workspaces.length + 1}`);
+      return { workspaces: [...s.workspaces, ws], activeWorkspaceId: ws.id };
     }),
-  setActiveTab: (tabId) => set({ activeTabId: tabId }),
+
+  removeWorkspace: (id) =>
+    set((s) => {
+      if (s.workspaces.length <= 1) return {}; // never remove the last one
+      const workspaces = s.workspaces.filter((w) => w.id !== id);
+      const activeWorkspaceId =
+        s.activeWorkspaceId === id
+          ? (workspaces.at(-1)?.id ?? workspaces[0].id)
+          : s.activeWorkspaceId;
+      return { workspaces, activeWorkspaceId };
+    }),
+
+  setActiveWorkspace: (id) => set({ activeWorkspaceId: id }),
+
+  renameWorkspace: (id, name) =>
+    set((s) => ({
+      workspaces: s.workspaces.map((w) => (w.id === id ? { ...w, name } : w)),
+    })),
+
+  // ── Panes (mutate active workspace) ────────────────────────────────────────
+
+  openPane: (pane) =>
+    set((s) =>
+      patchActiveWorkspace(s, (w) => {
+        const leaf = makeLeaf(pane);
+        if (!w.paneRoot) return { paneRoot: leaf, activePaneId: pane.id };
+        if (w.activePaneId) {
+          return {
+            paneRoot: replaceLeaf(w.paneRoot, w.activePaneId, leaf),
+            activePaneId: pane.id,
+          };
+        }
+        return { paneRoot: leaf, activePaneId: pane.id };
+      }),
+    ),
+
+  splitPane: (paneId, direction, newPane) =>
+    set((s) =>
+      patchActiveWorkspace(s, (w) => {
+        if (!w.paneRoot) return {};
+        const existing = findPaneInTree(w.paneRoot, paneId);
+        if (!existing) return {};
+        const split: SplitNode = {
+          type: "split",
+          id: uid(),
+          direction,
+          ratio: 0.5,
+          first: makeLeaf(existing),
+          second: makeLeaf(newPane),
+        };
+        return {
+          paneRoot: replaceLeaf(w.paneRoot, paneId, split),
+          activePaneId: newPane.id,
+        };
+      }),
+    ),
+
+  closePane: (paneId) =>
+    set((s) =>
+      patchActiveWorkspace(s, (w) => {
+        if (!w.paneRoot) return {};
+        const next = removeLeaf(w.paneRoot, paneId);
+        const remaining = next ? collectPanes(next) : [];
+        return {
+          paneRoot: next,
+          activePaneId:
+            w.activePaneId === paneId
+              ? (remaining.at(-1)?.id ?? null)
+              : w.activePaneId,
+        };
+      }),
+    ),
+
+  setActivePane: (paneId) =>
+    set((s) => patchActiveWorkspace(s, () => ({ activePaneId: paneId }))),
+
+  updateSplitRatio: (splitId, ratio) =>
+    set((s) =>
+      patchActiveWorkspace(s, (w) => ({
+        paneRoot: w.paneRoot ? updateRatio(w.paneRoot, splitId, ratio) : null,
+      })),
+    ),
 }));
+
+// ─── Helper: patch the active workspace immutably ─────────────────────────────
+
+function patchActiveWorkspace(
+  s: AppState,
+  fn: (w: Workspace) => Partial<Workspace>,
+): Partial<AppState> {
+  return {
+    workspaces: s.workspaces.map((w) =>
+      w.id === s.activeWorkspaceId ? { ...w, ...fn(w) } : w,
+    ),
+  };
+}
+
+// Selector helpers
+export const selectActiveWorkspace = (s: AppState) =>
+  s.workspaces.find((w) => w.id === s.activeWorkspaceId)!;

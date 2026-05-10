@@ -8,13 +8,20 @@ import "@xterm/xterm/css/xterm.css";
 
 interface Props {
   deviceId: string;
+  // Each unique instanceId gets its own PTY session. Lets you have
+  // multiple terminal panes open for the same device simultaneously.
+  instanceId?: string;
 }
 
-export function TerminalPanel({ deviceId }: Props) {
+export function TerminalPanel({ deviceId, instanceId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<Terminal | null>(null);
   const termIdRef = useRef<string | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+
+  // Use instanceId (or deviceId) as the key so that splitting a terminal
+  // pane creates a genuinely separate PTY rather than reusing an existing one.
+  const sessionKey = instanceId ?? deviceId;
 
   useEffect(() => {
     const container = containerRef.current;
@@ -94,7 +101,9 @@ export function TerminalPanel({ deviceId }: Props) {
       if (termId) void invoke("terminal_close", { termId });
       term.dispose();
     };
-  }, [deviceId]);
+    // sessionKey changes → new PTY. deviceId change is implied by sessionKey.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionKey, deviceId]);
 
   return (
     <div
