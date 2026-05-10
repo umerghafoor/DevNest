@@ -102,7 +102,6 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       term.dispose();
     };
     // sessionKey changes → new PTY. deviceId change is implied by sessionKey.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey, deviceId]);
 
   return (
