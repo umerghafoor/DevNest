@@ -72,8 +72,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          TAG="main-${SHORT_SHA}"
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
 
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
@@ -82,4 +82,4 @@ jobs:
               --notes "Automated release from main (${GITHUB_SHA})."
           fi
 
-          gh release upload "$TAG" release-assets/**/* --clobber
+          find release-assets -type f -exec gh release upload "$TAG" {} --clobber \;
