@@ -1,6 +1,22 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.theme-dark, .theme-dark *));
+
 @theme {
+  --color-bg: #ffffff;
+  --color-surface: #f6f7f9;
+  --color-surface-2: #eceff3;
+  --color-border: #d8dde4;
+  --color-fg: #1f2328;
+  --color-fg-muted: #57606a;
+  --color-accent: #2563eb;
+  --color-online: #16a34a;
+  --color-offline: #9ca3af;
+  --color-warn: #d97706;
+  --color-error: #dc2626;
+}
+
+.theme-dark {
   --color-bg: #0b0d10;
   --color-surface: #14181d;
   --color-surface-2: #1b2128;
@@ -37,4 +53,27 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+button {
+  cursor: pointer;
+}
+
+.input {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+  padding: 6px 10px;
+  font-size: 13px;
+  outline: none;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
 }

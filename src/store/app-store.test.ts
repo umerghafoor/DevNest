@@ -45,4 +45,14 @@ describe("app-store", () => {
       d2: "error",
     });
   });
+
+  it("removeDevice cleans up tabs and statuses", () => {
+    const { setStatus, openTab, removeDevice } = useAppStore.getState();
+    setStatus("d1", "connected");
+    openTab({ id: "t1", deviceId: "d1", panel: "docker" });
+    openTab({ id: "t2", deviceId: "d2", panel: "metrics" });
+    removeDevice("d1");
+    expect(useAppStore.getState().tabs.map((t) => t.id)).toEqual(["t2"]);
+    expect(useAppStore.getState().statuses).not.toHaveProperty("d1");
+  });
 });

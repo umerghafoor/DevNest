@@ -1,6 +1,21 @@
-// DB access layer.
-//
-// Migrations live under src-tauri/migrations and are wired up in lib.rs via
-// tauri_plugin_sql. For the MVP the JS side talks to SQLite directly through
-// the plugin; this module exists as the home for any Rust-side queries we add
-// later (e.g. background metrics writers, alert evaluator).
+use parking_lot::Mutex;
+use rusqlite::Connection;
+use std::path::PathBuf;
+use std::sync::Arc;
+
+use crate::error::{AppError, AppResult};
+
+const SCHEMA: &str = include_str!("../migrations/0001_init.sql");
+
+pub type Db = Arc<Mutex<Connection>>;
+
+pub fn open(app_data_dir: &std::path::Path) -> AppResult<Db> {
+    std::fs::create_dir_all(app_data_dir)?;
+    let path: PathBuf = app_data_dir.join("devnest.db");
+    let conn = Connection::open(&path).map_err(|e| AppError::Db(e.to_string()))?;
+    conn.execute_batch(SCHEMA)
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|e| AppError::Db(e.to_string()))?;
+    Ok(Arc::new(Mutex::new(conn)))
+}

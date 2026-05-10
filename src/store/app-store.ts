@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { ConnectionStatus, Device } from "../lib/api";
 
 export type PanelKind =
   | "docker"
@@ -8,18 +9,6 @@ export type PanelKind =
   | "tailscale"
   | "logs";
 
-export type ConnectionStatus = "connected" | "connecting" | "offline" | "error";
-
-export interface Device {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  authType: "key" | "password" | "localhost";
-  isLocalhost: boolean;
-}
-
 export interface Tab {
   id: string;
   deviceId: string;
@@ -28,13 +17,18 @@ export interface Tab {
 
 interface AppState {
   devices: Device[];
-  statuses: Record<string, ConnectionStatus>;
+  statuses: Record<string, ConnectionStatus | "connecting" | "error">;
   activeDeviceId: string | null;
   tabs: Tab[];
   activeTabId: string | null;
 
   setDevices: (devices: Device[]) => void;
-  setStatus: (deviceId: string, status: ConnectionStatus) => void;
+  upsertDevice: (device: Device) => void;
+  removeDevice: (id: string) => void;
+  setStatus: (
+    deviceId: string,
+    status: ConnectionStatus | "connecting" | "error",
+  ) => void;
   setActiveDevice: (deviceId: string | null) => void;
   openTab: (tab: Tab) => void;
   closeTab: (tabId: string) => void;
@@ -48,7 +42,32 @@ export const useAppStore = create<AppState>((set) => ({
   tabs: [],
   activeTabId: null,
 
-  setDevices: (devices) => set({ devices }),
+  setDevices: (devices) =>
+    set((s) => ({
+      devices,
+      activeDeviceId:
+        s.activeDeviceId && devices.some((d) => d.id === s.activeDeviceId)
+          ? s.activeDeviceId
+          : (devices[0]?.id ?? null),
+    })),
+  upsertDevice: (device) =>
+    set((s) => {
+      const idx = s.devices.findIndex((d) => d.id === device.id);
+      const devices =
+        idx === -1
+          ? [...s.devices, device]
+          : s.devices.map((d) => (d.id === device.id ? device : d));
+      return { devices };
+    }),
+  removeDevice: (id) =>
+    set((s) => ({
+      devices: s.devices.filter((d) => d.id !== id),
+      activeDeviceId: s.activeDeviceId === id ? null : s.activeDeviceId,
+      tabs: s.tabs.filter((t) => t.deviceId !== id),
+      statuses: Object.fromEntries(
+        Object.entries(s.statuses).filter(([k]) => k !== id),
+      ),
+    })),
   setStatus: (deviceId, status) =>
     set((s) => ({ statuses: { ...s.statuses, [deviceId]: status } })),
   setActiveDevice: (deviceId) => set({ activeDeviceId: deviceId }),

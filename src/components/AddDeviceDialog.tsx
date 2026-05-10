@@ -1,0 +1,269 @@
+import { useState } from "react";
+import { z } from "zod";
+import { api } from "../lib/api";
+import type { AuthType } from "../lib/api";
+import { useAppStore } from "../store/app-store";
+import { Modal } from "./Modal";
+
+interface Props {
+  open: boolean;
+  onClose: () => void;
+}
+
+const schema = z.object({
+  name: z.string().min(1, "Name is required").max(64),
+  host: z.string().min(1, "Host is required"),
+  port: z
+    .number()
+    .int()
+    .min(1, "Port must be 1-65535")
+    .max(65535, "Port must be 1-65535"),
+  username: z.string().min(1, "Username is required"),
+  authType: z.enum(["key", "password"]),
+  keyPath: z.string().optional(),
+  secret: z.string().optional(),
+  sudoPrefix: z.string().optional(),
+});
+
+type FormValues = z.infer<typeof schema>;
+
+const initial: FormValues = {
+  name: "",
+  host: "",
+  port: 22,
+  username: "",
+  authType: "key",
+  keyPath: "",
+  secret: "",
+  sudoPrefix: "",
+};
+
+export function AddDeviceDialog({ open, onClose }: Props) {
+  const [values, setValues] = useState<FormValues>(initial);
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof FormValues, string>>
+  >({});
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const upsertDevice = useAppStore((s) => s.upsertDevice);
+  const setActiveDevice = useAppStore((s) => s.setActiveDevice);
+
+  const set = <K extends keyof FormValues>(key: K, val: FormValues[K]) =>
+    setValues((v) => ({ ...v, [key]: val }));
+
+  const reset = () => {
+    setValues(initial);
+    setErrors({});
+    setSubmitError(null);
+  };
+
+  const close = () => {
+    if (submitting) return;
+    reset();
+    onClose();
+  };
+
+  const submit = async () => {
+    const parsed = schema.safeParse(values);
+    if (!parsed.success) {
+      const fieldErrors: Partial<Record<keyof FormValues, string>> = {};
+      for (const issue of parsed.error.issues) {
+        const k = issue.path[0] as keyof FormValues;
+        if (!fieldErrors[k]) fieldErrors[k] = issue.message;
+      }
+      setErrors(fieldErrors);
+      return;
+    }
+
+    if (parsed.data.authType === "key" && !parsed.data.keyPath) {
+      setErrors({ keyPath: "Key path is required for key auth" });
+      return;
+    }
+    if (parsed.data.authType === "password" && !parsed.data.secret) {
+      setErrors({ secret: "Password is required for password auth" });
+      return;
+    }
+
+    setErrors({});
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const device = await api.createDevice(
+        {
+          name: parsed.data.name,
+          host: parsed.data.host,
+          port: parsed.data.port,
+          username: parsed.data.username,
+          authType: parsed.data.authType as AuthType,
+          keyPath: parsed.data.keyPath || null,
+          sudoPrefix: parsed.data.sudoPrefix || null,
+        },
+        parsed.data.secret || null,
+      );
+      upsertDevice(device);
+      setActiveDevice(device.id);
+      reset();
+      onClose();
+    } catch (e) {
+      setSubmitError(String(e));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="Add device"
+      footer={
+        <>
+          <button
+            onClick={close}
+            disabled={submitting}
+            className="rounded border border-(--color-border) px-3 py-1.5 text-xs hover:bg-(--color-surface-2) disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="rounded bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
+          >
+            {submitting ? "Saving…" : "Add device"}
+          </button>
+        </>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+        className="space-y-3"
+      >
+        <Field label="Name" error={errors.name}>
+          <input
+            value={values.name}
+            onChange={(e) => set("name", e.target.value)}
+            placeholder="my-server"
+            className="input"
+          />
+        </Field>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <Field label="Host" error={errors.host}>
+              <input
+                value={values.host}
+                onChange={(e) => set("host", e.target.value)}
+                placeholder="192.168.1.10 or ts-name"
+                className="input"
+              />
+            </Field>
+          </div>
+          <Field label="Port" error={errors.port}>
+            <input
+              type="number"
+              value={values.port}
+              onChange={(e) =>
+                set("port", Number.parseInt(e.target.value, 10) || 0)
+              }
+              className="input"
+            />
+          </Field>
+        </div>
+        <Field label="Username" error={errors.username}>
+          <input
+            value={values.username}
+            onChange={(e) => set("username", e.target.value)}
+            placeholder="root"
+            className="input"
+          />
+        </Field>
+        <Field label="Auth type">
+          <div className="flex gap-2">
+            {(["key", "password"] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => set("authType", t)}
+                className={`rounded border px-3 py-1 text-xs ${
+                  values.authType === t
+                    ? "border-(--color-accent) bg-(--color-accent) text-white"
+                    : "border-(--color-border) hover:bg-(--color-surface-2)"
+                }`}
+              >
+                {t === "key" ? "SSH key" : "Password"}
+              </button>
+            ))}
+          </div>
+        </Field>
+        {values.authType === "key" ? (
+          <Field
+            label="Key path"
+            error={errors.keyPath}
+            hint="Absolute path to your private key. Passphrase (if any) goes in Secret."
+          >
+            <input
+              value={values.keyPath}
+              onChange={(e) => set("keyPath", e.target.value)}
+              placeholder="/home/you/.ssh/id_ed25519"
+              className="input"
+            />
+          </Field>
+        ) : null}
+        <Field
+          label={
+            values.authType === "key" ? "Key passphrase (optional)" : "Password"
+          }
+          error={errors.secret}
+          hint="Stored in your OS keychain — never written to the database."
+        >
+          <input
+            type="password"
+            value={values.secret}
+            onChange={(e) => set("secret", e.target.value)}
+            className="input"
+          />
+        </Field>
+        <Field
+          label="Sudo prefix (optional)"
+          hint="Prepended to remote commands. Useful when docker/tailscale need root."
+        >
+          <input
+            value={values.sudoPrefix}
+            onChange={(e) => set("sudoPrefix", e.target.value)}
+            placeholder="sudo -n"
+            className="input"
+          />
+        </Field>
+        {submitError && (
+          <p className="rounded bg-red-500/10 px-2 py-1 text-xs text-(--color-error)">
+            {submitError}
+          </p>
+        )}
+      </form>
+    </Modal>
+  );
+}
+
+interface FieldProps {
+  label: string;
+  error?: string;
+  hint?: string;
+  children: React.ReactNode;
+}
+
+function Field({ label, error, hint, children }: FieldProps) {
+  return (
+    <label className="block text-xs">
+      <span className="mb-1 block text-(--color-fg-muted)">{label}</span>
+      {children}
+      {error ? (
+        <span className="mt-1 block text-(--color-error)">{error}</span>
+      ) : hint ? (
+        <span className="mt-1 block text-(--color-fg-muted)">{hint}</span>
+      ) : null}
+    </label>
+  );
+}
