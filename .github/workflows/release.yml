@@ -64,7 +64,7 @@ jobs:
     needs: [desktop]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4            # <--- add this step!
+      - uses: actions/checkout@v4 # <--- add this step!
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
