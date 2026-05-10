@@ -70,6 +70,8 @@ export default [
         performance: "readonly",
         requestAnimationFrame: "readonly",
         cancelAnimationFrame: "readonly",
+        Node: "readonly",
+        EventTarget: "readonly",
       },
     },
     plugins: {

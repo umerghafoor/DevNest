@@ -8,15 +8,6 @@ import { FileBrowserPanel } from "../panels/FileBrowserPanel";
 import { LogViewerPanel } from "../panels/LogViewerPanel";
 import { TabBar } from "./TabBar";
 
-const PANELS: { kind: PanelKind; label: string }[] = [
-  { kind: "docker", label: "Docker" },
-  { kind: "metrics", label: "Metrics" },
-  { kind: "terminal", label: "Terminal" },
-  { kind: "files", label: "Files" },
-  { kind: "tailscale", label: "Tailscale" },
-  { kind: "logs", label: "Logs" },
-];
-
 export function MainPanel() {
   const activeTab = useAppStore((s) =>
     s.tabs.find((t) => t.id === s.activeTabId),
@@ -24,34 +15,10 @@ export function MainPanel() {
   const activeDevice = useAppStore((s) =>
     s.devices.find((d) => d.id === s.activeDeviceId),
   );
-  const openTab = useAppStore((s) => s.openTab);
-
-  const open = (kind: PanelKind) => {
-    if (!activeDevice) return;
-    openTab({
-      id: `${activeDevice.id}:${kind}`,
-      deviceId: activeDevice.id,
-      panel: kind,
-    });
-  };
 
   return (
     <main className="flex h-full flex-1 flex-col overflow-hidden">
       <TabBar />
-      {activeDevice && (
-        <div className="flex items-center gap-1 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs">
-          <span className="mr-2 text-(--color-fg-muted)">Open:</span>
-          {PANELS.map((p) => (
-            <button
-              key={p.kind}
-              onClick={() => open(p.kind)}
-              className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      )}
       <div className="flex-1 overflow-auto">
         {activeTab ? (
           <PanelView panel={activeTab.panel} deviceId={activeTab.deviceId} />
@@ -89,13 +56,39 @@ function PanelView({
 function EmptyState({ hasDevice }: { hasDevice: boolean }) {
   return (
     <div className="flex h-full items-center justify-center">
-      <div className="max-w-md text-center">
-        <h2 className="text-base font-medium">Welcome to DevNest</h2>
-        <p className="mt-2 text-sm text-(--color-fg-muted)">
-          {hasDevice
-            ? "Pick a panel above to start managing this device."
-            : "Add a device from the sidebar, then open a panel to manage Docker, watch metrics, or browse files over SSH."}
-        </p>
+      <div className="flex flex-col items-center gap-4 text-center">
+        {/* Cradle mark, large */}
+        <svg
+          width="56"
+          height="56"
+          viewBox="0 0 100 100"
+          fill="none"
+          className="opacity-30"
+        >
+          <path
+            d="M 8 60 Q 50 92 92 60"
+            stroke="oklch(0.74 0.17 58)"
+            strokeWidth="9"
+            strokeLinecap="round"
+          />
+          <path
+            d="M 22 50 Q 50 76 78 50"
+            stroke="currentColor"
+            strokeWidth="9"
+            strokeLinecap="round"
+          />
+          <ellipse cx="50" cy="34" rx="11" ry="13" fill="oklch(0.74 0.17 58)" />
+        </svg>
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">
+            {hasDevice ? "Open a panel" : "Welcome to DevNest"}
+          </h2>
+          <p className="mt-1 max-w-xs text-xs text-(--color-fg-muted)">
+            {hasDevice
+              ? "Click + Panel in the tab bar to open Terminal, Docker, Files, and more."
+              : "Add a device from the sidebar to get started."}
+          </p>
+        </div>
       </div>
     </div>
   );

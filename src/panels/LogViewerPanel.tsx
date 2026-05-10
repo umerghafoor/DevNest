@@ -29,51 +29,55 @@ export function LogViewerPanel({ deviceId }: Props) {
   const [customCmd, setCustomCmd] = useState("");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [channelId, setChannelId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const pausedRef = useRef(false);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const unlistenRef = useRef<(() => void) | null>(null);
 
   pausedRef.current = paused;
 
   const appendLines = useCallback((raw: string) => {
     if (pausedRef.current) return;
     const newLines = raw.split(/\r?\n/).filter(Boolean);
+    if (newLines.length === 0) return;
     setLines((prev) => {
       const next = [...prev, ...newLines];
       return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
     });
   }, []);
 
-  const start = async (command: string) => {
-    if (channelId) {
-      await stop();
+  const stopAll = useCallback(() => {
+    if (pollRef.current !== null) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
     }
+    unlistenRef.current?.();
+    unlistenRef.current = null;
+    setRunning(false);
+  }, []);
+
+  const start = async (command: string) => {
+    stopAll();
     setLines([]);
     setError(null);
-    setRunning(true);
-
-    const id = crypto.randomUUID();
-    setChannelId(id);
 
     try {
-      await invoke("run_remote_command", {
-        deviceId,
-        cmd: command,
-      });
+      // First invocation to verify the command works
+      await invoke("run_remote_command", { deviceId, cmd: command });
     } catch (e) {
       setError(errorMessage(e));
-      setRunning(false);
       return;
     }
 
-    // For streaming we use a background poller every 1s using run_remote_command
-    // Real streaming (tail -F) would need a streaming Tauri command (Phase 3 enhancement).
-    // For now: poll the last 50 lines every 2s.
+    setRunning(true);
+
+    // Poll every 2s — pull last 50 lines each tick.
+    // True streaming (tail -F) requires a background Tauri task; deferred to Phase 3.
     const pollCmd = command.includes("tail -F")
       ? command.replace("-F", "-n 50 --")
       : command;
 
-    const poll = setInterval(async () => {
+    pollRef.current = setInterval(async () => {
       try {
         const out = await invoke<{ stdout: string; exitCode: number }>(
           "run_remote_command",
@@ -84,23 +88,14 @@ export function LogViewerPanel({ deviceId }: Props) {
         // ignore poll errors — will retry next interval
       }
     }, 2000);
-
-    setChannelId(String(poll));
   };
 
-  const stop = async () => {
-    if (channelId) {
-      clearInterval(Number(channelId));
-      setChannelId(null);
-    }
-    setRunning(false);
-  };
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (channelId) clearInterval(Number(channelId));
+      stopAll();
     };
-  }, [channelId]);
+  }, [stopAll]);
 
   useEffect(() => {
     if (!paused) {
@@ -153,7 +148,7 @@ export function LogViewerPanel({ deviceId }: Props) {
           />
         )}
 
-        <div className="flex gap-2 ml-auto">
+        <div className="ml-auto flex gap-2">
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
@@ -162,14 +157,14 @@ export function LogViewerPanel({ deviceId }: Props) {
           />
           {running ? (
             <button
-              onClick={stop}
+              onClick={stopAll}
               className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
             >
               Stop
             </button>
           ) : (
             <button
-              onClick={() => start(cmd)}
+              onClick={() => void start(cmd)}
               className="rounded bg-(--color-accent) px-2 py-0.5 text-white hover:opacity-90"
             >
               Start

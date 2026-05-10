@@ -3,31 +3,34 @@
 @custom-variant dark (&:where(.theme-dark, .theme-dark *));
 
 @theme {
-  --color-bg: #ffffff;
-  --color-surface: #f6f7f9;
-  --color-surface-2: #eceff3;
-  --color-border: #d8dde4;
-  --color-fg: #1f2328;
-  --color-fg-muted: #57606a;
-  --color-accent: #2563eb;
-  --color-online: #16a34a;
-  --color-offline: #9ca3af;
-  --color-warn: #d97706;
-  --color-error: #dc2626;
+  /* Light — warm cream-white tints, amber accent */
+  --color-bg:        oklch(0.985 0.005 80);
+  --color-surface:   oklch(0.96 0.006 75);
+  --color-surface-2: oklch(0.92 0.007 70);
+  --color-border:    oklch(0.88 0.008 60);
+  --color-fg:        oklch(0.18 0.012 60);
+  --color-fg-muted:  oklch(0.55 0.008 60);
+  --color-accent:    oklch(0.74 0.17 58);
+  --color-accent-fg: oklch(0.22 0.05 50);
+  --color-online:    oklch(0.60 0.16 145);
+  --color-offline:   oklch(0.70 0.004 60);
+  --color-warn:      oklch(0.72 0.15 58);
+  --color-error:     oklch(0.62 0.18 25);
 }
 
 .theme-dark {
-  --color-bg: #0b0d10;
-  --color-surface: #14181d;
-  --color-surface-2: #1b2128;
-  --color-border: #262d36;
-  --color-fg: #e6edf3;
-  --color-fg-muted: #8b949e;
-  --color-accent: #3b82f6;
-  --color-online: #22c55e;
-  --color-offline: #6b7280;
-  --color-warn: #f59e0b;
-  --color-error: #ef4444;
+  --color-bg:        oklch(0.16 0.010 60);
+  --color-surface:   oklch(0.21 0.010 60);
+  --color-surface-2: oklch(0.26 0.010 60);
+  --color-border:    oklch(0.28 0.010 60);
+  --color-fg:        oklch(0.96 0.005 80);
+  --color-fg-muted:  oklch(0.58 0.010 65);
+  --color-accent:    oklch(0.74 0.17 58);
+  --color-accent-fg: oklch(0.22 0.05 50);
+  --color-online:    oklch(0.70 0.16 145);
+  --color-offline:   oklch(0.42 0.004 60);
+  --color-warn:      oklch(0.74 0.17 58);
+  --color-error:     oklch(0.65 0.18 25);
 }
 
 html,
@@ -41,7 +44,7 @@ body {
   background-color: var(--color-bg);
   color: var(--color-fg);
   font-family:
-    "Inter",
+    "Space Grotesk",
     system-ui,
     -apple-system,
     "Segoe UI",
@@ -61,19 +64,20 @@ button {
 
 .input {
   width: 100%;
-  border-radius: 6px;
+  border-radius: 8px;
   border: 1px solid var(--color-border);
   background-color: var(--color-bg);
   color: var(--color-fg);
-  padding: 6px 10px;
-  font-size: 13px;
+  padding: 8px 12px;
+  font-size: 13.5px;
+  font-family: inherit;
   outline: none;
   transition:
-    border-color 0.15s,
-    box-shadow 0.15s;
+    border-color 0.12s,
+    box-shadow 0.12s;
 }
 
 .input:focus {
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--color-accent) 20%, transparent);
 }

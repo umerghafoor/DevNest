@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::mpsc;
 
-use crate::devices::Device;
+use crate::devices::{AuthType, Device};
 use crate::error::{AppError, AppResult};
 use crate::secrets;
 
@@ -110,74 +110,72 @@ where
     Ok(TermHandle { tx })
 }
 
-/// Spawn a remote SSH shell. Returns a handle (for input) and starts threads
-/// that pump stdin/stdout through the SSH channel.
+/// Parameters needed to open an SSH connection, fully owned so they can be
+/// sent across thread boundaries (ssh2::Session is not Send).
+struct RemoteParams {
+    host: String,
+    port: u16,
+    username: String,
+    auth_type: AuthType,
+    key_path: Option<String>,
+    passphrase: Option<String>,
+}
+
+/// Spawn a remote SSH shell. The entire SSH session + channel is created
+/// inside the worker thread because ssh2::Session is not Send.
 pub fn spawn_remote<F>(device: &Device, cols: u32, rows: u32, on_output: F) -> AppResult<TermHandle>
 where
     F: Fn(Vec<u8>) + Send + 'static,
 {
-    use std::net::TcpStream;
-    use std::time::Duration;
-
-    let addr = format!("{}:{}", device.host, device.port);
-    let tcp = TcpStream::connect_timeout(&resolve_addr(&addr)?, Duration::from_secs(8))
-        .map_err(|e| AppError::Ssh(format!("connect: {e}")))?;
-    tcp.set_read_timeout(Some(Duration::from_secs(3600))).ok();
-
-    let mut session = ssh2::Session::new().map_err(|e| AppError::Ssh(e.to_string()))?;
-    session.set_tcp_stream(tcp);
-    session
-        .handshake()
-        .map_err(|e| AppError::Ssh(format!("handshake: {e}")))?;
-
-    match device.auth_type {
-        crate::devices::AuthType::Key => {
-            let key_path: std::path::PathBuf = device
-                .key_path
-                .clone()
-                .ok_or_else(|| AppError::Invalid("key_path missing".into()))?
-                .into();
-            let pass = secrets::get(&device.id).ok();
-            session
-                .userauth_pubkey_file(&device.username, None, &key_path, pass.as_deref())
-                .map_err(|e| AppError::Ssh(format!("pubkey auth: {e}")))?;
-        }
-        crate::devices::AuthType::Password => {
-            let pw =
-                secrets::get(&device.id).map_err(|e| AppError::Ssh(format!("no password: {e}")))?;
-            session
-                .userauth_password(&device.username, &pw)
-                .map_err(|e| AppError::Ssh(format!("password auth: {e}")))?;
-        }
-        crate::devices::AuthType::Localhost => {
-            return Err(AppError::Invalid("localhost uses local PTY".into()));
-        }
-    }
-
-    if !session.authenticated() {
-        return Err(AppError::Ssh("auth failed".into()));
-    }
-
-    let mut channel = session
-        .channel_session()
-        .map_err(|e| AppError::Ssh(format!("channel: {e}")))?;
-    channel
-        .request_pty("xterm-256color", None, Some((cols, rows, 0, 0)))
-        .map_err(|e| AppError::Ssh(format!("request pty: {e}")))?;
-    channel
-        .shell()
-        .map_err(|e| AppError::Ssh(format!("shell: {e}")))?;
+    let params = RemoteParams {
+        host: device.host.clone(),
+        port: device.port,
+        username: device.username.clone(),
+        auth_type: device.auth_type,
+        key_path: device.key_path.clone(),
+        passphrase: secrets::get(&device.id).ok(),
+    };
 
     let (tx, rx) = mpsc::sync_channel::<TermInput>(256);
 
-    // Single thread owns both session + channel (session must outlive channel).
-    session.set_blocking(true);
+    // Return an error channel so the thread can report connection failures.
+    let (err_tx, err_rx) = mpsc::channel::<Option<AppError>>();
+
     std::thread::spawn(move || {
-        // Keep session alive in this thread — channel borrows from it.
-        let _session = session;
+        // Build session inside the thread — ssh2::Session is !Send.
+        let session = match open_ssh_session(&params, cols, rows) {
+            Ok(s) => {
+                let _ = err_tx.send(None); // signal success
+                s
+            }
+            Err(e) => {
+                let _ = err_tx.send(Some(e));
+                return;
+            }
+        };
+
+        // channel_session + pty + shell
+        let mut channel = match session.channel_session() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("terminal channel_session: {e}");
+                return;
+            }
+        };
+        if let Err(e) = channel.request_pty("xterm-256color", None, Some((cols, rows, 0, 0))) {
+            tracing::error!("terminal request_pty: {e}");
+            return;
+        }
+        if let Err(e) = channel.shell() {
+            tracing::error!("terminal shell: {e}");
+            return;
+        }
+
+        session.set_blocking(false);
+
         let mut buf = [0u8; 4096];
         loop {
-            // Drain any pending input first (non-blocking check)
+            // Drain pending input
             loop {
                 match rx.try_recv() {
                     Ok(TermInput::Data(data)) => {
@@ -194,11 +192,9 @@ where
                 }
             }
 
-            // Read with a short timeout so we can process pending writes.
             match channel.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => on_output(buf[..n].to_vec()),
-                Err(ref e) if e.kind() == std::io::ErrorKind::TimedOut => {}
                 Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     std::thread::sleep(std::time::Duration::from_millis(5));
                 }
@@ -211,15 +207,71 @@ where
         }
     });
 
-    Ok(TermHandle { tx })
+    // Wait for connection result (up to 15s — same as connect timeout + handshake).
+    match err_rx.recv_timeout(std::time::Duration::from_secs(15)) {
+        Ok(None) => Ok(TermHandle { tx }),
+        Ok(Some(e)) => Err(e),
+        Err(_) => Err(AppError::Ssh("terminal connect timed out".into())),
+    }
 }
 
-fn resolve_addr(addr: &str) -> AppResult<std::net::SocketAddr> {
+fn open_ssh_session(params: &RemoteParams, _cols: u32, _rows: u32) -> AppResult<ssh2::Session> {
+    use std::net::TcpStream;
     use std::net::ToSocketAddrs;
-    addr.to_socket_addrs()
+    use std::time::Duration;
+
+    let addr = format!("{}:{}", params.host, params.port);
+    let sock_addr = addr
+        .to_socket_addrs()
         .map_err(|e| AppError::Ssh(format!("resolve {addr}: {e}")))?
         .next()
-        .ok_or_else(|| AppError::Ssh(format!("no addr for {addr}")))
+        .ok_or_else(|| AppError::Ssh(format!("no address for {addr}")))?;
+
+    let tcp = TcpStream::connect_timeout(&sock_addr, Duration::from_secs(8))
+        .map_err(|e| AppError::Ssh(format!("connect: {e}")))?;
+    tcp.set_read_timeout(Some(Duration::from_secs(3600))).ok();
+
+    let mut session = ssh2::Session::new().map_err(|e| AppError::Ssh(e.to_string()))?;
+    session.set_tcp_stream(tcp);
+    session
+        .handshake()
+        .map_err(|e| AppError::Ssh(format!("handshake: {e}")))?;
+
+    match params.auth_type {
+        AuthType::Key => {
+            let key_path: std::path::PathBuf = params
+                .key_path
+                .clone()
+                .ok_or_else(|| AppError::Invalid("key_path missing".into()))?
+                .into();
+            session
+                .userauth_pubkey_file(
+                    &params.username,
+                    None,
+                    &key_path,
+                    params.passphrase.as_deref(),
+                )
+                .map_err(|e| AppError::Ssh(format!("pubkey auth: {e}")))?;
+        }
+        AuthType::Password => {
+            let pw = params
+                .passphrase
+                .as_deref()
+                .ok_or_else(|| AppError::Ssh("no stored password".into()))?;
+            session
+                .userauth_password(&params.username, pw)
+                .map_err(|e| AppError::Ssh(format!("password auth: {e}")))?;
+        }
+        AuthType::Localhost => {
+            return Err(AppError::Invalid("localhost uses local PTY".into()));
+        }
+    }
+
+    if !session.authenticated() {
+        return Err(AppError::Ssh("auth failed".into()));
+    }
+
+    Ok(session)
 }
 
 // ── Pool ─────────────────────────────────────────────────────────────────────
