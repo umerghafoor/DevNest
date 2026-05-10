@@ -60,26 +60,26 @@ jobs:
           if-no-files-found: error
 
   publish:
-  name: Publish GitHub release
-  needs: [desktop]
-  runs-on: ubuntu-latest
-  steps:
-    - uses: actions/checkout@v4            # <--- add this step!
-    - uses: actions/download-artifact@v4
-      with:
-        path: release-assets
-    - name: Create or update release
-      env:
-        GH_TOKEN: ${{ github.token }}
-      run: |
-        SHORT_SHA="${GITHUB_SHA::7}"
-        TAG="main-${SHORT_SHA}"
+    name: Publish GitHub release
+    needs: [desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4            # <--- add this step!
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SHORT_SHA="${GITHUB_SHA::7}"
+          TAG="main-${SHORT_SHA}"
 
-        if ! gh release view "$TAG" >/dev/null 2>&1; then
-          gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
-            --title "DevNest main ${SHORT_SHA}" \
-            --notes "Automated release from main (${GITHUB_SHA})."
-        fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "DevNest main ${SHORT_SHA}" \
+              --notes "Automated release from main (${GITHUB_SHA})."
+          fi
 
-        gh release upload "$TAG" release-assets/**/* --clobber
+          gh release upload "$TAG" release-assets/**/* --clobber
