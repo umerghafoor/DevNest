@@ -52,8 +52,12 @@ cargo test
 
 ### Releases
 
-Pushes to `main` automatically create a GitHub Release with Linux installers
-(`.deb`, `.rpm`, and `.AppImage`) attached.
+Pushes to `main` automatically create a GitHub Release with installables for:
+
+- Linux (`.deb`, `.rpm`, `.AppImage`)
+- macOS (bundled desktop artifacts)
+- Windows (bundled desktop artifacts)
+- Android (`.apk` debug build)
 
 ## Layout
 

@@ -9,13 +9,24 @@ permissions:
   contents: write
 
 jobs:
-  linux:
-    name: Build and publish Linux release
-    runs-on: ubuntu-latest
+  desktop:
+    name: Build desktop (${{ matrix.platform.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - name: linux
+            os: ubuntu-latest
+            artifact_name: linux-bundles
+          - name: macos
+            os: macos-latest
+            artifact_name: macos-bundles
+          - name: windows
+            os: windows-latest
+            artifact_name: windows-bundles
+    runs-on: ${{ matrix.platform.os }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -25,6 +36,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Install Linux deps
+        if: matrix.platform.name == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -38,18 +50,83 @@ jobs:
             libxdo-dev
 
       - run: npm ci
-      - run: npm run package:linux
+      - run: npm run package
 
-      - name: Create GitHub release
+      - name: Upload desktop bundles
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform.artifact_name }}
+          path: src-tauri/target/release/bundle/**
+          if-no-files-found: error
+
+  android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android build tools
+        run: |
+          sdkmanager --install "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;27.0.12077973"
+
+      - name: Add Android Rust targets
+        run: |
+          rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
+      - run: npm ci
+
+      - name: Initialize Tauri Android project
+        run: npm run tauri -- android init --ci --skip-targets-install
+
+      - name: Build Android APK
+        run: npm run tauri -- android build --apk --debug
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist-android
+          find src-tauri/gen/android -type f -name "*.apk" -exec cp {} dist-android/ \;
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: dist-android/*.apk
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Create or update release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           TAG="main-${SHORT_SHA}"
-          gh release create "$TAG" \
-            --target "$GITHUB_SHA" \
-            --title "DevNest main ${SHORT_SHA}" \
-            --notes "Automated Linux release from main (${GITHUB_SHA})." \
-            src-tauri/target/release/bundle/deb/*.deb \
-            src-tauri/target/release/bundle/rpm/*.rpm \
-            src-tauri/target/release/bundle/appimage/*.AppImage
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "DevNest main ${SHORT_SHA}" \
+              --notes "Automated release from main (${GITHUB_SHA})."
+          fi
+
+          gh release upload "$TAG" release-assets/**/* --clobber
