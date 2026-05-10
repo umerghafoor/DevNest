@@ -23,8 +23,10 @@ function parseCrontab(text: string): CronEntry[] {
     .map((line) => {
       // Strip trailing inline comment
       const commentIdx = line.indexOf(" #");
-      const comment = commentIdx !== -1 ? line.slice(commentIdx + 2).trim() : "";
-      const clean = commentIdx !== -1 ? line.slice(0, commentIdx).trim() : line.trim();
+      const comment =
+        commentIdx !== -1 ? line.slice(commentIdx + 2).trim() : "";
+      const clean =
+        commentIdx !== -1 ? line.slice(0, commentIdx).trim() : line.trim();
 
       // 5 schedule fields + rest is command
       const parts = clean.split(/\s+/);
@@ -40,7 +42,9 @@ function serializeCrontab(entries: CronEntry[]): string {
   return (
     entries
       .map((e) =>
-        e.comment ? `${e.schedule} ${e.command} # ${e.comment}` : `${e.schedule} ${e.command}`,
+        e.comment
+          ? `${e.schedule} ${e.command} # ${e.comment}`
+          : `${e.schedule} ${e.command}`,
       )
       .join("\n") + "\n"
   );
@@ -108,7 +112,9 @@ function EntryForm({ initial, onSave, onCancel }: EntryFormProps) {
         </h3>
 
         <div className="mb-3">
-          <label className="mb-1 block text-xs text-(--color-fg-muted)">Schedule</label>
+          <label className="mb-1 block text-xs text-(--color-fg-muted)">
+            Schedule
+          </label>
           <div className="flex gap-2">
             <input
               value={schedule}
@@ -117,13 +123,17 @@ function EntryForm({ initial, onSave, onCancel }: EntryFormProps) {
               placeholder="* * * * *"
             />
             <select
-              value={SCHEDULE_PRESETS.find((p) => p.value === schedule)?.value ?? ""}
+              value={
+                SCHEDULE_PRESETS.find((p) => p.value === schedule)?.value ?? ""
+              }
               onChange={(e) => e.target.value && setSchedule(e.target.value)}
               className="input w-36 py-1.5 text-xs"
             >
               <option value="">Preset…</option>
               {SCHEDULE_PRESETS.map((p) => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
               ))}
             </select>
           </div>
@@ -133,7 +143,9 @@ function EntryForm({ initial, onSave, onCancel }: EntryFormProps) {
         </div>
 
         <div className="mb-3">
-          <label className="mb-1 block text-xs text-(--color-fg-muted)">Command</label>
+          <label className="mb-1 block text-xs text-(--color-fg-muted)">
+            Command
+          </label>
           <input
             value={command}
             onChange={(e) => setCommand(e.target.value)}
@@ -143,7 +155,9 @@ function EntryForm({ initial, onSave, onCancel }: EntryFormProps) {
         </div>
 
         <div className="mb-5">
-          <label className="mb-1 block text-xs text-(--color-fg-muted)">Comment (optional)</label>
+          <label className="mb-1 block text-xs text-(--color-fg-muted)">
+            Comment (optional)
+          </label>
           <input
             value={comment}
             onChange={(e) => setComment(e.target.value)}
@@ -199,7 +213,9 @@ export function CronPanel({ deviceId }: Props) {
     }
   }, [deviceId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   const save = async (newEntries: CronEntry[]) => {
     setSaving(true);
@@ -233,7 +249,8 @@ export function CronPanel({ deviceId }: Props) {
   };
 
   const remove = (entry: CronEntry) => {
-    if (!confirm(`Delete cron job?\n${entry.schedule} ${entry.command}`)) return;
+    if (!confirm(`Delete cron job?\n${entry.schedule} ${entry.command}`))
+      return;
     void save(entries.filter((e) => e !== entry));
   };
 
@@ -242,7 +259,9 @@ export function CronPanel({ deviceId }: Props) {
       {/* Toolbar */}
       <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-2">
         <span className="text-xs text-(--color-fg-muted)">
-          {loading ? "Loading…" : `${entries.length} job${entries.length !== 1 ? "s" : ""}`}
+          {loading
+            ? "Loading…"
+            : `${entries.length} job${entries.length !== 1 ? "s" : ""}`}
         </span>
         <div className="ml-auto flex gap-2">
           <button
@@ -290,9 +309,15 @@ export function CronPanel({ deviceId }: Props) {
             </colgroup>
             <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">Schedule</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">Command</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">Description</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                  Schedule
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                  Command
+                </th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                  Description
+                </th>
                 <th className="px-3 py-2" />
               </tr>
             </thead>
@@ -302,8 +327,12 @@ export function CronPanel({ deviceId }: Props) {
                   key={i}
                   className="group border-b border-(--color-border)/50 hover:bg-(--color-surface)"
                 >
-                  <td className="px-3 py-2 font-mono text-(--color-fg)">{entry.schedule}</td>
-                  <td className="truncate px-3 py-2 font-mono text-(--color-fg-muted)">{entry.command}</td>
+                  <td className="px-3 py-2 font-mono text-(--color-fg)">
+                    {entry.schedule}
+                  </td>
+                  <td className="truncate px-3 py-2 font-mono text-(--color-fg-muted)">
+                    {entry.command}
+                  </td>
                   <td className="truncate px-3 py-2 text-(--color-fg-muted) italic">
                     {entry.comment || describeSchedule(entry.schedule)}
                   </td>

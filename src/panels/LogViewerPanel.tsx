@@ -56,7 +56,9 @@ export function LogViewerPanel({ deviceId }: Props) {
 
   const stopStream = useCallback(async () => {
     if (streamIdRef.current) {
-      await invoke("log_stream_stop", { streamId: streamIdRef.current }).catch(() => {});
+      await invoke("log_stream_stop", { streamId: streamIdRef.current }).catch(
+        () => {},
+      );
       streamIdRef.current = null;
     }
     unlistenRef.current?.();
@@ -64,29 +66,32 @@ export function LogViewerPanel({ deviceId }: Props) {
     setRunning(false);
   }, []);
 
-  const startStream = useCallback(async (command: string) => {
-    await stopStream();
-    setLines([]);
-    setError(null);
+  const startStream = useCallback(
+    async (command: string) => {
+      await stopStream();
+      setLines([]);
+      setError(null);
 
-    const streamId = uid();
-    streamIdRef.current = streamId;
+      const streamId = uid();
+      streamIdRef.current = streamId;
 
-    // Subscribe to events before invoking to avoid race
-    unlistenRef.current = await listen<string>(`log:${streamId}`, (evt) => {
-      appendLine(evt.payload);
-    });
+      // Subscribe to events before invoking to avoid race
+      unlistenRef.current = await listen<string>(`log:${streamId}`, (evt) => {
+        appendLine(evt.payload);
+      });
 
-    try {
-      await invoke("log_stream_start", { deviceId, streamId, cmd: command });
-      setRunning(true);
-    } catch (e) {
-      unlistenRef.current?.();
-      unlistenRef.current = null;
-      streamIdRef.current = null;
-      setError(errorMessage(e));
-    }
-  }, [deviceId, stopStream, appendLine]);
+      try {
+        await invoke("log_stream_start", { deviceId, streamId, cmd: command });
+        setRunning(true);
+      } catch (e) {
+        unlistenRef.current?.();
+        unlistenRef.current = null;
+        streamIdRef.current = null;
+        setError(errorMessage(e));
+      }
+    },
+    [deviceId, stopStream, appendLine],
+  );
 
   // Stop stream on unmount
   useEffect(() => {
@@ -204,7 +209,9 @@ export function LogViewerPanel({ deviceId }: Props) {
             {running ? "Waiting for output…" : "Press Start to stream a log."}
           </div>
         ) : (
-          displayed.map((line, i) => <LogLine key={i} line={line} filter={filter} />)
+          displayed.map((line, i) => (
+            <LogLine key={i} line={line} filter={filter} />
+          ))
         )}
         <div ref={bottomRef} />
       </div>
@@ -220,12 +227,16 @@ function LogLine({ line, filter }: { line: string; filter: string }) {
       : "";
 
   if (!filter) {
-    return <div className={`whitespace-pre-wrap leading-5 ${color}`}>{line}</div>;
+    return (
+      <div className={`whitespace-pre-wrap leading-5 ${color}`}>{line}</div>
+    );
   }
 
   const idx = line.toLowerCase().indexOf(filter.toLowerCase());
   if (idx === -1) {
-    return <div className={`whitespace-pre-wrap leading-5 ${color}`}>{line}</div>;
+    return (
+      <div className={`whitespace-pre-wrap leading-5 ${color}`}>{line}</div>
+    );
   }
 
   return (

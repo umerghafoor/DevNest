@@ -36,7 +36,14 @@ function parsePs(output: string): Process[] {
     .filter((p) => p.pid !== "");
 }
 
-const SIGNALS = ["SIGTERM", "SIGKILL", "SIGHUP", "SIGINT", "SIGUSR1", "SIGUSR2"];
+const SIGNALS = [
+  "SIGTERM",
+  "SIGKILL",
+  "SIGHUP",
+  "SIGINT",
+  "SIGUSR1",
+  "SIGUSR2",
+];
 
 export function ProcessPanel({ deviceId }: Props) {
   const [procs, setProcs] = useState<Process[]>([]);
@@ -140,7 +147,9 @@ export function ProcessPanel({ deviceId }: Props) {
           className="input h-7 w-56 py-1 text-xs"
         />
         <span className="ml-auto text-xs text-(--color-fg-muted)">
-          {loading ? "Loading…" : `${sorted.length} processes · refreshes every 3s`}
+          {loading
+            ? "Loading…"
+            : `${sorted.length} processes · refreshes every 3s`}
         </span>
       </div>
 
@@ -227,7 +236,9 @@ export function ProcessPanel({ deviceId }: Props) {
           <div className="w-80 rounded-xl border border-(--color-border) bg-(--color-bg) p-5 shadow-2xl">
             <h3 className="mb-1 text-sm font-semibold">Kill process?</h3>
             <p className="mb-4 text-xs text-(--color-fg-muted)">
-              <span className="font-mono text-(--color-fg)">{killTarget.command}</span>{" "}
+              <span className="font-mono text-(--color-fg)">
+                {killTarget.command}
+              </span>{" "}
               (PID {killTarget.pid})
             </p>
             <div className="mb-4">

@@ -62,7 +62,15 @@ function parseSimple(output: string): ListeningPort[] {
 
 // Well-known ports that are expected — anything outside this list is highlighted
 const COMMON_PORTS = new Set([
-  "22", "80", "443", "3306", "5432", "6379", "8080", "8443", "27017",
+  "22",
+  "80",
+  "443",
+  "3306",
+  "5432",
+  "6379",
+  "8080",
+  "8443",
+  "27017",
 ]);
 
 export function PortsPanel({ deviceId }: Props) {
@@ -147,10 +155,18 @@ export function PortsPanel({ deviceId }: Props) {
           </colgroup>
           <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">Port</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">Proto</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">Address</th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">Process</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                Port
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                Proto
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                Address
+              </th>
+              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                Process
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -161,7 +177,9 @@ export function PortsPanel({ deviceId }: Props) {
                   key={i}
                   className="border-b border-(--color-border)/50 hover:bg-(--color-surface)"
                 >
-                  <td className={`px-3 py-1.5 font-mono font-semibold tabular-nums ${unexpected ? "text-(--color-warn)" : "text-(--color-fg)"}`}>
+                  <td
+                    className={`px-3 py-1.5 font-mono font-semibold tabular-nums ${unexpected ? "text-(--color-warn)" : "text-(--color-fg)"}`}
+                  >
                     {p.port}
                     {unexpected && (
                       <span className="ml-1.5 rounded bg-(--color-warn)/15 px-1 py-px text-[9px] font-normal uppercase text-(--color-warn)">
@@ -169,9 +187,15 @@ export function PortsPanel({ deviceId }: Props) {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 font-mono text-(--color-fg-muted)">{p.proto}</td>
-                  <td className="truncate px-3 py-1.5 font-mono text-(--color-fg-muted)">{p.localAddr}</td>
-                  <td className="truncate px-3 py-1.5 font-mono text-(--color-fg)">{p.process || "—"}</td>
+                  <td className="px-3 py-1.5 font-mono text-(--color-fg-muted)">
+                    {p.proto}
+                  </td>
+                  <td className="truncate px-3 py-1.5 font-mono text-(--color-fg-muted)">
+                    {p.localAddr}
+                  </td>
+                  <td className="truncate px-3 py-1.5 font-mono text-(--color-fg)">
+                    {p.process || "—"}
+                  </td>
                 </tr>
               );
             })}
