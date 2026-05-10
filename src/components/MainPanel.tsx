@@ -2,15 +2,19 @@ import { useAppStore } from "../store/app-store";
 import type { PanelKind } from "../store/app-store";
 import { DockerPanel } from "../panels/DockerPanel";
 import { MetricsPanel } from "../panels/MetricsPanel";
+import { TerminalPanel } from "../panels/TerminalPanel";
+import { TailscalePanel } from "../panels/TailscalePanel";
+import { FileBrowserPanel } from "../panels/FileBrowserPanel";
+import { LogViewerPanel } from "../panels/LogViewerPanel";
 import { TabBar } from "./TabBar";
 
-const PANELS: { kind: PanelKind; label: string; ready: boolean }[] = [
-  { kind: "docker", label: "Docker", ready: true },
-  { kind: "metrics", label: "Metrics", ready: true },
-  { kind: "terminal", label: "Terminal", ready: false },
-  { kind: "files", label: "Files", ready: false },
-  { kind: "tailscale", label: "Tailscale", ready: false },
-  { kind: "logs", label: "Logs", ready: false },
+const PANELS: { kind: PanelKind; label: string }[] = [
+  { kind: "docker", label: "Docker" },
+  { kind: "metrics", label: "Metrics" },
+  { kind: "terminal", label: "Terminal" },
+  { kind: "files", label: "Files" },
+  { kind: "tailscale", label: "Tailscale" },
+  { kind: "logs", label: "Logs" },
 ];
 
 export function MainPanel() {
@@ -40,10 +44,8 @@ export function MainPanel() {
           {PANELS.map((p) => (
             <button
               key={p.kind}
-              onClick={() => p.ready && open(p.kind)}
-              disabled={!p.ready}
-              className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) disabled:opacity-40"
-              title={p.ready ? "" : "Coming in a later phase"}
+              onClick={() => open(p.kind)}
+              className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
             >
               {p.label}
             </button>
@@ -73,12 +75,14 @@ function PanelView({
       return <DockerPanel deviceId={deviceId} />;
     case "metrics":
       return <MetricsPanel deviceId={deviceId} />;
-    default:
-      return (
-        <div className="flex h-full items-center justify-center text-sm text-(--color-fg-muted)">
-          {panel} panel — coming in a later phase.
-        </div>
-      );
+    case "terminal":
+      return <TerminalPanel deviceId={deviceId} />;
+    case "tailscale":
+      return <TailscalePanel deviceId={deviceId} />;
+    case "files":
+      return <FileBrowserPanel deviceId={deviceId} />;
+    case "logs":
+      return <LogViewerPanel deviceId={deviceId} />;
   }
 }
 

@@ -5,12 +5,106 @@ mod docker;
 mod error;
 mod metrics;
 mod secrets;
+mod sftp;
 mod ssh;
 mod state;
+mod tailscale;
+mod terminal;
+mod terminal_commands;
 
 use tauri::Manager;
 
 use crate::state::AppState;
+
+#[tauri::command]
+fn sftp_list_dir(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> error::AppResult<Vec<sftp::FileEntry>> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    sftp::list_dir(&device, &path)
+}
+
+#[tauri::command]
+fn sftp_read_file(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> error::AppResult<String> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    sftp::read_file(&device, &path)
+}
+
+#[tauri::command]
+fn sftp_write_file(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+    content: String,
+) -> error::AppResult<()> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    sftp::write_file(&device, &path, &content)
+}
+
+#[tauri::command]
+fn sftp_mkdir(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> error::AppResult<()> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    sftp::mkdir(&device, &path)
+}
+
+#[tauri::command]
+fn sftp_rename(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    from: String,
+    to: String,
+) -> error::AppResult<()> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    sftp::rename(&device, &from, &to)
+}
+
+#[tauri::command]
+fn sftp_delete(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+    is_dir: bool,
+) -> error::AppResult<()> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    sftp::delete(&device, &path, is_dir)
+}
+
+#[tauri::command]
+fn tailscale_status(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+) -> error::AppResult<tailscale::TailnetStatus> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    tailscale::status(&state.pool, &device)
+}
+
+#[tauri::command]
+fn tailscale_set_exit_node(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    exit_node: Option<String>,
+) -> error::AppResult<()> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    tailscale::set_exit_node(&state.pool, &device, exit_node.as_deref())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -33,6 +127,7 @@ pub fn run() {
             app.manage(AppState {
                 db,
                 pool: ssh::SessionPool::new(),
+                terminals: terminal::TerminalPool::new(),
             });
             Ok(())
         })
@@ -54,6 +149,18 @@ pub fn run() {
             commands::docker_action,
             commands::docker_logs,
             commands::metrics_snapshot,
+            terminal_commands::terminal_open,
+            terminal_commands::terminal_write,
+            terminal_commands::terminal_resize,
+            terminal_commands::terminal_close,
+            sftp_list_dir,
+            sftp_read_file,
+            sftp_write_file,
+            sftp_mkdir,
+            sftp_rename,
+            sftp_delete,
+            tailscale_status,
+            tailscale_set_exit_node,
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");
