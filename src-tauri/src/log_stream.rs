@@ -78,7 +78,9 @@ impl LogStreamPool {
                                 break;
                             }
                             match line {
-                                Ok(l) => { let _ = app.emit(&event, l); }
+                                Ok(l) => {
+                                    let _ = app.emit(&event, l);
+                                }
                                 Err(_) => break,
                             }
                         }
@@ -88,7 +90,9 @@ impl LogStreamPool {
             } else if let Some(ref mut sess) = session {
                 match stream_ssh(sess, &cmd, &event, &cancel_clone, &app) {
                     Ok(_) => {}
-                    Err(e) => { let _ = app.emit(&event, format!("[error] {e}")); }
+                    Err(e) => {
+                        let _ = app.emit(&event, format!("[error] {e}"));
+                    }
                 }
             }
         });
@@ -120,8 +124,7 @@ fn stream_ssh(
         .map_err(|e| AppError::Ssh(format!("stream exec: {e}")))?;
 
     // Set non-blocking so we can check cancel flag
-    session
-        .set_blocking(false);
+    session.set_blocking(false);
 
     let reader = BufReader::new(channel);
     for line in reader.lines() {
@@ -129,7 +132,9 @@ fn stream_ssh(
             break;
         }
         match line {
-            Ok(l) => { let _ = app.emit(event, l); }
+            Ok(l) => {
+                let _ = app.emit(event, l);
+            }
             Err(ref e) if is_would_block(e) => {
                 // No data yet — small sleep to avoid busy spin
                 thread::sleep(std::time::Duration::from_millis(20));
@@ -142,8 +147,7 @@ fn stream_ssh(
 }
 
 fn is_would_block(e: &std::io::Error) -> bool {
-    e.kind() == std::io::ErrorKind::WouldBlock
-        || e.raw_os_error() == Some(11) // EAGAIN on Linux
+    e.kind() == std::io::ErrorKind::WouldBlock || e.raw_os_error() == Some(11) // EAGAIN on Linux
 }
 
 // ─── Tauri commands ───────────────────────────────────────────────────────────
@@ -156,8 +160,7 @@ pub fn log_stream_start(
     stream_id: String,
     cmd: String,
 ) -> AppResult<()> {
-    let device = devices::get(&state.db, &device_id)?
-        .ok_or(AppError::NotFound(device_id))?;
+    let device = devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     state.log_streams.start(stream_id, device, cmd, app)
 }
 
