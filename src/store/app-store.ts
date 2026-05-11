@@ -7,7 +7,10 @@ export type PanelKind =
   | "terminal"
   | "files"
   | "tailscale"
-  | "logs";
+  | "logs"
+  | "processes"
+  | "ports"
+  | "cron";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 
@@ -89,7 +92,11 @@ export function collectPanes(root: PaneNode): Pane[] {
   return [...collectPanes(root.first), ...collectPanes(root.second)];
 }
 
-function updateRatio(root: PaneNode, splitNodeId: string, ratio: number): PaneNode {
+function updateRatio(
+  root: PaneNode,
+  splitNodeId: string,
+  ratio: number,
+): PaneNode {
   if (root.type === "leaf") return root;
   if (root.id === splitNodeId) return { ...root, ratio };
   return {
@@ -104,8 +111,11 @@ export function findPaneInTree(
   paneId: string | null,
 ): Pane | undefined {
   if (!paneId) return undefined;
-  if (root.type === "leaf") return root.pane.id === paneId ? root.pane : undefined;
-  return findPaneInTree(root.first, paneId) ?? findPaneInTree(root.second, paneId);
+  if (root.type === "leaf")
+    return root.pane.id === paneId ? root.pane : undefined;
+  return (
+    findPaneInTree(root.first, paneId) ?? findPaneInTree(root.second, paneId)
+  );
 }
 
 // ─── Workspace helpers ────────────────────────────────────────────────────────
@@ -166,11 +176,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Proxy getters — read active workspace fields directly
   get paneRoot() {
     const s = get();
-    return s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.paneRoot ?? null;
+    return (
+      s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.paneRoot ?? null
+    );
   },
   get activePaneId() {
     const s = get();
-    return s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.activePaneId ?? null;
+    return (
+      s.workspaces.find((w) => w.id === s.activeWorkspaceId)?.activePaneId ??
+      null
+    );
   },
 
   // ── Device ─────────────────────────────────────────────────────────────────

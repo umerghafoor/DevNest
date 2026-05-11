@@ -5,7 +5,11 @@ import { StatusBar } from "../components/StatusBar";
 import { TitleBar } from "../components/TitleBar";
 import { SudoPasswordDialog } from "../components/SudoPasswordDialog";
 import { api } from "../lib/api";
-import { useAppStore, selectActiveWorkspace, findPaneInTree } from "../store/app-store";
+import {
+  useAppStore,
+  selectActiveWorkspace,
+  findPaneInTree,
+} from "../store/app-store";
 import { useThemeStore } from "../store/theme-store";
 
 export function App() {
@@ -47,7 +51,10 @@ export function App() {
         if (!pane) return;
         const uid = Math.random().toString(36).slice(2, 10);
         splitPane(activePaneId, "horizontal", {
-          id: uid, instanceId: uid, deviceId: activeDeviceId, panel: pane.panel,
+          id: uid,
+          instanceId: uid,
+          deviceId: activeDeviceId,
+          panel: pane.panel,
         });
         return;
       }
@@ -58,7 +65,10 @@ export function App() {
         if (!pane) return;
         const uid = Math.random().toString(36).slice(2, 10);
         splitPane(activePaneId, "vertical", {
-          id: uid, instanceId: uid, deviceId: activeDeviceId, panel: pane.panel,
+          id: uid,
+          instanceId: uid,
+          deviceId: activeDeviceId,
+          panel: pane.panel,
         });
         return;
       }

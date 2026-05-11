@@ -7,24 +7,33 @@ import { TerminalPanel } from "../panels/TerminalPanel";
 import { TailscalePanel } from "../panels/TailscalePanel";
 import { FileBrowserPanel } from "../panels/FileBrowserPanel";
 import { LogViewerPanel } from "../panels/LogViewerPanel";
+import { ProcessPanel } from "../panels/ProcessPanel";
+import { PortsPanel } from "../panels/PortsPanel";
+import { CronPanel } from "../panels/CronPanel";
 import type { PanelKind } from "../store/app-store";
 
-const PANEL_ICONS: Record<PanelKind, string> = {
+export const PANEL_ICONS: Record<PanelKind, string> = {
   docker: "▣",
   metrics: "◈",
   terminal: "⌨",
   files: "◫",
   tailscale: "⬡",
   logs: "≡",
+  processes: "◎",
+  ports: "⊕",
+  cron: "⏱",
 };
 
-const PANEL_LABELS: Record<PanelKind, string> = {
+export const PANEL_LABELS: Record<PanelKind, string> = {
   docker: "Docker",
   metrics: "Metrics",
   terminal: "Terminal",
   files: "Files",
   tailscale: "Tailscale",
   logs: "Logs",
+  processes: "Processes",
+  ports: "Ports",
+  cron: "Cron",
 };
 
 function PanelContent({ pane }: { pane: Pane }) {
@@ -34,13 +43,21 @@ function PanelContent({ pane }: { pane: Pane }) {
     case "metrics":
       return <MetricsPanel deviceId={pane.deviceId} />;
     case "terminal":
-      return <TerminalPanel deviceId={pane.deviceId} instanceId={pane.instanceId} />;
+      return (
+        <TerminalPanel deviceId={pane.deviceId} instanceId={pane.instanceId} />
+      );
     case "tailscale":
       return <TailscalePanel deviceId={pane.deviceId} />;
     case "files":
       return <FileBrowserPanel deviceId={pane.deviceId} />;
     case "logs":
       return <LogViewerPanel deviceId={pane.deviceId} />;
+    case "processes":
+      return <ProcessPanel deviceId={pane.deviceId} />;
+    case "ports":
+      return <PortsPanel deviceId={pane.deviceId} />;
+    case "cron":
+      return <CronPanel deviceId={pane.deviceId} />;
   }
 }
 
@@ -57,7 +74,12 @@ function PaneHeader({ pane }: { pane: Pane }) {
 
   const makeNewPane = (panel: PanelKind): Pane => {
     const uid = Math.random().toString(36).slice(2, 10);
-    return { id: uid, deviceId: activeDeviceId ?? pane.deviceId, panel, instanceId: uid };
+    return {
+      id: uid,
+      deviceId: activeDeviceId ?? pane.deviceId,
+      panel,
+      instanceId: uid,
+    };
   };
 
   return (
@@ -70,31 +92,44 @@ function PaneHeader({ pane }: { pane: Pane }) {
       )}
 
       <span className="opacity-40 text-[10px]">{PANEL_ICONS[pane.panel]}</span>
-      <span className={`font-medium ${isActive ? "text-(--color-fg)" : "text-(--color-fg-muted)"}`}>
+      <span
+        className={`font-medium ${isActive ? "text-(--color-fg)" : "text-(--color-fg-muted)"}`}
+      >
         {PANEL_LABELS[pane.panel]}
       </span>
       {device && (
-        <span className="text-(--color-fg-muted) text-[11px]">· {device.name}</span>
+        <span className="text-(--color-fg-muted) text-[11px]">
+          · {device.name}
+        </span>
       )}
 
       <div className="ml-auto flex items-center gap-0.5">
         <button
           title="Split right"
-          onClick={(e) => { e.stopPropagation(); splitPane(pane.id, "horizontal", makeNewPane(pane.panel)); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            splitPane(pane.id, "horizontal", makeNewPane(pane.panel));
+          }}
           className="flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
         >
           <SplitHIcon />
         </button>
         <button
           title="Split down"
-          onClick={(e) => { e.stopPropagation(); splitPane(pane.id, "vertical", makeNewPane(pane.panel)); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            splitPane(pane.id, "vertical", makeNewPane(pane.panel));
+          }}
           className="flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
         >
           <SplitVIcon />
         </button>
         <button
           title="Close pane"
-          onClick={(e) => { e.stopPropagation(); closePane(pane.id); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            closePane(pane.id);
+          }}
           className="flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-error)/20 hover:text-(--color-error)"
         >
           ×
@@ -196,11 +231,17 @@ export function PaneTile({ node }: { node: PaneNode }) {
 
   return (
     <div className={`flex h-full w-full ${isH ? "flex-row" : "flex-col"}`}>
-      <div style={isH ? { width: firstSize } : { height: firstSize }} className="min-w-0 min-h-0">
+      <div
+        style={isH ? { width: firstSize } : { height: firstSize }}
+        className="min-w-0 min-h-0"
+      >
         <PaneTile node={node.first} />
       </div>
       <Divider direction={node.direction} splitId={node.id} />
-      <div style={isH ? { width: secondSize } : { height: secondSize }} className="min-w-0 min-h-0">
+      <div
+        style={isH ? { width: secondSize } : { height: secondSize }}
+        className="min-w-0 min-h-0"
+      >
         <PaneTile node={node.second} />
       </div>
     </div>
@@ -209,7 +250,14 @@ export function PaneTile({ node }: { node: PaneNode }) {
 
 function SplitHIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <rect x="1" y="1" width="4" height="10" rx="1" />
       <rect x="7" y="1" width="4" height="10" rx="1" />
     </svg>
@@ -218,7 +266,14 @@ function SplitHIcon() {
 
 function SplitVIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <rect x="1" y="1" width="10" height="4" rx="1" />
       <rect x="1" y="7" width="10" height="4" rx="1" />
     </svg>

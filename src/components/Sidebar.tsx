@@ -135,14 +135,7 @@ export function Sidebar() {
       <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-(--color-border) bg-(--color-surface)">
         {/* Header */}
         <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-2.5">
-          <CradleMark size={24} stroke="var(--color-fg)" />
-          <span
-            style={{ letterSpacing: "-0.03em", fontWeight: 400 }}
-            className="flex-1 text-sm select-none"
-          >
-            <span style={{ fontWeight: 400 }}>dev</span>
-            <span style={{ fontWeight: 700 }}>nest</span>
-          </span>
+          <div className="flex-1" />
           <button
             onClick={() => setDialogOpen(true)}
             title="Add device"

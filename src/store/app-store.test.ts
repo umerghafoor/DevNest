@@ -8,7 +8,12 @@ function activeWs() {
 
 describe("app-store — panes", () => {
   beforeEach(() => {
-    const ws = { id: "w1", name: "Workspace 1", paneRoot: null, activePaneId: null };
+    const ws = {
+      id: "w1",
+      name: "Workspace 1",
+      paneRoot: null,
+      activePaneId: null,
+    };
     useAppStore.setState({
       devices: [],
       statuses: {},
@@ -19,7 +24,12 @@ describe("app-store — panes", () => {
   });
 
   it("opens a pane and makes it active", () => {
-    useAppStore.getState().openPane({ id: "p1", deviceId: "d1", panel: "docker", instanceId: "i1" });
+    useAppStore.getState().openPane({
+      id: "p1",
+      deviceId: "d1",
+      panel: "docker",
+      instanceId: "i1",
+    });
     expect(activeWs().paneRoot).not.toBeNull();
     expect(activeWs().activePaneId).toBe("p1");
   });
@@ -27,7 +37,12 @@ describe("app-store — panes", () => {
   it("closing the active pane removes it from the tree", () => {
     const { openPane, splitPane, closePane } = useAppStore.getState();
     openPane({ id: "p1", deviceId: "d1", panel: "docker", instanceId: "i1" });
-    splitPane("p1", "horizontal", { id: "p2", deviceId: "d1", panel: "metrics", instanceId: "i2" });
+    splitPane("p1", "horizontal", {
+      id: "p2",
+      deviceId: "d1",
+      panel: "metrics",
+      instanceId: "i2",
+    });
     closePane("p2");
     const root = activeWs().paneRoot;
     expect(root?.type).toBe("leaf");
@@ -45,14 +60,23 @@ describe("app-store — panes", () => {
   it("setStatus stores per-device", () => {
     useAppStore.getState().setStatus("d1", "connected");
     useAppStore.getState().setStatus("d2", "error");
-    expect(useAppStore.getState().statuses).toEqual({ d1: "connected", d2: "error" });
+    expect(useAppStore.getState().statuses).toEqual({
+      d1: "connected",
+      d2: "error",
+    });
   });
 
   it("removeDevice cleans up panes across all workspaces", () => {
-    const { setStatus, openPane, splitPane, removeDevice } = useAppStore.getState();
+    const { setStatus, openPane, splitPane, removeDevice } =
+      useAppStore.getState();
     setStatus("d1", "connected");
     openPane({ id: "p1", deviceId: "d1", panel: "docker", instanceId: "i1" });
-    splitPane("p1", "horizontal", { id: "p2", deviceId: "d2", panel: "metrics", instanceId: "i2" });
+    splitPane("p1", "horizontal", {
+      id: "p2",
+      deviceId: "d2",
+      panel: "metrics",
+      instanceId: "i2",
+    });
     removeDevice("d1");
     const root = activeWs().paneRoot;
     expect(root?.type).toBe("leaf");
@@ -63,7 +87,12 @@ describe("app-store — panes", () => {
 
 describe("app-store — workspaces", () => {
   beforeEach(() => {
-    const ws = { id: "w1", name: "Workspace 1", paneRoot: null, activePaneId: null };
+    const ws = {
+      id: "w1",
+      name: "Workspace 1",
+      paneRoot: null,
+      activePaneId: null,
+    };
     useAppStore.setState({
       devices: [],
       statuses: {},
@@ -77,7 +106,9 @@ describe("app-store — workspaces", () => {
     useAppStore.getState().addWorkspace();
     expect(useAppStore.getState().workspaces).toHaveLength(2);
     const activeId = useAppStore.getState().activeWorkspaceId;
-    const active = useAppStore.getState().workspaces.find((w) => w.id === activeId)!;
+    const active = useAppStore
+      .getState()
+      .workspaces.find((w) => w.id === activeId)!;
     expect(active.paneRoot).toBeNull();
   });
 
@@ -96,7 +127,12 @@ describe("app-store — workspaces", () => {
   });
 
   it("panes in different workspaces are independent", () => {
-    useAppStore.getState().openPane({ id: "p1", deviceId: "d1", panel: "docker", instanceId: "i1" });
+    useAppStore.getState().openPane({
+      id: "p1",
+      deviceId: "d1",
+      panel: "docker",
+      instanceId: "i1",
+    });
     useAppStore.getState().addWorkspace(); // switches to new workspace
     expect(activeWs().paneRoot).toBeNull(); // new workspace is empty
   });

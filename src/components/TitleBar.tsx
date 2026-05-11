@@ -2,26 +2,9 @@ import { useState, useRef, useEffect } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
+import { PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-
-const PANEL_ICONS: Record<PanelKind, string> = {
-  docker: "▣",
-  metrics: "◈",
-  terminal: "⌨",
-  files: "◫",
-  tailscale: "⬡",
-  logs: "≡",
-};
-
-const PANEL_LABELS: Record<PanelKind, string> = {
-  docker: "Docker",
-  metrics: "Metrics",
-  terminal: "Terminal",
-  files: "Files",
-  tailscale: "Tailscale",
-  logs: "Logs",
-};
 
 const ALL_PANELS: PanelKind[] = [
   "terminal",
@@ -30,7 +13,45 @@ const ALL_PANELS: PanelKind[] = [
   "files",
   "logs",
   "tailscale",
+  "processes",
+  "ports",
+  "cron",
 ];
+
+// DevNest Cradle mark — matches the brand guidelines SVG
+function CradleMark({
+  size = 20,
+  stroke = "currentColor",
+  accent = "oklch(0.74 0.17 58)",
+}: {
+  size?: number;
+  stroke?: string;
+  accent?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      aria-label="DevNest"
+    >
+      <path
+        d="M 8 60 Q 50 92 92 60"
+        stroke={accent}
+        strokeWidth="9"
+        strokeLinecap="round"
+      />
+      <path
+        d="M 22 50 Q 50 76 78 50"
+        stroke={stroke}
+        strokeWidth="9"
+        strokeLinecap="round"
+      />
+      <ellipse cx="50" cy="34" rx="11" ry="13" fill={accent} />
+    </svg>
+  );
+}
 
 function makePane(deviceId: string, panel: PanelKind): Pane {
   const uid = Math.random().toString(36).slice(2, 10);
@@ -46,10 +67,16 @@ function WindowControls() {
     const win = getCurrentWindow();
     void win.isMaximized().then(setMaximized);
     let unlistenFn: (() => void) | null = null;
-    void win.onResized(() => {
-      void win.isMaximized().then(setMaximized);
-    }).then((fn) => { unlistenFn = fn; });
-    return () => { unlistenFn?.(); };
+    void win
+      .onResized(() => {
+        void win.isMaximized().then(setMaximized);
+      })
+      .then((fn) => {
+        unlistenFn = fn;
+      });
+    return () => {
+      unlistenFn?.();
+    };
   }, []);
 
   const minimize = () => void getCurrentWindow().minimize();
@@ -77,12 +104,33 @@ function WindowControls() {
         className="flex h-full w-9 items-center justify-center text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
       >
         {maximized ? (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2">
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+          >
             <rect x="2.5" y="0.5" width="7" height="7" rx="0.75" />
-            <rect x="0.5" y="2.5" width="7" height="7" rx="0.75" fill="var(--color-surface)" />
+            <rect
+              x="0.5"
+              y="2.5"
+              width="7"
+              height="7"
+              rx="0.75"
+              fill="var(--color-surface)"
+            />
           </svg>
         ) : (
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.2">
+          <svg
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+          >
             <rect x="0.5" y="0.5" width="9" height="9" rx="0.75" />
           </svg>
         )}
@@ -92,7 +140,15 @@ function WindowControls() {
         title="Close"
         className="flex h-full w-9 items-center justify-center text-(--color-fg-muted) hover:bg-red-500 hover:text-white transition-colors"
       >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round">
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 10 10"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+        >
           <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" />
         </svg>
       </button>
@@ -102,7 +158,15 @@ function WindowControls() {
 
 // ─── Workspace tab ────────────────────────────────────────────────────────────
 
-function WorkspaceTab({ id, name, active }: { id: string; name: string; active: boolean }) {
+function WorkspaceTab({
+  id,
+  name,
+  active,
+}: {
+  id: string;
+  name: string;
+  active: boolean;
+}) {
   const setActiveWorkspace = useAppStore((s) => s.setActiveWorkspace);
   const removeWorkspace = useAppStore((s) => s.removeWorkspace);
   const renameWorkspace = useAppStore((s) => s.renameWorkspace);
@@ -111,7 +175,9 @@ function WorkspaceTab({ id, name, active }: { id: string; name: string; active: 
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setDraft(name); }, [name]);
+  useEffect(() => {
+    setDraft(name);
+  }, [name]);
 
   const commit = () => {
     const trimmed = draft.trim();
@@ -141,7 +207,10 @@ function WorkspaceTab({ id, name, active }: { id: string; name: string; active: 
           onBlur={commit}
           onKeyDown={(e) => {
             if (e.key === "Enter") commit();
-            if (e.key === "Escape") { setDraft(name); setEditing(false); }
+            if (e.key === "Escape") {
+              setDraft(name);
+              setEditing(false);
+            }
             e.stopPropagation();
           }}
           className="w-20 bg-transparent outline-none text-xs"
@@ -162,7 +231,10 @@ function WorkspaceTab({ id, name, active }: { id: string; name: string; active: 
       )}
       {workspaceCount > 1 && (
         <button
-          onClick={(e) => { e.stopPropagation(); removeWorkspace(id); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            removeWorkspace(id);
+          }}
           aria-label="Close workspace"
           className="ml-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 hover:bg-(--color-surface-2) group-hover:opacity-100 transition-opacity"
         >
@@ -184,7 +256,8 @@ function NewPanelMenu() {
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (ref.current && !ref.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -199,7 +272,15 @@ function NewPanelMenu() {
         title="Open panel"
         className="flex h-full items-center gap-1 px-2.5 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
       >
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
           <path d="M8 3v10M3 8h10" />
         </svg>
         <span>Panel</span>
@@ -209,10 +290,15 @@ function NewPanelMenu() {
           {ALL_PANELS.map((kind) => (
             <button
               key={kind}
-              onClick={() => { openPane(makePane(activeDeviceId, kind)); setOpen(false); }}
+              onClick={() => {
+                openPane(makePane(activeDeviceId, kind));
+                setOpen(false);
+              }}
               className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-fg) hover:bg-(--color-surface-2)"
             >
-              <span className="text-(--color-fg-muted) w-3 text-center">{PANEL_ICONS[kind]}</span>
+              <span className="text-(--color-fg-muted) w-3 text-center">
+                {PANEL_ICONS[kind]}
+              </span>
               {PANEL_LABELS[kind]}
             </button>
           ))}
@@ -235,14 +321,19 @@ function PaneActions() {
 
   const findPane = (n: typeof paneRoot): Pane | undefined => {
     if (!n) return undefined;
-    if (n.type === "leaf") return n.pane.id === activePaneId ? n.pane : undefined;
+    if (n.type === "leaf")
+      return n.pane.id === activePaneId ? n.pane : undefined;
     return findPane(n.first) ?? findPane(n.second);
   };
   const activePaneData = findPane(paneRoot);
 
   const doSplit = (dir: "horizontal" | "vertical") => {
     if (!activePaneId || !activeDeviceId) return;
-    splitPane(activePaneId, dir, makePane(activeDeviceId, activePaneData?.panel ?? "terminal"));
+    splitPane(
+      activePaneId,
+      dir,
+      makePane(activeDeviceId, activePaneData?.panel ?? "terminal"),
+    );
   };
 
   return (
@@ -302,24 +393,45 @@ export function TitleBar() {
       )}
 
       {/* Workspace tabs — each tab is individually clickable, no drag attr */}
-      <div className="flex items-stretch overflow-x-auto">
-        {workspaces.map((ws) => (
-          <WorkspaceTab
-            key={ws.id}
-            id={ws.id}
-            name={ws.name}
-            active={ws.id === activeWorkspaceId}
-          />
-        ))}
-        <button
-          onClick={addWorkspace}
-          title="New workspace"
-          className="flex h-full w-8 shrink-0 items-center justify-center text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-        >
-          <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M8 3v10M3 8h10" />
-          </svg>
-        </button>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 px-3">
+          <CradleMark size={22} stroke="var(--color-fg)" />
+          <span
+            style={{ letterSpacing: "-0.03em", fontWeight: 400 }}
+            className="text-sm select-none"
+          >
+            <span style={{ fontWeight: 400 }}>dev</span>
+            <span style={{ fontWeight: 700 }}>nest</span>
+          </span>
+        </div>
+
+        <div className="flex items-stretch overflow-x-auto">
+          {workspaces.map((ws) => (
+            <WorkspaceTab
+              key={ws.id}
+              id={ws.id}
+              name={ws.name}
+              active={ws.id === activeWorkspaceId}
+            />
+          ))}
+          <button
+            onClick={addWorkspace}
+            title="New workspace"
+            className="flex h-full w-8 shrink-0 items-center justify-center text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+          >
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M8 3v10M3 8h10" />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Draggable center gap */}
@@ -345,7 +457,14 @@ export function TitleBar() {
 
 function SplitHIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <rect x="1" y="1" width="4" height="10" rx="1" />
       <rect x="7" y="1" width="4" height="10" rx="1" />
     </svg>
@@ -354,7 +473,14 @@ function SplitHIcon() {
 
 function SplitVIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+    >
       <rect x="1" y="1" width="10" height="4" rx="1" />
       <rect x="1" y="7" width="10" height="4" rx="1" />
     </svg>
@@ -363,7 +489,15 @@ function SplitVIcon() {
 
 function CloseIcon() {
   return (
-    <svg width="11" height="11" viewBox="0 0 11 11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 11 11"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+    >
       <path d="M1 1l9 9M10 1L1 10" />
     </svg>
   );
