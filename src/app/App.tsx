@@ -4,6 +4,8 @@ import { MainPanel } from "../components/MainPanel";
 import { StatusBar } from "../components/StatusBar";
 import { TitleBar } from "../components/TitleBar";
 import { SudoPasswordDialog } from "../components/SudoPasswordDialog";
+import { ToastContainer } from "../components/Toast";
+import { ConfirmDialogHost } from "../components/ConfirmDialog";
 import { api } from "../lib/api";
 import {
   useAppStore,
@@ -87,6 +89,8 @@ export function App() {
       </div>
       <StatusBar />
       <SudoPasswordDialog />
+      <ConfirmDialogHost />
+      <ToastContainer />
     </div>
   );
 }

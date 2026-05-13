@@ -4,6 +4,8 @@ import type { ConnectionStatus, Device } from "../lib/api";
 import { api, errorMessage } from "../lib/api";
 import { AddDeviceDialog } from "./AddDeviceDialog";
 import { ThemeToggle } from "./ThemeToggle";
+import { toast } from "./Toast";
+import { confirm } from "./ConfirmDialog";
 
 type Status = ConnectionStatus | "connecting" | "error";
 
@@ -14,7 +16,6 @@ const statusDot: Record<Status, string> = {
   error: "bg-(--color-error)",
 };
 
-// DevNest Cradle mark — matches the brand guidelines SVG
 function CradleMark({
   size = 28,
   stroke = "currentColor",
@@ -66,21 +67,29 @@ export function Sidebar() {
     if (!dev || dev.isLocalhost) return;
     if (statuses[id] === "connected" || statuses[id] === "connecting") return;
     setStatus(id, "connecting");
-    try {
-      await api.connectDevice(id);
+    // Fire and forget — UI stays fully interactive while connecting
+    api.connectDevice(id).then(() => {
       setStatus(id, "connected");
-    } catch {
+      toast.success(`Connected to ${dev.name}`);
+    }).catch((e) => {
       setStatus(id, "error");
-    }
+      toast.error(`Connection failed: ${errorMessage(e)}`);
+    });
   };
 
   const onDelete = async (id: string) => {
-    if (!confirm("Delete this device?")) return;
+    const dev = devices.find((d) => d.id === id);
+    const ok = await confirm(
+      `Remove "${dev?.name ?? id}" from DevNest?`,
+      { title: "Delete device", destructive: true },
+    );
+    if (!ok) return;
     try {
       await api.deleteDevice(id);
       removeDevice(id);
+      toast.success("Device removed");
     } catch (e) {
-      alert(`Delete failed: ${errorMessage(e)}`);
+      toast.error(`Delete failed: ${errorMessage(e)}`);
     }
   };
 
@@ -88,66 +97,50 @@ export function Sidebar() {
     try {
       const updated = await api.setUseSudo(device.id, !device.useSudo);
       upsertDevice(updated);
+      toast.info(`sudo ${updated.useSudo ? "enabled" : "disabled"} for ${device.name}`);
     } catch (e) {
-      alert(`Could not toggle sudo: ${errorMessage(e)}`);
+      toast.error(`Could not toggle sudo: ${errorMessage(e)}`);
     }
   };
 
-  if (collapsed) {
-    return (
-      <aside className="flex h-full w-12 shrink-0 flex-col items-center border-r border-(--color-border) bg-(--color-surface) py-3 gap-3">
-        <button
-          onClick={() => setCollapsed(false)}
-          title="Expand sidebar"
-          className="flex h-8 w-8 items-center justify-center rounded hover:bg-(--color-surface-2)"
-        >
-          <CradleMark size={22} stroke="var(--color-fg)" />
-        </button>
-        <div className="flex-1 flex flex-col items-center gap-2 py-2 overflow-y-auto w-full">
-          {devices.map((d) => {
-            const status: Status = d.isLocalhost
-              ? "connected"
-              : (statuses[d.id] ?? "offline");
-            const active = activeDeviceId === d.id;
-            return (
-              <button
-                key={d.id}
-                onClick={() => void onSelect(d.id)}
-                title={d.name}
-                className={`flex h-8 w-8 items-center justify-center rounded text-xs font-semibold transition ${
-                  active
-                    ? "bg-(--color-accent) text-(--color-accent-fg)"
-                    : "hover:bg-(--color-surface-2) text-(--color-fg-muted)"
-                }`}
-              >
-                <span className={`h-2 w-2 rounded-full ${statusDot[status]}`} />
-              </button>
-            );
-          })}
-        </div>
-        <ThemeToggle />
-      </aside>
-    );
-  }
-
   return (
     <>
-      <aside className="flex h-full w-[240px] shrink-0 flex-col border-r border-(--color-border) bg-(--color-surface)">
+      {/*
+        Single element that transitions between 240 px and 48 px.
+        overflow-hidden clips the content during the slide so nothing
+        "jumps" or re-mounts between collapsed/expanded states.
+      */}
+      <aside
+        style={{ width: collapsed ? 48 : 240 }}
+        className="flex h-full shrink-0 flex-col border-r border-(--color-border) bg-(--color-surface)
+          overflow-hidden transition-[width] duration-200 ease-in-out"
+      >
         {/* Header */}
-        <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-2.5">
-          <div className="flex-1" />
-          <button
-            onClick={() => setDialogOpen(true)}
-            title="Add device"
-            className="rounded px-1.5 py-0.5 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-2.5 shrink-0">
+          {/* Logo — always visible */}
+          <CradleMark size={22} stroke="var(--color-fg)" />
+
+          {/* Items that fade out when collapsed */}
+          <div
+            className="flex flex-1 items-center gap-1 overflow-hidden transition-opacity duration-150"
+            style={{ opacity: collapsed ? 0 : 1, pointerEvents: collapsed ? "none" : "auto" }}
           >
-            +
-          </button>
+            <div className="flex-1" />
+            <button
+              onClick={() => setDialogOpen(true)}
+              title="Add device"
+              className="rounded px-1.5 py-0.5 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors whitespace-nowrap"
+            >
+              +
+            </button>
+          </div>
+
+          {/* Collapse/expand toggle */}
           <button
-            onClick={() => setCollapsed(true)}
-            title="Collapse sidebar"
-            className="rounded px-1 py-0.5 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-            aria-label="Collapse sidebar"
+            onClick={() => setCollapsed((c) => !c)}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="shrink-0 rounded px-1 py-0.5 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             <svg
               width="14"
@@ -157,6 +150,10 @@ export function Sidebar() {
               stroke="currentColor"
               strokeWidth="1.5"
               strokeLinecap="round"
+              style={{
+                transform: collapsed ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.2s ease-in-out",
+              }}
             >
               <path d="M10 3L5 8l5 5" />
             </svg>
@@ -165,8 +162,8 @@ export function Sidebar() {
 
         {/* Device list */}
         <nav className="flex-1 overflow-y-auto py-2">
-          {devices.length === 0 ? (
-            <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted)">
+          {devices.length === 0 && !collapsed ? (
+            <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted) whitespace-nowrap">
               No devices yet.
               <br />
               Add one to get started.
@@ -181,7 +178,8 @@ export function Sidebar() {
                 return (
                   <li key={d.id}>
                     <div
-                      className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm transition hover:bg-(--color-surface-2) ${
+                      className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm
+                        transition-colors hover:bg-(--color-surface-2) ${
                         active
                           ? "bg-(--color-surface-2) text-(--color-fg)"
                           : "text-(--color-fg-muted)"
@@ -190,49 +188,54 @@ export function Sidebar() {
                       <button
                         onClick={() => void onSelect(d.id)}
                         className="flex flex-1 items-center gap-2 text-left min-w-0"
+                        title={collapsed ? d.name : undefined}
                       >
                         <span
-                          className={`h-2 w-2 shrink-0 rounded-full ${statusDot[status]}`}
+                          className={`h-2 w-2 shrink-0 rounded-full transition-colors ${statusDot[status]}`}
                           aria-label={status}
                         />
-                        <span className="truncate font-medium">{d.name}</span>
-                        {d.useSudo && (
+                        {/* Label fades out on collapse */}
+                        <span
+                          className="truncate font-medium transition-opacity duration-150 whitespace-nowrap"
+                          style={{ opacity: collapsed ? 0 : 1 }}
+                        >
+                          {d.name}
+                        </span>
+                        {d.useSudo && !collapsed && (
                           <span
                             title="sudo enabled"
-                            className="shrink-0 rounded bg-(--color-warn)/20 px-1 text-[9px] font-semibold uppercase text-(--color-warn)"
+                            className="shrink-0 rounded bg-(--color-warn)/20 px-1 text-[9px] font-semibold uppercase text-(--color-warn) whitespace-nowrap"
                           >
                             sudo
                           </span>
                         )}
                       </button>
-                      <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          onClick={() => void onToggleSudo(d)}
-                          aria-label={
-                            d.useSudo ? "Disable sudo" : "Enable sudo"
-                          }
-                          title={
-                            d.useSudo
-                              ? "Disable sudo for this device"
-                              : "Enable sudo for this device"
-                          }
-                          className={`rounded px-1 text-[10px] hover:bg-(--color-bg) ${
-                            d.useSudo ? "text-(--color-warn)" : ""
-                          }`}
-                        >
-                          ⚡
-                        </button>
-                        {!d.isLocalhost && (
+
+                      {/* Action buttons — hidden when collapsed */}
+                      {!collapsed && (
+                        <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                           <button
-                            onClick={() => void onDelete(d.id)}
-                            aria-label="Delete device"
-                            title="Delete"
-                            className="rounded px-1 text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-error)"
+                            onClick={() => void onToggleSudo(d)}
+                            aria-label={d.useSudo ? "Disable sudo" : "Enable sudo"}
+                            title={d.useSudo ? "Disable sudo" : "Enable sudo"}
+                            className={`rounded px-1 text-[10px] hover:bg-(--color-bg) transition-colors ${
+                              d.useSudo ? "text-(--color-warn)" : ""
+                            }`}
                           >
-                            ×
+                            ⚡
                           </button>
-                        )}
-                      </div>
+                          {!d.isLocalhost && (
+                            <button
+                              onClick={() => void onDelete(d.id)}
+                              aria-label="Delete device"
+                              title="Delete"
+                              className="rounded px-1 text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-error) transition-colors"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </li>
                 );
@@ -242,13 +245,17 @@ export function Sidebar() {
         </nav>
 
         {/* Footer */}
-        <div className="flex items-center justify-between border-t border-(--color-border) px-3 py-2">
-          <span className="text-[10px] text-(--color-fg-muted) font-mono tracking-wide">
+        <div className="flex items-center justify-between border-t border-(--color-border) px-3 py-2 shrink-0">
+          <span
+            className="text-[10px] text-(--color-fg-muted) font-mono tracking-wide transition-opacity duration-150 whitespace-nowrap"
+            style={{ opacity: collapsed ? 0 : 1 }}
+          >
             v0.1
           </span>
           <ThemeToggle />
         </div>
       </aside>
+
       <AddDeviceDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
     </>
   );

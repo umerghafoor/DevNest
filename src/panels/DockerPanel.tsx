@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import type { ContainerSummary } from "../lib/api";
 import { withSudo } from "../lib/with-sudo";
+import { toast } from "../components/Toast";
+import { confirm } from "../components/ConfirmDialog";
+import { SkeletonTable } from "../components/Skeleton";
 
 interface Props {
   deviceId: string;
@@ -38,21 +41,34 @@ export function DockerPanel({ deviceId }: Props) {
   }, [refresh]);
 
   const doAction = async (id: string, action: Action) => {
-    if (action === "remove" && !confirm(`Remove container ${id.slice(0, 12)}?`))
-      return;
+    if (action === "remove") {
+      const ok = await confirm(
+        `Remove container ${id.slice(0, 12)}? This cannot be undone.`,
+        { title: "Remove container", destructive: true },
+      );
+      if (!ok) return;
+    }
     setBusyId(id);
     try {
       await withSudo(deviceId, () => api.dockerAction(deviceId, id, action));
+      toast.success(`Container ${action}ed`);
       await refresh();
     } catch (e) {
-      alert(`${action} failed: ${errorMessage(e)}`);
+      toast.error(`${action} failed: ${errorMessage(e)}`);
     } finally {
       setBusyId(null);
     }
   };
 
   if (loading) {
-    return <PanelMessage>Loading containers…</PanelMessage>;
+    return (
+      <div className="flex h-full flex-col">
+        <div className="flex items-center justify-between border-b border-(--color-border) px-4 py-2 text-xs text-(--color-fg-muted)">
+          <span>Loading containers…</span>
+        </div>
+        <SkeletonTable rows={6} cols={6} />
+      </div>
+    );
   }
 
   if (error) {
@@ -62,7 +78,7 @@ export function DockerPanel({ deviceId }: Props) {
         <br />
         <button
           onClick={refresh}
-          className="mt-2 rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
+          className="mt-2 rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2) transition-colors"
         >
           Retry
         </button>
@@ -75,12 +91,12 @@ export function DockerPanel({ deviceId }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col fade-up">
       <div className="flex items-center justify-between border-b border-(--color-border) px-4 py-2 text-xs text-(--color-fg-muted)">
         <span>{containers.length} containers</span>
         <button
           onClick={refresh}
-          className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
+          className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) transition-colors"
         >
           Refresh
         </button>
@@ -98,10 +114,11 @@ export function DockerPanel({ deviceId }: Props) {
             </tr>
           </thead>
           <tbody>
-            {containers.map((c) => (
+            {containers.map((c, i) => (
               <tr
                 key={c.id}
-                className="border-b border-(--color-border) hover:bg-(--color-surface-2)"
+                className="border-b border-(--color-border) hover:bg-(--color-surface-2) row-animate"
+                style={{ animationDelay: `${i * 30}ms` }}
               >
                 <Td>
                   <StateBadge state={c.state} />
@@ -118,10 +135,11 @@ export function DockerPanel({ deviceId }: Props) {
                       <button
                         key={a}
                         disabled={busyId === c.id}
-                        onClick={() => doAction(c.id, a)}
-                        className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface) disabled:opacity-50"
+                        onClick={() => void doAction(c.id, a)}
+                        className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px]
+                          hover:bg-(--color-surface) disabled:opacity-50 transition-colors"
                       >
-                        {a}
+                        {busyId === c.id ? "…" : a}
                       </button>
                     ))}
                   </div>
@@ -159,7 +177,7 @@ function StateBadge({ state }: { state: string }) {
         : "bg-(--color-warn)";
   return (
     <span className="flex items-center gap-1.5">
-      <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
+      <span className={`h-1.5 w-1.5 rounded-full ${color} transition-colors`} />
       <span className="capitalize text-(--color-fg-muted)">{state}</span>
     </span>
   );
@@ -173,7 +191,7 @@ function PanelMessage({
   tone?: "error";
 }) {
   return (
-    <div className="flex h-full items-center justify-center px-6 text-center">
+    <div className="flex h-full items-center justify-center px-6 text-center fade-up">
       <div
         className={`max-w-md text-sm ${tone === "error" ? "text-(--color-error)" : "text-(--color-fg-muted)"}`}
       >

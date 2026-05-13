@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import type { MetricsSnapshot } from "../lib/api";
 import { withSudo } from "../lib/with-sudo";
+import { SkeletonCard } from "../components/Skeleton";
 
 interface Props {
   deviceId: string;
@@ -50,14 +51,17 @@ export function MetricsPanel({ deviceId }: Props) {
 
   if (!snap) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-(--color-fg-muted)">
-        Loading…
+      <div className="space-y-4 p-6">
+        <div className="grid grid-cols-2 gap-4">
+          <SkeletonCard />
+          <SkeletonCard />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4 p-6">
+    <div className="space-y-4 p-6 fade-up">
       <div className="grid grid-cols-2 gap-4">
         <Card title="CPU" value={`${snap.cpuPercent.toFixed(1)}%`}>
           <Sparkline data={cpuHistory.current} max={100} key={`cpu-${tick}`} />
@@ -92,7 +96,7 @@ export function MetricsPanel({ deviceId }: Props) {
               </div>
               <div className="mt-2 h-1.5 overflow-hidden rounded bg-(--color-surface-2)">
                 <div
-                  className={`h-full ${d.usePercent > 90 ? "bg-(--color-error)" : d.usePercent > 75 ? "bg-(--color-warn)" : "bg-(--color-accent)"}`}
+                  className={`h-full disk-bar ${d.usePercent > 90 ? "bg-(--color-error)" : d.usePercent > 75 ? "bg-(--color-warn)" : "bg-(--color-accent)"}`}
                   style={{ width: `${Math.min(d.usePercent, 100)}%` }}
                 />
               </div>

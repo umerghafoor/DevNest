@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "../lib/api";
+import { toast } from "../components/Toast";
+import { confirm } from "../components/ConfirmDialog";
+import { SkeletonTable } from "../components/Skeleton";
 
 interface FileEntry {
   name: string;
@@ -83,7 +86,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
       });
       setEditing({ path: entry.path, content });
     } catch (e) {
-      alert(`Cannot open: ${errorMessage(e)}`);
+      toast.error(`Cannot open: ${errorMessage(e)}`);
     }
   };
 
@@ -96,25 +99,31 @@ export function FileBrowserPanel({ deviceId }: Props) {
         path: editing.path,
         content: editing.content,
       });
+      toast.success("File saved");
       setEditing(null);
     } catch (e) {
-      alert(`Save failed: ${errorMessage(e)}`);
+      toast.error(`Save failed: ${errorMessage(e)}`);
     } finally {
       setSaving(false);
     }
   };
 
   const deleteEntry = async (entry: FileEntry) => {
-    if (!confirm(`Delete ${entry.name}?`)) return;
+    const ok = await confirm(`Delete ${entry.name}?`, {
+      title: "Delete file",
+      destructive: true,
+    });
+    if (!ok) return;
     try {
       await invoke("sftp_delete", {
         deviceId,
         path: entry.path,
         isDir: entry.isDir,
       });
+      toast.success(`Deleted ${entry.name}`);
       void load(cwd);
     } catch (e) {
-      alert(`Delete failed: ${errorMessage(e)}`);
+      toast.error(`Delete failed: ${errorMessage(e)}`);
     }
   };
 
@@ -127,16 +136,17 @@ export function FileBrowserPanel({ deviceId }: Props) {
         from: renaming.entry.path,
         to: newPath,
       });
+      toast.success(`Renamed to ${renaming.name}`);
       setRenaming(null);
       void load(cwd);
     } catch (e) {
-      alert(`Rename failed: ${errorMessage(e)}`);
+      toast.error(`Rename failed: ${errorMessage(e)}`);
     }
   };
 
   if (editing) {
     return (
-      <div className="flex h-full flex-col">
+      <div className="flex h-full flex-col fade-up">
         <div className="flex items-center justify-between border-b border-(--color-border) px-4 py-2 text-xs">
           <span className="font-mono text-(--color-fg-muted)">
             {editing.path}
@@ -144,14 +154,14 @@ export function FileBrowserPanel({ deviceId }: Props) {
           <div className="flex gap-2">
             <button
               onClick={() => setEditing(null)}
-              className="rounded border border-(--color-border) px-2 py-1 hover:bg-(--color-surface-2)"
+              className="rounded border border-(--color-border) px-2 py-1 hover:bg-(--color-surface-2) transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={saveFile}
               disabled={saving}
-              className="rounded bg-(--color-accent) px-2 py-1 text-white hover:opacity-90 disabled:opacity-50"
+              className="rounded bg-(--color-accent) px-2 py-1 text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
               {saving ? "Saving…" : "Save"}
             </button>
@@ -172,26 +182,34 @@ export function FileBrowserPanel({ deviceId }: Props) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-2 text-xs">
+        {/* Up button stays enabled — clicking while loading queues the navigation */}
         <button
           onClick={goUp}
           disabled={cwd === "/"}
-          className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) disabled:opacity-40"
+          className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) disabled:opacity-40 transition-colors"
         >
           ↑ Up
         </button>
-        <span className="font-mono text-(--color-fg-muted)">{cwd}</span>
+        <span className="font-mono text-(--color-fg-muted) transition-all">{cwd}</span>
+        {/* Inline spinner — doesn't block the toolbar */}
+        {loading && (
+          <span className="ml-auto flex items-center gap-1.5 text-(--color-fg-muted)">
+            <span className="h-3 w-3 rounded-full border border-(--color-accent) border-t-transparent animate-spin" />
+          </span>
+        )}
       </div>
 
-      {loading ? (
-        <div className="flex flex-1 items-center justify-center text-sm text-(--color-fg-muted)">
-          Loading…
-        </div>
+      {loading && entries.length === 0 ? (
+        <SkeletonTable rows={8} cols={5} />
       ) : error ? (
-        <div className="flex flex-1 items-center justify-center text-sm text-(--color-error)">
+        <div className="flex flex-1 items-center justify-center text-sm text-(--color-error) fade-up">
           {error}
         </div>
       ) : (
-        <div className="flex-1 overflow-auto">
+        <div
+          className="flex-1 overflow-auto transition-opacity duration-150"
+          style={{ opacity: loading ? 0.5 : 1 }}
+        >
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-(--color-surface) text-left text-(--color-fg-muted)">
               <tr>
@@ -203,15 +221,16 @@ export function FileBrowserPanel({ deviceId }: Props) {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e) => (
+              {entries.map((e, i) => (
                 <tr
                   key={e.path}
-                  className="group border-b border-(--color-border) hover:bg-(--color-surface-2)"
+                  className="group border-b border-(--color-border) hover:bg-(--color-surface-2) row-animate"
+                  style={{ animationDelay: `${i * 25}ms` }}
                 >
                   <td className="px-3 py-1.5 align-middle">
                     <button
                       onClick={() => navigate(e)}
-                      className={`text-left ${e.isDir ? "font-medium text-(--color-accent)" : ""}`}
+                      className={`text-left transition-colors ${e.isDir ? "font-medium text-(--color-accent)" : ""}`}
                     >
                       {e.isDir ? "📁 " : "📄 "}
                       {renaming?.entry.path === e.path ? (
@@ -245,24 +264,24 @@ export function FileBrowserPanel({ deviceId }: Props) {
                     {e.permissions}
                   </td>
                   <td className="px-3 py-1.5 align-middle">
-                    <div className="flex gap-1 opacity-0 transition group-hover:opacity-100">
+                    <div className="flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                       {!e.isDir && (
                         <button
                           onClick={() => openEditor(e)}
-                          className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface)"
+                          className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface) transition-colors"
                         >
                           Edit
                         </button>
                       )}
                       <button
                         onClick={() => setRenaming({ entry: e, name: e.name })}
-                        className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface)"
+                        className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface) transition-colors"
                       >
                         Rename
                       </button>
                       <button
-                        onClick={() => deleteEntry(e)}
-                        className="rounded border border-(--color-error)/30 px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/10"
+                        onClick={() => void deleteEntry(e)}
+                        className="rounded border border-(--color-error)/30 px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/10 transition-colors"
                       >
                         Del
                       </button>

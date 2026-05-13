@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "../lib/api";
+import { toast } from "../components/Toast";
+import { SkeletonTable } from "../components/Skeleton";
 
 interface Props {
   deviceId: string;
@@ -16,14 +18,12 @@ interface Process {
 
 type SortKey = "cpu" | "mem" | "pid";
 
-// Parse `ps -eo pid,user,%cpu,%mem,comm --no-headers` output
 function parsePs(output: string): Process[] {
   return output
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      // Fields: PID USER %CPU %MEM COMMAND (COMMAND may have spaces)
       const parts = line.split(/\s+/);
       return {
         pid: parts[0] ?? "",
@@ -54,6 +54,7 @@ export function ProcessPanel({ deviceId }: Props) {
   const [killTarget, setKillTarget] = useState<Process | null>(null);
   const [killSignal, setKillSignal] = useState("SIGTERM");
   const [killing, setKilling] = useState(false);
+  const [killDialogVisible, setKillDialogVisible] = useState(false);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetch = useCallback(async () => {
@@ -86,6 +87,20 @@ export function ProcessPanel({ deviceId }: Props) {
     };
   }, [startPolling]);
 
+  // Animate kill dialog in
+  useEffect(() => {
+    if (killTarget) {
+      const frame = requestAnimationFrame(() => setKillDialogVisible(true));
+      return () => cancelAnimationFrame(frame);
+    }
+    setKillDialogVisible(false);
+  }, [killTarget]);
+
+  const closeKillDialog = () => {
+    setKillDialogVisible(false);
+    setTimeout(() => setKillTarget(null), 200);
+  };
+
   const killProcess = async () => {
     if (!killTarget) return;
     setKilling(true);
@@ -95,9 +110,11 @@ export function ProcessPanel({ deviceId }: Props) {
         deviceId,
         cmd: `kill -${sigNum} ${killTarget.pid}`,
       });
-      setKillTarget(null);
+      toast.success(`Sent ${killSignal} to PID ${killTarget.pid}`);
+      closeKillDialog();
       await fetch();
     } catch (e) {
+      toast.error(`Kill failed: ${errorMessage(e)}`);
       setError(errorMessage(e));
     } finally {
       setKilling(false);
@@ -128,7 +145,7 @@ export function ProcessPanel({ deviceId }: Props) {
     className?: string;
   }) => (
     <th
-      className={`cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted) hover:text-(--color-fg) ${className}`}
+      className={`cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted) hover:text-(--color-fg) transition-colors ${className}`}
       onClick={() => setSortBy(col)}
     >
       {label}
@@ -154,86 +171,100 @@ export function ProcessPanel({ deviceId }: Props) {
       </div>
 
       {error && (
-        <div className="px-4 py-2 text-xs text-(--color-error)">{error}</div>
+        <div className="px-4 py-2 text-xs text-(--color-error) fade-up">{error}</div>
       )}
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
-        <table className="w-full table-fixed border-collapse text-xs">
-          <colgroup>
-            <col style={{ width: "70px" }} />
-            <col style={{ width: "100px" }} />
-            <col style={{ width: "70px" }} />
-            <col style={{ width: "70px" }} />
-            <col />
-            <col style={{ width: "60px" }} />
-          </colgroup>
-          <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
-            <tr>
-              <SortHeader col="pid" label="PID" />
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                User
-              </th>
-              <SortHeader col="cpu" label="CPU %" />
-              <SortHeader col="mem" label="MEM %" />
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Command
-              </th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((p) => {
-              const cpuNum = Number(p.cpu);
-              const memNum = Number(p.mem);
-              return (
-                <tr
-                  key={p.pid}
-                  className="group border-b border-(--color-border)/50 hover:bg-(--color-surface)"
-                >
-                  <td className="px-3 py-1.5 font-mono text-(--color-fg-muted)">
-                    {p.pid}
-                  </td>
-                  <td className="truncate px-3 py-1.5 text-(--color-fg-muted)">
-                    {p.user}
-                  </td>
-                  <td
-                    className={`px-3 py-1.5 font-mono tabular-nums ${cpuNum > 50 ? "text-(--color-error)" : cpuNum > 20 ? "text-(--color-warn)" : "text-(--color-fg)"}`}
+      {loading ? (
+        <SkeletonTable rows={8} cols={6} />
+      ) : (
+        <div className="flex-1 overflow-auto">
+          <table className="w-full table-fixed border-collapse text-xs">
+            <colgroup>
+              <col style={{ width: "70px" }} />
+              <col style={{ width: "100px" }} />
+              <col style={{ width: "70px" }} />
+              <col style={{ width: "70px" }} />
+              <col />
+              <col style={{ width: "60px" }} />
+            </colgroup>
+            <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
+              <tr>
+                <SortHeader col="pid" label="PID" />
+                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                  User
+                </th>
+                <SortHeader col="cpu" label="CPU %" />
+                <SortHeader col="mem" label="MEM %" />
+                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
+                  Command
+                </th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((p) => {
+                const cpuNum = Number(p.cpu);
+                const memNum = Number(p.mem);
+                return (
+                  <tr
+                    key={p.pid}
+                    className="group border-b border-(--color-border)/50 hover:bg-(--color-surface)"
                   >
-                    {p.cpu}
-                  </td>
-                  <td
-                    className={`px-3 py-1.5 font-mono tabular-nums ${memNum > 20 ? "text-(--color-warn)" : "text-(--color-fg)"}`}
-                  >
-                    {p.mem}
-                  </td>
-                  <td className="truncate px-3 py-1.5 font-mono text-(--color-fg)">
-                    {p.command}
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <button
-                      onClick={() => setKillTarget(p)}
-                      className="rounded border border-(--color-border) px-2 py-0.5 text-[10px] text-(--color-fg-muted) opacity-0 transition-opacity hover:border-(--color-error) hover:text-(--color-error) group-hover:opacity-100"
+                    <td className="px-3 py-1.5 font-mono text-(--color-fg-muted)">
+                      {p.pid}
+                    </td>
+                    <td className="truncate px-3 py-1.5 text-(--color-fg-muted)">
+                      {p.user}
+                    </td>
+                    <td
+                      className={`px-3 py-1.5 font-mono tabular-nums transition-colors ${cpuNum > 50 ? "text-(--color-error)" : cpuNum > 20 ? "text-(--color-warn)" : "text-(--color-fg)"}`}
                     >
-                      Kill
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {sorted.length === 0 && !loading && !error && (
-          <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted)">
-            No processes found.
-          </div>
-        )}
-      </div>
+                      {p.cpu}
+                    </td>
+                    <td
+                      className={`px-3 py-1.5 font-mono tabular-nums transition-colors ${memNum > 20 ? "text-(--color-warn)" : "text-(--color-fg)"}`}
+                    >
+                      {p.mem}
+                    </td>
+                    <td className="truncate px-3 py-1.5 font-mono text-(--color-fg)">
+                      {p.command}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <button
+                        onClick={() => setKillTarget(p)}
+                        className="rounded border border-(--color-border) px-2 py-0.5 text-[10px] text-(--color-fg-muted)
+                          opacity-0 transition-all hover:border-(--color-error) hover:text-(--color-error) group-hover:opacity-100"
+                      >
+                        Kill
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {sorted.length === 0 && !loading && !error && (
+            <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted) fade-up">
+              No processes found.
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Kill confirmation modal */}
+      {/* Kill confirmation modal — animated */}
       {killTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="w-80 rounded-xl border border-(--color-border) bg-(--color-bg) p-5 shadow-2xl">
+        <div
+          className={`fixed inset-0 z-50 flex items-center justify-center transition-all duration-200
+            ${killDialogVisible ? "bg-black/40" : "bg-black/0"}`}
+          onClick={closeKillDialog}
+        >
+          <div
+            className={`w-80 rounded-xl border border-(--color-border) bg-(--color-bg) p-5 shadow-2xl
+              transition-all duration-200 ease-out
+              ${killDialogVisible ? "opacity-100 scale-100" : "opacity-0 scale-95"}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h3 className="mb-1 text-sm font-semibold">Kill process?</h3>
             <p className="mb-4 text-xs text-(--color-fg-muted)">
               <span className="font-mono text-(--color-fg)">
@@ -259,15 +290,15 @@ export function ProcessPanel({ deviceId }: Props) {
             </div>
             <div className="flex justify-end gap-2">
               <button
-                onClick={() => setKillTarget(null)}
-                className="rounded border border-(--color-border) px-3 py-1.5 text-xs hover:bg-(--color-surface-2)"
+                onClick={closeKillDialog}
+                className="rounded border border-(--color-border) px-3 py-1.5 text-xs hover:bg-(--color-surface-2) transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={() => void killProcess()}
                 disabled={killing}
-                className="rounded bg-(--color-error) px-3 py-1.5 text-xs text-white hover:opacity-90 disabled:opacity-50"
+                className="rounded bg-(--color-error) px-3 py-1.5 text-xs text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
               >
                 {killing ? "Killing…" : `Send ${killSignal}`}
               </button>
