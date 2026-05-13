@@ -9,14 +9,12 @@
 
 ## DevDash
 
-- I want multiple terminals in one app
 - I want the integration of runing services and their logs in one app
 - I want to create new services and run them in one app
 - I want Ngrok integration to expose my local services
 - I want to see my system settings and their status in one app
 - I want to see my system information and their status in one app
 - It should have keyboard shortcuts for all the features and option to customize them
-- When I do some action and it is delaying beacse of some network issue or somthing whole app should not freeze and I should be able to do other things in the app while that action is being performed in the background
 - Each workspace should have random name of random stuff like animals, colors, etc. and option to change it if user wants to. This will make it more fun and less boring to use the app. It will also help user to remember which workspace is for what purpose. For example, if I have a workspace for my personal projects and another workspace for my work projects, I can name them "Blue Whale" and "Red Fox" respectively. This way I can easily identify which workspace is for which purpose without having to read the name every time.
 - A settings page where user can customize the app according to their needs and preferences. For example, user can change the theme of the app, the font size, the color scheme, etc. This will make the app more personalized and enjoyable to use. It will also allow user to optimize the app for their workflow and productivity. For example, if I prefer a dark theme and a larger font size, I can easily change that in the settings page without having to use any third-party tools or extensions.
 - A dashboard page where user can see all the important information and status of their system and services at a glance. For example, user can see the CPU and memory usage, the network status, the running services and their logs, etc. This will help user to monitor their system and services more efficiently and effectively. It will also allow user to quickly identify any issues or problems that may arise and take appropriate actions to resolve them.
