@@ -12,7 +12,9 @@ mod metrics;
 mod ngrok;
 mod secrets;
 mod sftp;
+mod sql;
 mod ssh;
+mod ssh_tunnel;
 mod state;
 mod systemd;
 mod tailscale;
@@ -156,6 +158,8 @@ pub fn run() {
                 terminals: terminal::TerminalPool::new(),
                 log_streams: log_stream::LogStreamPool::new(),
                 ngrok: ngrok::NgrokPool::new(),
+                tunnels: ssh_tunnel::TunnelPool::new(),
+                sql: sql::SqlPool::new(),
             });
             Ok(())
         })
@@ -187,6 +191,16 @@ pub fn run() {
             commands::metrics_snapshot,
             commands::cpu_info,
             commands::dimm_info,
+            commands::sql_set_password,
+            commands::sql_clear_password,
+            commands::sql_has_password,
+            commands::sql_open_tunnel,
+            commands::sql_close_tunnel,
+            commands::sql_connect,
+            commands::sql_disconnect,
+            commands::sql_is_connected,
+            commands::sql_query,
+            commands::sql_list_tables,
             terminal_commands::terminal_open,
             terminal_commands::terminal_write,
             terminal_commands::terminal_resize,

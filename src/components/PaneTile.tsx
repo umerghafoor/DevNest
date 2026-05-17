@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, lazy, Suspense } from "react";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PaneNode, SplitDirection, Pane } from "../store/app-store";
 import { DockerPanel } from "../panels/DockerPanel";
@@ -22,6 +22,12 @@ import { SystemdPanel } from "../panels/SystemdPanel";
 import { HttpPanel } from "../panels/HttpPanel";
 import type { PanelKind } from "../store/app-store";
 
+// SqlPanel pulls in Monaco (~3 MB). Lazy-load it so the rest of the app
+// isn't paying for it unless the user opens the SQL Client.
+const SqlPanel = lazy(() =>
+  import("../panels/SqlPanel").then((m) => ({ default: m.SqlPanel })),
+);
+
 export const PANEL_ICONS: Record<PanelKind, string> = {
   docker: "▣",
   metrics: "◈",
@@ -42,6 +48,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   gitGraph: "⌥",
   systemd: "⚙",
   http: "⇨",
+  sql: "◰",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -64,6 +71,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   gitGraph: "Git Graph",
   systemd: "systemd",
   http: "HTTP Client",
+  sql: "SQL Client",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
@@ -86,6 +94,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   editor: "Edit a text or config file",
   settings: "Theme, shortcuts, integrations",
   http: "Send HTTP requests, save collections",
+  sql: "Connect to Postgres / MySQL / SQLite",
 };
 
 export type PanelCategory =
@@ -118,6 +127,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   editor: "code",
   settings: "app",
   http: "network",
+  sql: "code",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -150,7 +160,7 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   observability: ["metrics", "logs"],
   services: ["systemd", "services", "cron"],
   network: ["http", "tailscale", "ngrok"],
-  code: ["git", "gitGraph", "editor"],
+  code: ["git", "gitGraph", "editor", "sql"],
   app: ["settings"],
 };
 
@@ -196,6 +206,18 @@ function PanelContent({ pane }: { pane: Pane }) {
       return <SystemdPanel deviceId={pane.deviceId} />;
     case "http":
       return <HttpPanel />;
+    case "sql":
+      return (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
+              Loading editor…
+            </div>
+          }
+        >
+          <SqlPanel />
+        </Suspense>
+      );
   }
 }
 

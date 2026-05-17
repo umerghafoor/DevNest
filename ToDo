@@ -11,7 +11,6 @@
 
 ### In progress / next up
 
-- SQL client: connect to Postgres / MySQL / SQLite, run queries, tabular results, saved connections
 - `.env` / secrets manager: structured editor for `.env` files with masked values; optional sync to OS keyring
 - Per-pane settings persistence (log filter, ports filter, git graph collapsed state survive restart) also enhance the UI by adding sort features to the panels with listings (Processes, Ports, Git). Additionally, integrating real syntax highlighting in the Editor and Systemd text view using CodeMirror 6 will improve readability and user experience. Notifications for long-running commands can be implemented using the Tauri notification plugin to keep users informed about the status of their tasks.
 

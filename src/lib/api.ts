@@ -222,6 +222,21 @@ export interface DimmModule {
 
 export type ConnectionStatus = "connected" | "offline";
 
+export type SqlEngine = "postgres" | "mysql" | "sqlite";
+
+export interface SqlColumnInfo {
+  name: string;
+  dataType: string;
+}
+
+export interface SqlQueryResult {
+  columns: SqlColumnInfo[];
+  rows: unknown[][];
+  truncated: boolean;
+  elapsedMs: number;
+  rowsAffected: number | null;
+}
+
 export const api = {
   ping: () => call<string>("ping"),
   appVersion: () => call<string>("app_version"),
@@ -240,6 +255,33 @@ export const api = {
   disconnectDevice: (id: string) => call<void>("disconnect_device", { id }),
   deviceStatus: (id: string) => call<ConnectionStatus>("device_status", { id }),
   devicePing: (id: string) => call<ConnectionStatus>("device_ping", { id }),
+
+  // SQL client
+  sqlSetPassword: (id: string, password: string) =>
+    call<void>("sql_set_password", { id, password }),
+  sqlClearPassword: (id: string) => call<void>("sql_clear_password", { id }),
+  sqlHasPassword: (id: string) => call<boolean>("sql_has_password", { id }),
+  sqlOpenTunnel: (
+    id: string,
+    deviceId: string,
+    remoteHost: string,
+    remotePort: number,
+  ) =>
+    call<number>("sql_open_tunnel", { id, deviceId, remoteHost, remotePort }),
+  sqlCloseTunnel: (id: string) => call<void>("sql_close_tunnel", { id }),
+  sqlConnect: (params: {
+    id: string;
+    engine: SqlEngine;
+    host: string;
+    port: number;
+    username: string;
+    database?: string | null;
+  }) => call<void>("sql_connect", params),
+  sqlDisconnect: (id: string) => call<void>("sql_disconnect", { id }),
+  sqlIsConnected: (id: string) => call<boolean>("sql_is_connected", { id }),
+  sqlQuery: (id: string, sql: string) =>
+    call<SqlQueryResult>("sql_query", { id, sql }),
+  sqlListTables: (id: string) => call<string[]>("sql_list_tables", { id }),
   runRemoteCommand: (deviceId: string, cmd: string) =>
     call<CommandOutput>("run_remote_command", { deviceId, cmd }),
 

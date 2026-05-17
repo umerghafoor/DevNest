@@ -21,7 +21,8 @@ export type PanelKind =
   | "git"
   | "gitGraph"
   | "systemd"
-  | "http";
+  | "http"
+  | "sql";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 

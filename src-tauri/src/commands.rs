@@ -5,6 +5,7 @@ use crate::docker::{self, ContainerSummary};
 use crate::error::{AppError, AppResult};
 use crate::metrics::{self, CpuInfo, DimmModule, MetricsSnapshot};
 use crate::secrets;
+use crate::sql::{QueryResult, SqlEngine};
 use crate::ssh::{self, CommandOutput};
 use crate::state::AppState;
 
@@ -188,4 +189,91 @@ pub fn cpu_info(state: State<'_, AppState>, device_id: String) -> AppResult<CpuI
 pub fn dimm_info(state: State<'_, AppState>, device_id: String) -> AppResult<Vec<DimmModule>> {
     let device = require_device(&state, &device_id)?;
     metrics::dimms(&state.pool, &device)
+}
+
+// ── SQL ────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn sql_set_password(_state: State<'_, AppState>, id: String, password: String) -> AppResult<()> {
+    secrets::set_sql(&id, &password)
+}
+
+#[tauri::command]
+pub fn sql_clear_password(_state: State<'_, AppState>, id: String) -> AppResult<()> {
+    secrets::delete_sql(&id)
+}
+
+#[tauri::command]
+pub fn sql_has_password(_state: State<'_, AppState>, id: String) -> AppResult<bool> {
+    Ok(secrets::get_sql(&id)?.is_some())
+}
+
+/// Open an SSH local-port forward through `device_id` to `remote_host:remote_port`.
+/// Returns the local port (on 127.0.0.1) that callers should connect to.
+#[tauri::command]
+pub fn sql_open_tunnel(
+    state: State<'_, AppState>,
+    id: String,
+    device_id: String,
+    remote_host: String,
+    remote_port: u16,
+) -> AppResult<u16> {
+    let device = require_device(&state, &device_id)?;
+    if device.is_localhost {
+        return Err(AppError::Invalid(
+            "cannot tunnel through localhost device".into(),
+        ));
+    }
+    state.tunnels.open(&id, &device, remote_host, remote_port)
+}
+
+#[tauri::command]
+pub fn sql_close_tunnel(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.tunnels.close(&id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn sql_connect(
+    state: State<'_, AppState>,
+    id: String,
+    engine: SqlEngine,
+    host: String,
+    port: u16,
+    username: String,
+    database: Option<String>,
+) -> AppResult<()> {
+    let password = secrets::get_sql(&id)?;
+    state
+        .sql
+        .connect(id, engine, host, port, username, password, database)
+        .await
+}
+
+#[tauri::command]
+pub fn sql_disconnect(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.sql.disconnect(&id);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn sql_is_connected(state: State<'_, AppState>, id: String) -> AppResult<bool> {
+    Ok(state.sql.is_connected(&id))
+}
+
+#[tauri::command]
+pub async fn sql_query(
+    state: State<'_, AppState>,
+    id: String,
+    sql: String,
+) -> AppResult<QueryResult> {
+    state.sql.query(&id, sql).await
+}
+
+#[tauri::command]
+pub async fn sql_list_tables(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<Vec<String>> {
+    state.sql.list_tables(&id).await
 }
