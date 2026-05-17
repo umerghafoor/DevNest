@@ -109,12 +109,89 @@ export interface DiskUsage {
   usePercent: number;
 }
 
+export interface CpuCoreTicks {
+  core: number;
+  user: number;
+  nice: number;
+  system: number;
+  idle: number;
+  iowait: number;
+  irq: number;
+  softirq: number;
+  steal: number;
+}
+
+export interface MemInfo {
+  totalMb: number;
+  freeMb: number;
+  availableMb: number;
+  usedMb: number;
+  buffersMb: number;
+  cachedMb: number;
+}
+
+export interface SwapInfo {
+  totalMb: number;
+  usedMb: number;
+}
+
+export interface LoadAvg {
+  one: number;
+  five: number;
+  fifteen: number;
+}
+
+export interface ProcessCounts {
+  running: number;
+  total: number;
+}
+
+export interface NetInterface {
+  name: string;
+  rxBytes: number;
+  txBytes: number;
+  rxPackets: number;
+  txPackets: number;
+}
+
+export interface ThermalZone {
+  name: string;
+  celsius: number;
+}
+
 export interface MetricsSnapshot {
+  timestampMs: number;
+  /** Aggregate cumulative idle-vs-total ratio. Frontend computes real CPU% from per-core deltas. */
   cpuPercent: number;
-  memUsedMb: number;
-  memTotalMb: number;
+  cpuCores: CpuCoreTicks[];
+  mem: MemInfo;
+  swap: SwapInfo;
+  load: LoadAvg;
+  uptimeSeconds: number;
+  processes: ProcessCounts;
   disks: DiskUsage[];
-  timestamp: number;
+  net: NetInterface[];
+  temperatures: ThermalZone[];
+}
+
+export interface CpuInfo {
+  model: string;
+  vendor: string;
+  physicalCores: number;
+  logicalCores: number;
+  mhz: number;
+  cacheKb: number;
+  governor: string | null;
+  architecture: string;
+}
+
+export interface DimmModule {
+  locator: string;
+  size: string;
+  kind: string;
+  speed: string;
+  manufacturer: string;
+  partNumber: string;
 }
 
 export type ConnectionStatus = "connected" | "offline";
@@ -154,6 +231,8 @@ export const api = {
 
   metricsSnapshot: (deviceId: string) =>
     invoke<MetricsSnapshot>("metrics_snapshot", { deviceId }),
+  cpuInfo: (deviceId: string) => invoke<CpuInfo>("cpu_info", { deviceId }),
+  dimmInfo: (deviceId: string) => invoke<DimmModule[]>("dimm_info", { deviceId }),
 
   gitIsRepo: (path: string) => invoke<boolean>("git_is_repo", { path }),
   gitBranch: (path: string) => invoke<string | null>("git_branch", { path }),

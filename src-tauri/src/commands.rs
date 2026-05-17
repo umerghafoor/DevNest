@@ -3,7 +3,7 @@ use tauri::State;
 use crate::devices::{self, Device, NewDevice};
 use crate::docker::{self, ContainerSummary};
 use crate::error::{AppError, AppResult};
-use crate::metrics::{self, MetricsSnapshot};
+use crate::metrics::{self, CpuInfo, DimmModule, MetricsSnapshot};
 use crate::secrets;
 use crate::ssh::{self, CommandOutput};
 use crate::state::AppState;
@@ -151,4 +151,16 @@ pub fn metrics_snapshot(
 ) -> AppResult<MetricsSnapshot> {
     let device = require_device(&state, &device_id)?;
     metrics::snapshot(&state.pool, &device)
+}
+
+#[tauri::command]
+pub fn cpu_info(state: State<'_, AppState>, device_id: String) -> AppResult<CpuInfo> {
+    let device = require_device(&state, &device_id)?;
+    metrics::cpu_info(&state.pool, &device)
+}
+
+#[tauri::command]
+pub fn dimm_info(state: State<'_, AppState>, device_id: String) -> AppResult<Vec<DimmModule>> {
+    let device = require_device(&state, &device_id)?;
+    metrics::dimms(&state.pool, &device)
 }

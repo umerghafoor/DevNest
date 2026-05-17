@@ -183,6 +183,8 @@ pub fn run() {
             commands::docker_action,
             commands::docker_logs,
             commands::metrics_snapshot,
+            commands::cpu_info,
+            commands::dimm_info,
             terminal_commands::terminal_open,
             terminal_commands::terminal_write,
             terminal_commands::terminal_resize,
