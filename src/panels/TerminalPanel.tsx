@@ -6,6 +6,8 @@ import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
+import { useAppStore } from "../store/app-store";
+import { notifyCompleted } from "../lib/notify";
 
 interface Props {
   deviceId: string;
@@ -79,6 +81,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
 
     let termId: string | null = null;
     let unlisten: (() => void) | null = null;
+    let unlistenExit: (() => void) | null = null;
     let cancelled = false;
 
     const start = async () => {
@@ -101,6 +104,16 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           for (let i = 0; i < binary.length; i++)
             bytes[i] = binary.charCodeAt(i);
           term.write(bytes);
+        });
+
+        unlistenExit = await listen(`terminal-exit:${termId}`, () => {
+          const device = useAppStore
+            .getState()
+            .devices.find((d) => d.id === deviceId);
+          notifyCompleted(
+            `Terminal closed on ${device?.name ?? deviceId}`,
+            "The remote shell exited.",
+          );
         });
 
         term.onData((data) => {
@@ -137,6 +150,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       cancelled = true;
       ro.disconnect();
       unlisten?.();
+      unlistenExit?.();
       if (termId) void invoke("terminal_close", { termId });
       term.dispose();
     };

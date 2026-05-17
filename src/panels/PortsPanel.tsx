@@ -1,10 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "../lib/api";
+import { usePaneSettings } from "../store/pane-settings-store";
+import {
+  useResizableColumns,
+  ResizableTh,
+  type ColumnSpec,
+} from "../components/ResizableColumns";
+
+const PORT_COLUMNS: ColumnSpec[] = [
+  { id: "port", defaultWidth: 130, minWidth: 80 },
+  { id: "proto", defaultWidth: 80 },
+  { id: "addr", defaultWidth: 200 },
+  { id: "process", defaultWidth: 240 },
+];
 
 interface Props {
   deviceId: string;
+  paneId?: string;
 }
+
+type SortKey = "port" | "proto" | "addr" | "process";
+type SortDir = "asc" | "desc";
+
+interface PortsSettings {
+  filter: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
+}
+
+const DEFAULT_PORTS_SETTINGS: PortsSettings = {
+  filter: "",
+  sortKey: "port",
+  sortDir: "asc",
+};
 
 interface ListeningPort {
   proto: string;
@@ -99,11 +128,24 @@ const COMMON_PORTS = new Set([
   "27017",
 ]);
 
-export function PortsPanel({ deviceId }: Props) {
+export function PortsPanel({ deviceId, paneId }: Props) {
   const [ports, setPorts] = useState<ListeningPort[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
+  const [settings, updateSettings] = usePaneSettings<PortsSettings>(
+    paneId,
+    DEFAULT_PORTS_SETTINGS,
+  );
+  const { filter, sortKey, sortDir } = settings;
+  const setFilter = (v: string) => updateSettings({ filter: v });
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      updateSettings({ sortDir: sortDir === "asc" ? "desc" : "asc" });
+    } else {
+      updateSettings({ sortKey: key, sortDir: "asc" });
+    }
+  };
+  const { widthFor, ResizeHandle } = useResizableColumns(PORT_COLUMNS, paneId);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetch = useCallback(async () => {
@@ -141,13 +183,29 @@ export function PortsPanel({ deviceId }: Props) {
     };
   }, [fetch]);
 
-  const displayed = ports.filter(
-    (p) =>
-      !filter ||
-      p.port.includes(filter) ||
-      p.process.toLowerCase().includes(filter.toLowerCase()) ||
-      p.localAddr.includes(filter),
-  );
+  const displayed = useMemo(() => {
+    const filtered = ports.filter(
+      (p) =>
+        !filter ||
+        p.port.includes(filter) ||
+        p.process.toLowerCase().includes(filter.toLowerCase()) ||
+        p.localAddr.includes(filter),
+    );
+    const dir = sortDir === "asc" ? 1 : -1;
+    const cmp = (a: ListeningPort, b: ListeningPort) => {
+      switch (sortKey) {
+        case "port":
+          return (Number(a.port) - Number(b.port)) * dir;
+        case "proto":
+          return a.proto.localeCompare(b.proto) * dir;
+        case "addr":
+          return a.localAddr.localeCompare(b.localAddr) * dir;
+        case "process":
+          return a.process.localeCompare(b.process) * dir;
+      }
+    };
+    return [...filtered].sort(cmp);
+  }, [ports, filter, sortKey, sortDir]);
 
   return (
     <div className="flex h-full flex-col">
@@ -175,27 +233,27 @@ export function PortsPanel({ deviceId }: Props) {
       )}
 
       <div className="flex-1 overflow-auto">
-        <table className="w-full table-fixed border-collapse text-xs">
+        <table className="table-fixed border-collapse text-xs" style={{ minWidth: "100%" }}>
           <colgroup>
-            <col style={{ width: "60px" }} />
-            <col style={{ width: "80px" }} />
-            <col style={{ width: "180px" }} />
-            <col />
+            <col style={{ width: widthFor("port") }} />
+            <col style={{ width: widthFor("proto") }} />
+            <col style={{ width: widthFor("addr") }} />
+            <col style={{ width: widthFor("process") }} />
           </colgroup>
           <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Port
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Proto
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Address
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Process
-              </th>
+              <ResizableTh columnId="port" ResizeHandle={ResizeHandle} onClick={() => toggleSort("port")}>
+                <ColLabel label="Port" active={sortKey === "port"} dir={sortDir} />
+              </ResizableTh>
+              <ResizableTh columnId="proto" ResizeHandle={ResizeHandle} onClick={() => toggleSort("proto")}>
+                <ColLabel label="Proto" active={sortKey === "proto"} dir={sortDir} />
+              </ResizableTh>
+              <ResizableTh columnId="addr" ResizeHandle={ResizeHandle} onClick={() => toggleSort("addr")}>
+                <ColLabel label="Address" active={sortKey === "addr"} dir={sortDir} />
+              </ResizableTh>
+              <ResizableTh columnId="process" ResizeHandle={ResizeHandle} onClick={() => toggleSort("process")}>
+                <ColLabel label="Process" active={sortKey === "process"} dir={sortDir} />
+              </ResizableTh>
             </tr>
           </thead>
           <tbody>
@@ -239,5 +297,26 @@ export function PortsPanel({ deviceId }: Props) {
         )}
       </div>
     </div>
+  );
+}
+
+function ColLabel({
+  label,
+  active,
+  dir,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 ${active ? "text-(--color-fg)" : ""}`}
+    >
+      {label}
+      <span className="text-[9px]">
+        {active ? (dir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
+    </span>
   );
 }

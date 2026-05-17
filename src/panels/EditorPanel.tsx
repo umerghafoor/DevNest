@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   open as openDialog,
   save as saveDialog,
@@ -6,6 +6,7 @@ import {
 import { api, errorMessage } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
+import { CodeEditor, languageFromFilename } from "../components/CodeEditor";
 
 interface EditorState {
   /** Absolute path if a real file is open, null for the scratchpad. */
@@ -113,32 +114,7 @@ export function EditorPanel() {
     }
   };
 
-  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    const mod = e.metaKey || e.ctrlKey;
-    if (mod && e.key.toLowerCase() === "s") {
-      e.preventDefault();
-      if (e.shiftKey) void saveAs();
-      else void save();
-      return;
-    }
-    if (mod && e.key.toLowerCase() === "o") {
-      e.preventDefault();
-      void openFile();
-      return;
-    }
-    if (e.key === "Tab") {
-      e.preventDefault();
-      const target = e.currentTarget;
-      const start = target.selectionStart;
-      const end = target.selectionEnd;
-      const next =
-        file.content.slice(0, start) + "  " + file.content.slice(end);
-      setFile((f) => ({ ...f, content: next, dirty: true }));
-      requestAnimationFrame(() => {
-        target.selectionStart = target.selectionEnd = start + 2;
-      });
-    }
-  };
+  const language = useMemo(() => languageFromFilename(file.name), [file.name]);
 
   return (
     <div className="fade-up flex h-full flex-col">
@@ -191,17 +167,19 @@ export function EditorPanel() {
           </button>
         </div>
       </div>
-      <textarea
+      <CodeEditor
         value={file.content}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        spellCheck={false}
-        className="min-h-0 flex-1 resize-none bg-(--color-bg) p-4 font-mono text-sm text-(--color-fg) outline-none"
-        placeholder="Type something…"
+        onChange={onChange}
+        language={language}
+        onSave={() => void save()}
+        onSaveAs={() => void saveAs()}
+        onOpen={() => void openFile()}
+        className="min-h-0 flex-1 bg-(--color-bg) text-sm"
       />
       <div className="shrink-0 border-t border-(--color-border) bg-(--color-surface) px-4 py-1 text-[11px] text-(--color-fg-muted)">
-        Plain text editor. Syntax highlighting will land with a proper editor
-        (e.g. CodeMirror) in a later phase.
+        {language === "text"
+          ? "Plain text"
+          : `${language.toUpperCase()} · ⌘S to save · ⌘O to open`}
       </div>
     </div>
   );

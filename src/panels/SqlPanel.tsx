@@ -8,6 +8,11 @@ import { useAppStore } from "../store/app-store";
 import { useThemeStore } from "../store/theme-store";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
+import {
+  useResizableColumns,
+  type ColumnSpec,
+} from "../components/ResizableColumns";
+import { notifyCompleted } from "../lib/notify";
 
 const ENGINE_LABELS: Record<SqlEngine, string> = {
   postgres: "PostgreSQL",
@@ -25,7 +30,7 @@ const TUNNEL_PREFIX = "sql:";
 
 type ConnState = "disconnected" | "connecting" | "connected" | "error";
 
-export function SqlPanel() {
+export function SqlPanel({ paneId }: { paneId?: string } = {}) {
   const saved = useSqlStore((s) => s.saved);
   const activeId = useSqlStore((s) => s.activeId);
   const setActive = useSqlStore((s) => s.setActive);
@@ -129,12 +134,28 @@ export function SqlPanel() {
     if (!active || connState !== "connected") return;
     setRunning(true);
     setQueryErr(null);
+    const startedAt = performance.now();
     try {
       const r = await api.sqlQuery(active.id, sql);
       setResult(r);
+      const elapsed = performance.now() - startedAt;
+      if (elapsed > 10000) {
+        const rowCount = r.rows.length;
+        notifyCompleted(
+          `SQL query finished on ${active.name}`,
+          `${rowCount} row${rowCount === 1 ? "" : "s"} · ${Math.round(elapsed)} ms`,
+        );
+      }
     } catch (e) {
       setResult(null);
       setQueryErr(errorMessage(e));
+      const elapsed = performance.now() - startedAt;
+      if (elapsed > 10000) {
+        notifyCompleted(
+          `SQL query failed on ${active.name}`,
+          `${Math.round(elapsed)} ms`,
+        );
+      }
     } finally {
       setRunning(false);
     }
@@ -179,7 +200,12 @@ export function SqlPanel() {
             <SqlEditor sql={sql} onChange={setSql} onRun={() => void onRun()} />
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <ResultsPane result={result} error={queryErr} running={running} />
+            <ResultsPane
+              result={result}
+              error={queryErr}
+              running={running}
+              paneId={paneId}
+            />
           </div>
         </div>
       </div>
@@ -468,11 +494,23 @@ function ResultsPane({
   result,
   error,
   running,
+  paneId,
 }: {
   result: SqlQueryResult | null;
   error: string | null;
   running: boolean;
+  paneId?: string;
 }) {
+  const columnSpecs: ColumnSpec[] = useMemo(
+    () =>
+      (result?.columns ?? []).map((c) => ({
+        id: `col:${c.name}`,
+        defaultWidth: 160,
+        minWidth: 60,
+      })),
+    [result],
+  );
+  const { widthFor, ResizeHandle } = useResizableColumns(columnSpecs, paneId);
   if (running) {
     return (
       <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
@@ -520,19 +558,25 @@ function ResultsPane({
         <span>{result.elapsedMs} ms</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full border-collapse font-mono text-xs">
+        <table className="table-fixed border-collapse font-mono text-xs" style={{ minWidth: "100%" }}>
+          <colgroup>
+            {result.columns.map((c) => (
+              <col key={c.name} style={{ width: widthFor(`col:${c.name}`) }} />
+            ))}
+          </colgroup>
           <thead className="sticky top-0 bg-(--color-surface)">
             <tr>
               {result.columns.map((c) => (
                 <th
                   key={c.name}
-                  className="border-b border-(--color-border) px-2 py-1 text-left font-semibold text-(--color-fg)"
+                  className="relative border-b border-(--color-border) px-2 py-1 text-left font-semibold text-(--color-fg)"
                   title={c.dataType}
                 >
                   {c.name}
                   <span className="ml-1 text-[10px] text-(--color-fg-muted)">
                     {c.dataType.toLowerCase()}
                   </span>
+                  <ResizeHandle columnId={`col:${c.name}`} />
                 </th>
               ))}
             </tr>

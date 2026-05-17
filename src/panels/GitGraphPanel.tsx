@@ -8,9 +8,11 @@ import type {
 } from "../lib/api";
 import { SkeletonCard } from "../components/Skeleton";
 import { toast } from "../components/Toast";
+import { usePaneSettings } from "../store/pane-settings-store";
 
 interface Props {
   repoPath?: string;
+  paneId?: string;
 }
 
 // ─── Lane assignment ─────────────────────────────────────────────────────────
@@ -122,7 +124,13 @@ function parseRefs(refs: string[]): {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function GitGraphPanel({ repoPath }: Props) {
+export function GitGraphPanel({ repoPath, paneId }: Props) {
+  const [paneSettings, updatePaneSettings] = usePaneSettings(paneId, {
+    detailCollapsed: false,
+  });
+  const detailCollapsed = paneSettings.detailCollapsed;
+  const setDetailCollapsed = (v: boolean) =>
+    updatePaneSettings({ detailCollapsed: v });
   const [commits, setCommits] = useState<GitCommit[] | null>(null);
   const [branches, setBranches] = useState<GitBranchInfo[]>([]);
   const [tags, setTags] = useState<GitTag[]>([]);
@@ -227,6 +235,8 @@ export function GitGraphPanel({ repoPath }: Props) {
         tags={tags}
         commitCount={commits.length}
         onReload={() => void reload()}
+        detailCollapsed={detailCollapsed}
+        onToggleDetail={() => setDetailCollapsed(!detailCollapsed)}
       />
       <div className="flex min-h-0 flex-1">
         <CommitList
@@ -234,12 +244,14 @@ export function GitGraphPanel({ repoPath }: Props) {
           selected={selected}
           onSelect={setSelected}
         />
+        {!detailCollapsed && (
         <DetailPane
           detail={detail}
           diffFile={diffFile}
           diffText={diffText}
           onSelectFile={setDiffFile}
         />
+        )}
       </div>
     </div>
   );
@@ -251,12 +263,16 @@ function Header({
   tags,
   commitCount,
   onReload,
+  detailCollapsed,
+  onToggleDetail,
 }: {
   repoPath: string;
   branches: GitBranchInfo[];
   tags: GitTag[];
   commitCount: number;
   onReload: () => void;
+  detailCollapsed: boolean;
+  onToggleDetail: () => void;
 }) {
   const current = branches.find((b) => b.is_current);
   const localCount = branches.filter((b) => !b.is_remote).length;
@@ -285,6 +301,13 @@ function Header({
         <span>{remoteCount} remote</span>
         <span>{tags.length} tags</span>
       </div>
+      <button
+        onClick={onToggleDetail}
+        className="rounded border border-(--color-border) px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        title={detailCollapsed ? "Show commit detail" : "Hide commit detail"}
+      >
+        {detailCollapsed ? "⇤" : "⇥"}
+      </button>
       <button
         onClick={onReload}
         className="rounded border border-(--color-border) px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"

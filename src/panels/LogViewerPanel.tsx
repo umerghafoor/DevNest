@@ -2,9 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { errorMessage } from "../lib/api";
+import { usePaneSettings } from "../store/pane-settings-store";
 
 interface Props {
   deviceId: string;
+  paneId?: string;
 }
 
 const PRESETS = [
@@ -26,9 +28,11 @@ function uid() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function LogViewerPanel({ deviceId }: Props) {
+export function LogViewerPanel({ deviceId, paneId }: Props) {
+  const [settings, updateSettings] = usePaneSettings(paneId, { filter: "" });
   const [lines, setLines] = useState<string[]>([]);
-  const [filter, setFilter] = useState("");
+  const filter = settings.filter;
+  const setFilter = (v: string) => updateSettings({ filter: v });
   const [paused, setPaused] = useState(false);
   const [cmd, setCmd] = useState(PRESETS[0].cmd);
   const [customCmd, setCustomCmd] = useState("");

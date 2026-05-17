@@ -4,6 +4,7 @@ import type { HttpRequestSpec, HttpResponse } from "../lib/api";
 import { useHttpStore, type SavedRequest } from "../store/http-store";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
+import { notifyCompleted } from "../lib/notify";
 
 const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
 type Method = (typeof METHODS)[number];
@@ -75,12 +76,27 @@ export function HttpPanel() {
     setSending(true);
     setError(null);
     setResponse(null);
+    const startedAt = performance.now();
     try {
       const spec = specFromRows(method, url, headers, supportsBody ? body : "");
       const res = await api.httpRequest(spec);
       setResponse(res);
+      const elapsed = performance.now() - startedAt;
+      if (elapsed > 5000) {
+        notifyCompleted(
+          `HTTP ${method} finished`,
+          `${res.status} · ${Math.round(elapsed)} ms · ${url}`,
+        );
+      }
     } catch (e) {
       setError(errorMessage(e));
+      const elapsed = performance.now() - startedAt;
+      if (elapsed > 5000) {
+        notifyCompleted(
+          `HTTP ${method} failed`,
+          `${Math.round(elapsed)} ms · ${url}`,
+        );
+      }
     } finally {
       setSending(false);
     }

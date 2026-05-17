@@ -4,7 +4,7 @@ import { withSudo } from "../lib/with-sudo";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { SkeletonCard } from "../components/Skeleton";
-import { highlightUnit } from "../lib/unit-highlight";
+import { CodeEditor } from "../components/CodeEditor";
 
 interface Props {
   deviceId: string;
@@ -599,26 +599,13 @@ function TextView({
   content: string;
   onChange: (v: string) => void;
 }) {
-  const highlighted = useMemo(() => highlightUnit(content), [content]);
   return (
-    <div className="relative h-full">
-      {/* Highlighted overlay (read-only, behind the textarea). */}
-      <pre
-        aria-hidden
-        className="pointer-events-none absolute inset-0 m-0 overflow-auto whitespace-pre p-4 font-mono text-[13px] leading-[1.55]"
-      >
-        {highlighted.map((l) => (
-          <div key={l.key}>{l.node}</div>
-        ))}
-      </pre>
-      <textarea
-        value={content}
-        onChange={(e) => onChange(e.target.value)}
-        spellCheck={false}
-        wrap="off"
-        className="absolute inset-0 m-0 resize-none overflow-auto whitespace-pre bg-transparent p-4 font-mono text-[13px] leading-[1.55] text-transparent caret-(--color-accent) outline-none selection:bg-(--color-accent)/30 selection:text-(--color-fg)"
-      />
-    </div>
+    <CodeEditor
+      value={content}
+      onChange={onChange}
+      language="ini"
+      className="h-full bg-(--color-bg) text-[13px]"
+    />
   );
 }
 

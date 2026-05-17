@@ -16,18 +16,24 @@ pub fn terminal_open(
     rows: u32,
 ) -> AppResult<String> {
     let term_id = Uuid::new_v4().to_string();
-    let tid = term_id.clone();
+    let tid_out = term_id.clone();
+    let tid_exit = term_id.clone();
+    let app_out = app.clone();
+    let app_exit = app;
 
     let device = devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
 
     let on_output = move |chunk: Vec<u8>| {
-        let _ = app.emit(&format!("terminal:{tid}"), B64.encode(&chunk));
+        let _ = app_out.emit(&format!("terminal:{tid_out}"), B64.encode(&chunk));
+    };
+    let on_exit = move || {
+        let _ = app_exit.emit(&format!("terminal-exit:{tid_exit}"), ());
     };
 
     let handle = if device.is_localhost {
-        terminal::spawn_local(cols, rows, on_output)?
+        terminal::spawn_local(cols, rows, on_output, on_exit)?
     } else {
-        terminal::spawn_remote(&device, cols, rows, on_output)?
+        terminal::spawn_remote(&device, cols, rows, on_output, on_exit)?
     };
 
     state.terminals.insert(term_id.clone(), handle);

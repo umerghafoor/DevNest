@@ -38,10 +38,13 @@ impl TermHandle {
 }
 
 /// Spawn a local PTY shell. Returns a handle (for input) and starts a thread
-/// that reads output and calls `on_output` for each chunk.
-pub fn spawn_local<F>(cols: u32, rows: u32, on_output: F) -> AppResult<TermHandle>
+/// that reads output and calls `on_output` for each chunk. `on_exit` is
+/// called once when the PTY closes (shell `exit`, process death, broken
+/// channel) — used to surface a "terminal closed" notification.
+pub fn spawn_local<F, G>(cols: u32, rows: u32, on_output: F, on_exit: G) -> AppResult<TermHandle>
 where
     F: Fn(Vec<u8>) + Send + 'static,
+    G: FnOnce() + Send + 'static,
 {
     use portable_pty::{native_pty_system, PtySize};
 
@@ -83,6 +86,7 @@ where
                 Ok(n) => on_output(buf[..n].to_vec()),
             }
         }
+        on_exit();
     });
 
     // Write/control thread
@@ -123,9 +127,16 @@ struct RemoteParams {
 
 /// Spawn a remote SSH shell. The entire SSH session + channel is created
 /// inside the worker thread because ssh2::Session is not Send.
-pub fn spawn_remote<F>(device: &Device, cols: u32, rows: u32, on_output: F) -> AppResult<TermHandle>
+pub fn spawn_remote<F, G>(
+    device: &Device,
+    cols: u32,
+    rows: u32,
+    on_output: F,
+    on_exit: G,
+) -> AppResult<TermHandle>
 where
     F: Fn(Vec<u8>) + Send + 'static,
+    G: FnOnce() + Send + 'static,
 {
     let params = RemoteParams {
         host: device.host.clone(),
@@ -142,68 +153,72 @@ where
     let (err_tx, err_rx) = mpsc::channel::<Option<AppError>>();
 
     std::thread::spawn(move || {
-        // Build session inside the thread — ssh2::Session is !Send.
-        let session = match open_ssh_session(&params, cols, rows) {
-            Ok(s) => {
-                let _ = err_tx.send(None); // signal success
-                s
+        // The closure returns true if the *remote* side ended the session
+        // (eof / read error). User-initiated close returns false so we
+        // don't fire a "terminal closed" notification when the user
+        // simply closed the pane.
+        let remote_died = (|| {
+            let session = match open_ssh_session(&params, cols, rows) {
+                Ok(s) => {
+                    let _ = err_tx.send(None);
+                    s
+                }
+                Err(e) => {
+                    let _ = err_tx.send(Some(e));
+                    return false;
+                }
+            };
+            let mut channel = match session.channel_session() {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("terminal channel_session: {e}");
+                    return true;
+                }
+            };
+            if let Err(e) = channel.request_pty("xterm-256color", None, Some((cols, rows, 0, 0))) {
+                tracing::error!("terminal request_pty: {e}");
+                return true;
             }
-            Err(e) => {
-                let _ = err_tx.send(Some(e));
-                return;
+            if let Err(e) = channel.shell() {
+                tracing::error!("terminal shell: {e}");
+                return true;
             }
-        };
+            session.set_blocking(false);
 
-        // channel_session + pty + shell
-        let mut channel = match session.channel_session() {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::error!("terminal channel_session: {e}");
-                return;
-            }
-        };
-        if let Err(e) = channel.request_pty("xterm-256color", None, Some((cols, rows, 0, 0))) {
-            tracing::error!("terminal request_pty: {e}");
-            return;
-        }
-        if let Err(e) = channel.shell() {
-            tracing::error!("terminal shell: {e}");
-            return;
-        }
-
-        session.set_blocking(false);
-
-        let mut buf = [0u8; 4096];
-        loop {
-            // Drain pending input
+            let mut buf = [0u8; 4096];
             loop {
-                match rx.try_recv() {
-                    Ok(TermInput::Data(data)) => {
-                        if channel.write_all(&data).is_err() {
-                            return;
+                loop {
+                    match rx.try_recv() {
+                        Ok(TermInput::Data(data)) => {
+                            if channel.write_all(&data).is_err() {
+                                return true;
+                            }
                         }
+                        Ok(TermInput::Resize(c, r)) => {
+                            let _ = channel.request_pty_size(c, r, None, None);
+                        }
+                        Ok(TermInput::Close) => return false,
+                        Err(mpsc::TryRecvError::Empty) => break,
+                        Err(mpsc::TryRecvError::Disconnected) => return false,
                     }
-                    Ok(TermInput::Resize(c, r)) => {
-                        let _ = channel.request_pty_size(c, r, None, None);
+                }
+                match channel.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => on_output(buf[..n].to_vec()),
+                    Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
                     }
-                    Ok(TermInput::Close) => return,
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => return,
+                    Err(_) => break,
+                }
+                if channel.eof() {
+                    break;
                 }
             }
+            true
+        })();
 
-            match channel.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => on_output(buf[..n].to_vec()),
-                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(std::time::Duration::from_millis(5));
-                }
-                Err(_) => break,
-            }
-
-            if channel.eof() {
-                break;
-            }
+        if remote_died {
+            on_exit();
         }
     });
 

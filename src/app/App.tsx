@@ -13,7 +13,9 @@ import {
   useAppStore,
   selectActiveWorkspace,
   findPaneInTree,
+  collectPanes,
 } from "../store/app-store";
+import { usePaneSettingsStore } from "../store/pane-settings-store";
 import { useThemeStore } from "../store/theme-store";
 import { useUiStore } from "../store/ui-store";
 import { useColorsStore } from "../store/colors-store";
@@ -51,6 +53,20 @@ export function App() {
       .listDevices()
       .then(setDevices)
       .catch((e) => console.error("listDevices failed", e));
+
+    // GC pane-settings entries for panes that no longer exist anywhere in
+    // any workspace. Runs once at boot — fresh sessions don't reuse old
+    // pane ids since they're random 8-char strings, so the worst case is
+    // an unbounded localStorage growth otherwise.
+    const live = new Set<string>();
+    for (const w of useAppStore.getState().workspaces) {
+      if (!w.paneRoot) continue;
+      for (const p of collectPanes(w.paneRoot)) live.add(p.id);
+    }
+    const stored = usePaneSettingsStore.getState().byPaneId;
+    for (const id of Object.keys(stored)) {
+      if (!live.has(id)) usePaneSettingsStore.getState().clear(id);
+    }
   }, [initTheme, initUi, initColors, setDevices]);
 
   // Re-apply color overrides AND the accent preset whenever the active theme

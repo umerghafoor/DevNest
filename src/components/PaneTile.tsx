@@ -179,11 +179,11 @@ function PanelContent({ pane }: { pane: Pane }) {
     case "files":
       return <FileBrowserPanel deviceId={pane.deviceId} />;
     case "logs":
-      return <LogViewerPanel deviceId={pane.deviceId} />;
+      return <LogViewerPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "processes":
-      return <ProcessPanel deviceId={pane.deviceId} />;
+      return <ProcessPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "ports":
-      return <PortsPanel deviceId={pane.deviceId} />;
+      return <PortsPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "cron":
       return <CronPanel deviceId={pane.deviceId} />;
     case "dashboard":
@@ -201,7 +201,7 @@ function PanelContent({ pane }: { pane: Pane }) {
     case "git":
       return <GitPanel />;
     case "gitGraph":
-      return <GitGraphPanel repoPath={pane.extra?.repoPath} />;
+      return <GitGraphPanel repoPath={pane.extra?.repoPath} paneId={pane.id} />;
     case "systemd":
       return <SystemdPanel deviceId={pane.deviceId} />;
     case "http":
@@ -215,7 +215,7 @@ function PanelContent({ pane }: { pane: Pane }) {
             </div>
           }
         >
-          <SqlPanel />
+          <SqlPanel paneId={pane.id} />
         </Suspense>
       );
   }

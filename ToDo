@@ -9,11 +9,6 @@
 
 ## DevDash
 
-### In progress / next up
-
-- `.env` / secrets manager: structured editor for `.env` files with masked values; optional sync to OS keyring
-- Per-pane settings persistence (log filter, ports filter, git graph collapsed state survive restart) also enhance the UI by adding sort features to the panels with listings (Processes, Ports, Git). Additionally, integrating real syntax highlighting in the Editor and Systemd text view using CodeMirror 6 will improve readability and user experience. Notifications for long-running commands can be implemented using the Tauri notification plugin to keep users informed about the status of their tasks.
-
 ### Mid-tier features
 
 - Docker compose support: list compose projects, up/down/restart per service, view logs
@@ -21,13 +16,6 @@
 - Cron editor: parse `crontab -l`, visual editor, save back
 - Disk I/O + per-process network in Metrics (iostat / nethogs style)
 - Consistent "open URL in browser" across all panels (logs, terminal, ports)
-
-### Polish on existing panels (often higher ROI than new panels)
-
-- Per-pane settings persistence (log filter, ports filter, git graph collapsed state survive restart)
-- Real syntax highlighting in the Editor + Systemd text view (CodeMirror 6) — replaces the regex-based highlighter and the plain textarea
-- Multi-select on Processes panel: kill multiple, sort by column
-- Notifications when long-running commands finish (Tauri notification plugin)
 
 ### Small utility panels (low-effort, low daily use — defer)
 
@@ -39,3 +27,11 @@
 - JWT decoder
 - UUID / ULID generator
 - Cron expression visualizer
+
+## Chatbot and AI features
+
+- Local LLM integration for code generation, Q&A, etc.
+- AI-assisted log analysis: highlight anomalies, suggest root causes
+- Natural language terminal: type commands in plain English and have them translated to shell commands
+- AI-powered documentation search across local files and web resources
+- Code snippet manager with AI categorization and search
