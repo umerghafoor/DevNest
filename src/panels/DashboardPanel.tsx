@@ -107,7 +107,9 @@ export function DashboardPanel({ deviceId }: Props) {
                               : "bg-(--color-offline)"
                         }`}
                       />
-                      <span className="truncate text-(--color-fg)">{d.name}</span>
+                      <span className="truncate text-(--color-fg)">
+                        {d.name}
+                      </span>
                       <span className="truncate text-xs text-(--color-fg-muted)">
                         {d.host}
                       </span>

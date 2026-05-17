@@ -10,9 +10,7 @@ interface Props {
   deviceId: string;
 }
 
-type View =
-  | { kind: "list" }
-  | { kind: "edit"; name: string; isNew: boolean };
+type View = { kind: "list" } | { kind: "edit"; name: string; isNew: boolean };
 
 export function SystemdPanel({ deviceId }: Props) {
   const [units, setUnits] = useState<SystemdUnit[] | null>(null);
@@ -163,9 +161,7 @@ function UnitRow({
 }: {
   unit: SystemdUnit;
   busy: string | null;
-  onAction: (
-    a: "start" | "stop" | "restart" | "enable" | "disable",
-  ) => void;
+  onAction: (a: "start" | "stop" | "restart" | "enable" | "disable") => void;
   onEdit: () => void;
 }) {
   const isActive = unit.active === "active" || unit.sub === "running";
@@ -205,10 +201,7 @@ function UnitRow({
       </button>
       <div className="flex shrink-0 items-center gap-1">
         {isActive ? (
-          <ActionBtn
-            onClick={() => onAction("stop")}
-            busy={actionBusy("stop")}
-          >
+          <ActionBtn onClick={() => onAction("stop")} busy={actionBusy("stop")}>
             Stop
           </ActionBtn>
         ) : (
@@ -296,7 +289,9 @@ function UnitEditor({
   onSaved: () => void;
 }) {
   const [unitName, setUnitName] = useState(name);
-  const [content, setContent] = useState<string | null>(isNew ? DEFAULT_NEW : null);
+  const [content, setContent] = useState<string | null>(
+    isNew ? DEFAULT_NEW : null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<"form" | "text">("form");
@@ -321,7 +316,10 @@ function UnitEditor({
     };
   }, [deviceId, name, isNew]);
 
-  const fields = useMemo<UnitFields>(() => parseFields(content ?? ""), [content]);
+  const fields = useMemo<UnitFields>(
+    () => parseFields(content ?? ""),
+    [content],
+  );
 
   const updateField = (k: keyof UnitFields, v: string) => {
     if (content === null) return;
@@ -439,10 +437,7 @@ function UnitEditor({
         {tab === "form" ? (
           <FormView fields={fields} onChange={updateField} />
         ) : (
-          <TextView
-            content={content ?? ""}
-            onChange={setContent}
-          />
+          <TextView content={content ?? ""} onChange={setContent} />
         )}
       </div>
     </div>
@@ -495,7 +490,15 @@ function FormView({
             value={fields.restart}
             onChange={(v) => onChange("restart", v)}
             placeholder="always"
-            options={["no", "on-success", "on-failure", "on-abnormal", "on-watchdog", "on-abort", "always"]}
+            options={[
+              "no",
+              "on-success",
+              "on-failure",
+              "on-abnormal",
+              "on-watchdog",
+              "on-abort",
+              "always",
+            ]}
           />
         </Section>
         <Section title="[Install]">
@@ -508,8 +511,8 @@ function FormView({
           />
         </Section>
         <p className="text-[11px] text-(--color-fg-muted)">
-          The Text tab has the raw file. Adding any field not shown here is
-          fine — switch to Text mode for fields like Environment, WorkingDirectory,
+          The Text tab has the raw file. Adding any field not shown here is fine
+          — switch to Text mode for fields like Environment, WorkingDirectory,
           ExecStop, etc.
         </p>
       </div>
@@ -731,7 +734,8 @@ function setKeyInSection(
 
   if (sectionStart === -1) {
     // Section doesn't exist yet — append.
-    const prefix = lines.length > 0 && lines[lines.length - 1].trim() !== "" ? "\n" : "";
+    const prefix =
+      lines.length > 0 && lines[lines.length - 1].trim() !== "" ? "\n" : "";
     return `${content}${prefix}\n[${section}]\n${key}=${value}\n`;
   }
 

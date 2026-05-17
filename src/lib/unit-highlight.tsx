@@ -35,7 +35,9 @@ function highlightLine(line: string, idx: number): React.ReactNode {
     return (
       <>
         <span>{sectionMatch[1]}</span>
-        <span className="font-semibold text-(--color-accent)">{sectionMatch[2]}</span>
+        <span className="font-semibold text-(--color-accent)">
+          {sectionMatch[2]}
+        </span>
         <span>{sectionMatch[3]}</span>
       </>
     );

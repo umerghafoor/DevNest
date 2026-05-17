@@ -232,7 +232,8 @@ export const api = {
   metricsSnapshot: (deviceId: string) =>
     invoke<MetricsSnapshot>("metrics_snapshot", { deviceId }),
   cpuInfo: (deviceId: string) => invoke<CpuInfo>("cpu_info", { deviceId }),
-  dimmInfo: (deviceId: string) => invoke<DimmModule[]>("dimm_info", { deviceId }),
+  dimmInfo: (deviceId: string) =>
+    invoke<DimmModule[]>("dimm_info", { deviceId }),
 
   gitIsRepo: (path: string) => invoke<boolean>("git_is_repo", { path }),
   gitBranch: (path: string) => invoke<string | null>("git_branch", { path }),
@@ -276,13 +277,7 @@ export const api = {
   systemdAction: (
     deviceId: string,
     name: string,
-    action:
-      | "start"
-      | "stop"
-      | "restart"
-      | "reload"
-      | "enable"
-      | "disable",
+    action: "start" | "stop" | "restart" | "reload" | "enable" | "disable",
   ) => invoke<string>("systemd_action", { deviceId, name, action }),
   systemdWriteUnit: (deviceId: string, name: string, content: string) =>
     invoke<void>("systemd_write_unit", { deviceId, name, content }),

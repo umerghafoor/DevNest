@@ -28,7 +28,8 @@ function readInfo(startedAt: number): BrowserInfo {
     language: navigator.language,
     online: navigator.onLine,
     cores: navigator.hardwareConcurrency,
-    memoryGb: typeof navAny.deviceMemory === "number" ? navAny.deviceMemory : null,
+    memoryGb:
+      typeof navAny.deviceMemory === "number" ? navAny.deviceMemory : null,
     screen: `${window.screen.width}×${window.screen.height} @ ${window.devicePixelRatio}x`,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     appUptime: formatUptime(Date.now() - startedAt),

@@ -17,7 +17,11 @@ export interface ShortcutDef {
 
 export const SHORTCUTS: ShortcutDef[] = [
   { id: "closePane", label: "Close active pane", defaultBinding: "Mod+W" },
-  { id: "splitHorizontal", label: "Split pane right", defaultBinding: "Mod+\\" },
+  {
+    id: "splitHorizontal",
+    label: "Split pane right",
+    defaultBinding: "Mod+\\",
+  },
   { id: "splitVertical", label: "Split pane down", defaultBinding: "Mod+-" },
   { id: "newWorkspace", label: "New workspace", defaultBinding: "Mod+T" },
   { id: "openSettings", label: "Open Settings", defaultBinding: "Mod+," },

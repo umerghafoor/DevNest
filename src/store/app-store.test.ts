@@ -140,9 +140,9 @@ describe("app-store — workspaces", () => {
     // New workspace is seeded with a Dashboard, not the docker pane.
     const root = activeWs().paneRoot;
     expect(root?.type).toBe("leaf");
-    expect(
-      (root as { type: "leaf"; pane: { panel: string } }).pane.panel,
-    ).toBe("dashboard");
+    expect((root as { type: "leaf"; pane: { panel: string } }).pane.panel).toBe(
+      "dashboard",
+    );
   });
 
   it("renameWorkspace updates the name", () => {

@@ -190,7 +190,9 @@ export function FileBrowserPanel({ deviceId }: Props) {
         >
           ↑ Up
         </button>
-        <span className="font-mono text-(--color-fg-muted) transition-all">{cwd}</span>
+        <span className="font-mono text-(--color-fg-muted) transition-all">
+          {cwd}
+        </span>
         {/* Inline spinner — doesn't block the toolbar */}
         {loading && (
           <span className="ml-auto flex items-center gap-1.5 text-(--color-fg-muted)">

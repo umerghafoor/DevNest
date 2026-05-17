@@ -66,7 +66,11 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     const start = async () => {
       try {
         const { cols, rows } = term;
-        termId = await invoke<string>("terminal_open", { deviceId, cols, rows });
+        termId = await invoke<string>("terminal_open", {
+          deviceId,
+          cols,
+          rows,
+        });
         if (cancelled) {
           void invoke("terminal_close", { termId });
           return;
@@ -76,7 +80,8 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         unlisten = await listen<string>(`terminal:${termId}`, (evt) => {
           const binary = atob(evt.payload);
           const bytes = new Uint8Array(binary.length);
-          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+          for (let i = 0; i < binary.length; i++)
+            bytes[i] = binary.charCodeAt(i);
           term.write(bytes);
         });
 
@@ -137,7 +142,9 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       {connectState === "connecting" && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-bg)">
           <span className="h-5 w-5 rounded-full border-2 border-(--color-accent) border-t-transparent animate-spin" />
-          <span className="text-xs text-(--color-fg-muted)">Opening terminal…</span>
+          <span className="text-xs text-(--color-fg-muted)">
+            Opening terminal…
+          </span>
         </div>
       )}
 

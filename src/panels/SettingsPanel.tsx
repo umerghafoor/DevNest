@@ -37,7 +37,8 @@ export function getGithubClientId(): string {
   } catch {
     // ignore
   }
-  const baked = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined) ?? "";
+  const baked =
+    (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined) ?? "";
   return baked.trim();
 }
 
@@ -51,10 +52,16 @@ export function SettingsPanel() {
   return (
     <div className="fade-up flex h-full flex-col overflow-hidden">
       <div className="flex shrink-0 gap-1 border-b border-(--color-border) bg-(--color-surface) px-3 py-2">
-        <TabButton active={tab === "appearance"} onClick={() => setTab("appearance")}>
+        <TabButton
+          active={tab === "appearance"}
+          onClick={() => setTab("appearance")}
+        >
           Appearance
         </TabButton>
-        <TabButton active={tab === "shortcuts"} onClick={() => setTab("shortcuts")}>
+        <TabButton
+          active={tab === "shortcuts"}
+          onClick={() => setTab("shortcuts")}
+        >
           Keyboard
         </TabButton>
         <TabButton
@@ -441,7 +448,9 @@ function IntegrationsTab() {
         <div className="mt-3 flex gap-2">
           <input
             className="input"
-            placeholder={GITHUB_CLIENT_ID_HAS_DEFAULT ? "(using default)" : "Iv1.abc123…"}
+            placeholder={
+              GITHUB_CLIENT_ID_HAS_DEFAULT ? "(using default)" : "Iv1.abc123…"
+            }
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
             spellCheck={false}

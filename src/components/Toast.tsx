@@ -38,7 +38,8 @@ export const toast = {
 
 const kindStyles: Record<ToastKind, string> = {
   info: "border-(--color-border) bg-(--color-surface) text-(--color-fg)",
-  success: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400",
+  success:
+    "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400",
   error: "border-(--color-error)/30 bg-(--color-error)/10 text-(--color-error)",
   warn: "border-(--color-warn)/30 bg-(--color-warn)/10 text-(--color-warn)",
 };
@@ -50,7 +51,13 @@ const kindIcon: Record<ToastKind, string> = {
   warn: "⚠",
 };
 
-function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void }) {
+function ToastItem({
+  toast: t,
+  onRemove,
+}: {
+  toast: Toast;
+  onRemove: () => void;
+}) {
   const [visible, setVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 

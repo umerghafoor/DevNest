@@ -237,7 +237,11 @@ export function MetricsPanel({ deviceId }: Props) {
                 : undefined
             }
           >
-            <Sparkline data={memHistory.current} max={100} key={`mem-${tick}`} />
+            <Sparkline
+              data={memHistory.current}
+              max={100}
+              key={`mem-${tick}`}
+            />
           </Card>
           <Card
             title="Swap"
@@ -579,7 +583,12 @@ function CoreCard({
         </span>
       </div>
       <div className="mt-1 h-8">
-        <Sparkline data={history} max={100} stroke={color} key={`c${core}-${tick}`} />
+        <Sparkline
+          data={history}
+          max={100}
+          stroke={color}
+          key={`c${core}-${tick}`}
+        />
       </div>
     </div>
   );
@@ -689,4 +698,3 @@ function formatBytesPerSec(bps: number): string {
   if (bps < 1024 * 1024 * 1024) return `${(bps / 1024 / 1024).toFixed(2)} MB/s`;
   return `${(bps / 1024 / 1024 / 1024).toFixed(2)} GB/s`;
 }
-

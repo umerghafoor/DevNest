@@ -61,10 +61,9 @@ export function NgrokPanel() {
   };
 
   const stop = async (t: NgrokTunnel) => {
-    const ok = await confirm(
-      `Stop tunnel ${t.proto}://:${t.port}?`,
-      { title: "Stop tunnel" },
-    );
+    const ok = await confirm(`Stop tunnel ${t.proto}://:${t.port}?`, {
+      title: "Stop tunnel",
+    });
     if (!ok) return;
     try {
       await api.ngrokStop(t.id);
@@ -103,7 +102,9 @@ export function NgrokPanel() {
             ngrok.com/download
           </button>{" "}
           and run{" "}
-          <code className="font-mono">ngrok config add-authtoken &lt;token&gt;</code>{" "}
+          <code className="font-mono">
+            ngrok config add-authtoken &lt;token&gt;
+          </code>{" "}
           once.
         </div>
       )}
@@ -204,7 +205,10 @@ function TunnelRow({
             )}
           </div>
           {tunnel.error && (
-            <div className="mt-1 truncate font-mono text-[11px] text-(--color-error)" title={tunnel.error}>
+            <div
+              className="mt-1 truncate font-mono text-[11px] text-(--color-error)"
+              title={tunnel.error}
+            >
               {tunnel.error}
             </div>
           )}

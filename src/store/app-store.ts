@@ -315,7 +315,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const existing = new Set(s.workspaces.map((w) => w.name));
       let name = randomWorkspaceName();
-      for (let i = 0; i < 10 && existing.has(name); i++) name = randomWorkspaceName();
+      for (let i = 0; i < 10 && existing.has(name); i++)
+        name = randomWorkspaceName();
       const ws = defaultWorkspace(name);
       return { workspaces: [...s.workspaces, ws], activeWorkspaceId: ws.id };
     }),
@@ -422,10 +423,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 let lastWorkspaces = useAppStore.getState().workspaces;
 let lastActiveId = useAppStore.getState().activeWorkspaceId;
 useAppStore.subscribe((s) => {
-  if (
-    s.workspaces !== lastWorkspaces ||
-    s.activeWorkspaceId !== lastActiveId
-  ) {
+  if (s.workspaces !== lastWorkspaces || s.activeWorkspaceId !== lastActiveId) {
     lastWorkspaces = s.workspaces;
     lastActiveId = s.activeWorkspaceId;
     persistWorkspaces({

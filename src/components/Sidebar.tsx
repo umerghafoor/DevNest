@@ -68,21 +68,24 @@ export function Sidebar() {
     if (statuses[id] === "connected" || statuses[id] === "connecting") return;
     setStatus(id, "connecting");
     // Fire and forget — UI stays fully interactive while connecting
-    api.connectDevice(id).then(() => {
-      setStatus(id, "connected");
-      toast.success(`Connected to ${dev.name}`);
-    }).catch((e) => {
-      setStatus(id, "error");
-      toast.error(`Connection failed: ${errorMessage(e)}`);
-    });
+    api
+      .connectDevice(id)
+      .then(() => {
+        setStatus(id, "connected");
+        toast.success(`Connected to ${dev.name}`);
+      })
+      .catch((e) => {
+        setStatus(id, "error");
+        toast.error(`Connection failed: ${errorMessage(e)}`);
+      });
   };
 
   const onDelete = async (id: string) => {
     const dev = devices.find((d) => d.id === id);
-    const ok = await confirm(
-      `Remove "${dev?.name ?? id}" from DevNest?`,
-      { title: "Delete device", destructive: true },
-    );
+    const ok = await confirm(`Remove "${dev?.name ?? id}" from DevNest?`, {
+      title: "Delete device",
+      destructive: true,
+    });
     if (!ok) return;
     try {
       await api.deleteDevice(id);
@@ -97,7 +100,9 @@ export function Sidebar() {
     try {
       const updated = await api.setUseSudo(device.id, !device.useSudo);
       upsertDevice(updated);
-      toast.info(`sudo ${updated.useSudo ? "enabled" : "disabled"} for ${device.name}`);
+      toast.info(
+        `sudo ${updated.useSudo ? "enabled" : "disabled"} for ${device.name}`,
+      );
     } catch (e) {
       toast.error(`Could not toggle sudo: ${errorMessage(e)}`);
     }
@@ -123,7 +128,10 @@ export function Sidebar() {
           {/* Items that fade out when collapsed */}
           <div
             className="flex flex-1 items-center gap-1 overflow-hidden transition-opacity duration-150"
-            style={{ opacity: collapsed ? 0 : 1, pointerEvents: collapsed ? "none" : "auto" }}
+            style={{
+              opacity: collapsed ? 0 : 1,
+              pointerEvents: collapsed ? "none" : "auto",
+            }}
           >
             <div className="flex-1" />
             <button
@@ -180,10 +188,10 @@ export function Sidebar() {
                     <div
                       className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm
                         transition-colors hover:bg-(--color-surface-2) ${
-                        active
-                          ? "bg-(--color-surface-2) text-(--color-fg)"
-                          : "text-(--color-fg-muted)"
-                      }`}
+                          active
+                            ? "bg-(--color-surface-2) text-(--color-fg)"
+                            : "text-(--color-fg-muted)"
+                        }`}
                     >
                       <button
                         onClick={() => void onSelect(d.id)}
@@ -216,7 +224,9 @@ export function Sidebar() {
                         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
                           <button
                             onClick={() => void onToggleSudo(d)}
-                            aria-label={d.useSudo ? "Disable sudo" : "Enable sudo"}
+                            aria-label={
+                              d.useSudo ? "Disable sudo" : "Enable sudo"
+                            }
                             title={d.useSudo ? "Disable sudo" : "Enable sudo"}
                             className={`rounded px-1 text-[10px] hover:bg-(--color-bg) transition-colors ${
                               d.useSudo ? "text-(--color-warn)" : ""

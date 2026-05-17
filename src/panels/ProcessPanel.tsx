@@ -171,7 +171,9 @@ export function ProcessPanel({ deviceId }: Props) {
       </div>
 
       {error && (
-        <div className="px-4 py-2 text-xs text-(--color-error) fade-up">{error}</div>
+        <div className="px-4 py-2 text-xs text-(--color-error) fade-up">
+          {error}
+        </div>
       )}
 
       {/* Table */}

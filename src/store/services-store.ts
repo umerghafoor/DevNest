@@ -53,7 +53,9 @@ export const useServicesStore = create<ServicesState>((set) => ({
     }),
   update: (id, patch) =>
     set((s) => {
-      const next = s.services.map((x) => (x.id === id ? { ...x, ...patch } : x));
+      const next = s.services.map((x) =>
+        x.id === id ? { ...x, ...patch } : x,
+      );
       persist(next);
       return { services: next };
     }),
@@ -70,7 +72,8 @@ export const useServicesStore = create<ServicesState>((set) => ({
           ? {
               ...x,
               status,
-              lastStartedAt: status === "running" ? Date.now() : x.lastStartedAt,
+              lastStartedAt:
+                status === "running" ? Date.now() : x.lastStartedAt,
             }
           : x,
       );

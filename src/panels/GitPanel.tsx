@@ -242,8 +242,8 @@ function LocalFoldersSection({
       </div>
       {folders.length === 0 ? (
         <div className="rounded-lg border border-dashed border-(--color-border) bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">
-          No local repositories bookmarked. Click &quot;Open folder…&quot; to add
-          one.
+          No local repositories bookmarked. Click &quot;Open folder…&quot; to
+          add one.
         </div>
       ) : (
         <ul className="space-y-2">

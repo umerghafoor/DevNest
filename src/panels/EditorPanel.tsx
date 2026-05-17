@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import {
+  open as openDialog,
+  save as saveDialog,
+} from "@tauri-apps/plugin-dialog";
 import { api, errorMessage } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
@@ -128,7 +131,8 @@ export function EditorPanel() {
       const target = e.currentTarget;
       const start = target.selectionStart;
       const end = target.selectionEnd;
-      const next = file.content.slice(0, start) + "  " + file.content.slice(end);
+      const next =
+        file.content.slice(0, start) + "  " + file.content.slice(end);
       setFile((f) => ({ ...f, content: next, dirty: true }));
       requestAnimationFrame(() => {
         target.selectionStart = target.selectionEnd = start + 2;

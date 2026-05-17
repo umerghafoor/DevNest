@@ -1,12 +1,14 @@
-export function Skeleton({
-  className = "",
-}: {
-  className?: string;
-}) {
+export function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`skeleton ${className}`} />;
 }
 
-export function SkeletonTable({ rows = 6, cols = 5 }: { rows?: number; cols?: number }) {
+export function SkeletonTable({
+  rows = 6,
+  cols = 5,
+}: {
+  rows?: number;
+  cols?: number;
+}) {
   return (
     <div className="flex-1 overflow-hidden">
       <div className="px-3 py-2 space-y-0">
