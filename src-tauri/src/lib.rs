@@ -8,6 +8,7 @@ mod github;
 mod local_fs;
 mod log_stream;
 mod metrics;
+mod ngrok;
 mod secrets;
 mod sftp;
 mod ssh;
@@ -134,8 +135,16 @@ pub fn run() {
                 pool: ssh::SessionPool::new(),
                 terminals: terminal::TerminalPool::new(),
                 log_streams: log_stream::LogStreamPool::new(),
+                ngrok: ngrok::NgrokPool::new(),
             });
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if let Some(state) = window.try_state::<AppState>() {
+                    state.ngrok.shutdown_all();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             commands::ping,
@@ -185,6 +194,10 @@ pub fn run() {
             github::github_list_repos,
             local_fs::fs_read_text,
             local_fs::fs_write_text,
+            ngrok::ngrok_start,
+            ngrok::ngrok_stop,
+            ngrok::ngrok_list,
+            ngrok::ngrok_available,
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");

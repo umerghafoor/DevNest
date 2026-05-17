@@ -300,7 +300,7 @@ pub fn git_show(path: String, hash: String) -> AppResult<GitCommitDetail> {
         author_email: parts[2].to_string(),
         timestamp: parts[3].trim().parse::<i64>().unwrap_or(0),
         subject: parts[4].to_string(),
-        body: parts[6].trim_end_matches(|c: char| c == '\n' || c == '\r').to_string(),
+        body: parts[6].trim_end_matches(['\n', '\r']).to_string(),
         parents,
         files,
     })

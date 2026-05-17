@@ -1,75 +1,86 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { api, errorMessage, type NgrokTunnel } from "../lib/api";
 import { toast } from "../components/Toast";
-
-interface Tunnel {
-  id: string;
-  port: string;
-  proto: "http" | "tcp";
-  status: "inactive" | "active";
-  url: string | null;
-}
-
-const STORAGE_KEY = "devnest.ngrok";
-
-function readStored(): Tunnel[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as Tunnel[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function persist(t: Tunnel[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(t));
-}
+import { confirm } from "../components/ConfirmDialog";
 
 export function NgrokPanel() {
-  const [tunnels, setTunnels] = useState<Tunnel[]>(readStored);
+  const [tunnels, setTunnels] = useState<NgrokTunnel[]>([]);
+  const [available, setAvailable] = useState<boolean | null>(null);
   const [port, setPort] = useState("");
   const [proto, setProto] = useState<"http" | "tcp">("http");
+  const [starting, setStarting] = useState(false);
 
-  const add = () => {
-    if (!port.trim()) return;
-    const next: Tunnel[] = [
-      ...tunnels,
-      {
-        id: Math.random().toString(36).slice(2, 10),
-        port: port.trim(),
-        proto,
-        status: "inactive",
-        url: null,
-      },
-    ];
-    setTunnels(next);
-    persist(next);
-    setPort("");
-    toast.info(`Tunnel for :${port} added (offline — wire up backend to start)`);
+  // Initial probe + state.
+  useEffect(() => {
+    void api
+      .ngrokAvailable()
+      .then(setAvailable)
+      .catch(() => setAvailable(false));
+    void api
+      .ngrokList()
+      .then(setTunnels)
+      .catch((e) => toast.error(`ngrok list: ${errorMessage(e)}`));
+  }, []);
+
+  // Live updates from the Rust side when a tunnel acquires a URL or errors.
+  useEffect(() => {
+    const unlisten = listen<NgrokTunnel>("ngrok:update", (e) => {
+      const updated = e.payload;
+      setTunnels((prev) => {
+        const idx = prev.findIndex((t) => t.id === updated.id);
+        if (idx === -1) return [...prev, updated];
+        const next = [...prev];
+        next[idx] = updated;
+        return next;
+      });
+    });
+    return () => {
+      void unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  const start = async () => {
+    const portNum = parseInt(port.trim(), 10);
+    if (!Number.isFinite(portNum) || portNum < 1 || portNum > 65535) {
+      toast.error("Enter a valid port (1–65535).");
+      return;
+    }
+    setStarting(true);
+    try {
+      const t = await api.ngrokStart(portNum, proto);
+      setTunnels((prev) => [...prev, t]);
+      setPort("");
+      toast.info(`Starting ${proto}://:${portNum}…`);
+    } catch (e) {
+      toast.error(`Start failed: ${errorMessage(e)}`);
+    } finally {
+      setStarting(false);
+    }
   };
 
-  const toggle = (id: string) => {
-    const next = tunnels.map((t) =>
-      t.id === id
-        ? {
-            ...t,
-            status: t.status === "active" ? "inactive" : "active",
-            url:
-              t.status === "active"
-                ? null
-                : `https://example-${Math.random().toString(36).slice(2, 7)}.ngrok.app`,
-          }
-        : t,
-    ) as Tunnel[];
-    setTunnels(next);
-    persist(next);
+  const stop = async (t: NgrokTunnel) => {
+    const ok = await confirm(
+      `Stop tunnel ${t.proto}://:${t.port}?`,
+      { title: "Stop tunnel" },
+    );
+    if (!ok) return;
+    try {
+      await api.ngrokStop(t.id);
+      setTunnels((prev) => prev.filter((x) => x.id !== t.id));
+    } catch (e) {
+      toast.error(`Stop failed: ${errorMessage(e)}`);
+    }
   };
 
-  const remove = (id: string) => {
-    const next = tunnels.filter((t) => t.id !== id);
-    setTunnels(next);
-    persist(next);
+  const copyUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success("URL copied");
+    } catch {
+      toast.error("Could not copy");
+    }
   };
 
   return (
@@ -77,79 +88,143 @@ export function NgrokPanel() {
       <div className="shrink-0 border-b border-(--color-border) bg-(--color-surface) px-4 py-2">
         <h2 className="text-sm font-semibold">Ngrok tunnels</h2>
         <p className="text-xs text-(--color-fg-muted)">
-          Scaffold only. URLs shown are placeholders until the ngrok backend
-          command is wired up.
+          Expose a local port over a public URL. Tunnels run as child processes
+          and stop when DevNest closes.
         </p>
       </div>
 
+      {available === false && (
+        <div className="shrink-0 border-b border-(--color-border) bg-(--color-warn)/10 px-4 py-2 text-xs text-(--color-warn)">
+          <strong>ngrok not found.</strong> Install it from{" "}
+          <button
+            onClick={() => void openUrl("https://ngrok.com/download")}
+            className="underline hover:text-(--color-fg)"
+          >
+            ngrok.com/download
+          </button>{" "}
+          and run{" "}
+          <code className="font-mono">ngrok config add-authtoken &lt;token&gt;</code>{" "}
+          once.
+        </div>
+      )}
+
       <div className="flex shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-bg) px-4 py-2">
         <input
-          className="input max-w-[140px]"
+          type="number"
+          className="input max-w-[160px]"
           placeholder="port (e.g. 3000)"
           value={port}
           onChange={(e) => setPort(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && void start()}
+          disabled={available === false}
         />
         <select
           value={proto}
           onChange={(e) => setProto(e.target.value as "http" | "tcp")}
-          className="rounded-md border border-(--color-border) bg-(--color-bg) px-2 py-1 text-xs"
+          disabled={available === false}
+          className="rounded-md border border-(--color-border) bg-(--color-bg) px-2 py-1 text-xs disabled:opacity-50"
         >
           <option value="http">http</option>
           <option value="tcp">tcp</option>
         </select>
         <button
-          onClick={add}
-          className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
+          onClick={() => void start()}
+          disabled={available === false || starting}
+          className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
         >
-          Add tunnel
+          {starting ? "Starting…" : "Start tunnel"}
         </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {tunnels.length === 0 ? (
           <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
-            No tunnels defined.
+            No tunnels running.
           </div>
         ) : (
           <ul className="space-y-2">
             {tunnels.map((t) => (
-              <li
+              <TunnelRow
                 key={t.id}
-                className="row-animate flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2"
-              >
-                <span
-                  className={`h-2 w-2 rounded-full ${
-                    t.status === "active"
-                      ? "bg-(--color-online)"
-                      : "bg-(--color-offline)"
-                  }`}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="font-mono text-sm">
-                    {t.proto}://:{t.port}
-                  </div>
-                  <div className="truncate font-mono text-[11px] text-(--color-fg-muted)">
-                    {t.url ?? "—"}
-                  </div>
-                </div>
-                <button
-                  onClick={() => toggle(t.id)}
-                  className="rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
-                >
-                  {t.status === "active" ? "Stop" : "Start"}
-                </button>
-                <button
-                  onClick={() => remove(t.id)}
-                  className="rounded px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error)"
-                  aria-label="Remove"
-                >
-                  ×
-                </button>
-              </li>
+                tunnel={t}
+                onStop={() => void stop(t)}
+                onCopy={() => t.url && void copyUrl(t.url)}
+                onOpen={() => t.url && void openUrl(t.url)}
+              />
             ))}
           </ul>
         )}
       </div>
     </div>
+  );
+}
+
+function TunnelRow({
+  tunnel,
+  onStop,
+  onCopy,
+  onOpen,
+}: {
+  tunnel: NgrokTunnel;
+  onStop: () => void;
+  onCopy: () => void;
+  onOpen: () => void;
+}) {
+  const dot =
+    tunnel.status === "active"
+      ? "bg-(--color-online)"
+      : tunnel.status === "error"
+        ? "bg-(--color-error)"
+        : tunnel.status === "starting"
+          ? "bg-(--color-warn) animate-pulse"
+          : "bg-(--color-offline)";
+
+  return (
+    <li className="row-animate rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2">
+      <div className="flex items-center gap-3">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 font-mono text-sm">
+            <span>
+              {tunnel.proto}://:{tunnel.port}
+            </span>
+            <span className="text-(--color-fg-muted)">→</span>
+            {tunnel.url ? (
+              <button
+                onClick={onOpen}
+                className="truncate text-(--color-accent) hover:underline"
+                title="Open in browser"
+              >
+                {tunnel.url}
+              </button>
+            ) : (
+              <span className="text-(--color-fg-muted)">
+                {tunnel.status === "starting" ? "starting…" : "—"}
+              </span>
+            )}
+          </div>
+          {tunnel.error && (
+            <div className="mt-1 truncate font-mono text-[11px] text-(--color-error)" title={tunnel.error}>
+              {tunnel.error}
+            </div>
+          )}
+        </div>
+        {tunnel.url && (
+          <button
+            onClick={onCopy}
+            className="rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
+            title="Copy URL"
+          >
+            Copy
+          </button>
+        )}
+        <button
+          onClick={onStop}
+          className="rounded border border-(--color-border) px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error)"
+        >
+          Stop
+        </button>
+      </div>
+    </li>
   );
 }

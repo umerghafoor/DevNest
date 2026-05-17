@@ -181,7 +181,24 @@ export const api = {
   githubSignOut: () => invoke<void>("github_sign_out"),
   githubUser: () => invoke<GhUser>("github_user"),
   githubListRepos: () => invoke<GhRepo[]>("github_list_repos"),
+
+  ngrokAvailable: () => invoke<boolean>("ngrok_available"),
+  ngrokList: () => invoke<NgrokTunnel[]>("ngrok_list"),
+  ngrokStart: (port: number, proto: "http" | "tcp") =>
+    invoke<NgrokTunnel>("ngrok_start", { port, proto }),
+  ngrokStop: (id: string) => invoke<void>("ngrok_stop", { id }),
 };
+
+export type NgrokTunnelStatus = "starting" | "active" | "stopped" | "error";
+
+export interface NgrokTunnel {
+  id: string;
+  port: number;
+  proto: string;
+  status: NgrokTunnelStatus;
+  url: string | null;
+  error: string | null;
+}
 
 export interface DeviceCodeResponse {
   device_code: string;
