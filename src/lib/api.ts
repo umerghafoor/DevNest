@@ -169,6 +169,10 @@ export const api = {
   gitDiff: (path: string, hash: string, filePath: string) =>
     invoke<string>("git_diff", { path, hash, filePath }),
 
+  fsReadText: (path: string) => invoke<string>("fs_read_text", { path }),
+  fsWriteText: (path: string, content: string) =>
+    invoke<void>("fs_write_text", { path, content }),
+
   githubDeviceStart: (clientId: string) =>
     invoke<DeviceCodeResponse>("github_device_start", { clientId }),
   githubDevicePoll: (clientId: string, deviceCode: string) =>

@@ -533,22 +533,39 @@ function SignInCard({ onSignedIn }: { onSignedIn: () => void }) {
       ) : (
         <>
           <div className="text-sm font-medium">
-            Open GitHub and enter this code:
+            Your browser is opening GitHub. Enter this code there:
           </div>
-          <div className="my-3 select-all text-center font-mono text-2xl tracking-widest text-(--color-accent)">
-            {state.userCode}
+          <div className="my-3 flex items-center justify-center gap-2">
+            <code className="select-all rounded bg-(--color-bg) px-3 py-1.5 font-mono text-2xl tracking-widest text-(--color-accent)">
+              {state.userCode}
+            </code>
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(state.userCode);
+                  toast.success("Code copied");
+                } catch {
+                  toast.error("Could not copy");
+                }
+              }}
+              className="rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
+              title="Copy code"
+            >
+              Copy
+            </button>
           </div>
           <div className="text-xs text-(--color-fg-muted)">
-            Verification URL:{" "}
+            Browser didn&apos;t open?{" "}
             <button
               onClick={() => void openUrl(state.verificationUri)}
               className="text-(--color-accent) hover:underline"
             >
-              {state.verificationUri}
+              Open {state.verificationUri}
             </button>
           </div>
-          <div className="mt-2 text-xs text-(--color-fg-muted)">
-            Waiting for authorization… (polls every {state.interval}s)
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-(--color-fg-muted)">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-(--color-accent)" />
+            Waiting for authorization…
           </div>
           <button
             onClick={() => setState(null)}

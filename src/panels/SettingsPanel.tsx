@@ -23,13 +23,27 @@ type Tab = "appearance" | "shortcuts" | "integrations" | "about";
 
 const GITHUB_CLIENT_ID_KEY = "devnest.github.clientId";
 
+/**
+ * Resolution order:
+ * 1. User-set value in localStorage (Settings → Integrations).
+ * 2. Build-time default from VITE_GITHUB_CLIENT_ID (set in .env to ship a
+ *    baked-in OAuth app, like VS Code does).
+ * 3. Empty string — UI prompts the user to configure.
+ */
 export function getGithubClientId(): string {
   try {
-    return localStorage.getItem(GITHUB_CLIENT_ID_KEY) ?? "";
+    const stored = localStorage.getItem(GITHUB_CLIENT_ID_KEY);
+    if (stored && stored.trim()) return stored.trim();
   } catch {
-    return "";
+    // ignore
   }
+  const baked = (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined) ?? "";
+  return baked.trim();
 }
+
+export const GITHUB_CLIENT_ID_HAS_DEFAULT = Boolean(
+  (import.meta.env.VITE_GITHUB_CLIENT_ID as string | undefined)?.trim(),
+);
 
 export function SettingsPanel() {
   const [tab, setTab] = useState<Tab>("appearance");
@@ -394,13 +408,22 @@ function ShortcutsTab() {
 }
 
 function IntegrationsTab() {
-  const [clientId, setClientId] = useState(() => getGithubClientId());
+  const stored =
+    (typeof localStorage !== "undefined" &&
+      localStorage.getItem(GITHUB_CLIENT_ID_KEY)) ||
+    "";
+  const [clientId, setClientId] = useState(stored);
   const [saved, setSaved] = useState(false);
 
   const save = () => {
     localStorage.setItem(GITHUB_CLIENT_ID_KEY, clientId.trim());
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+  };
+
+  const clear = () => {
+    localStorage.removeItem(GITHUB_CLIENT_ID_KEY);
+    setClientId("");
   };
 
   return (
@@ -411,15 +434,14 @@ function IntegrationsTab() {
           OAuth Client ID
         </div>
         <p className="mt-1 text-xs text-(--color-fg-muted)">
-          Register an OAuth App at{" "}
-          <span className="font-mono">github.com/settings/developers</span> and
-          enable &quot;Device Flow&quot;. Paste the Client ID here. Tokens are
-          stored in your OS keychain, never in plaintext.
+          {GITHUB_CLIENT_ID_HAS_DEFAULT
+            ? "A default Client ID is built into this build. You can override it here for custom OAuth Apps. Tokens are stored in your OS keychain, never in plaintext."
+            : "Register an OAuth App at github.com/settings/developers (any GitHub account works) and enable “Device Flow”. Paste the Client ID here — you only do this once. Tokens are stored in your OS keychain."}
         </p>
         <div className="mt-3 flex gap-2">
           <input
             className="input"
-            placeholder="Iv1.abc123…"
+            placeholder={GITHUB_CLIENT_ID_HAS_DEFAULT ? "(using default)" : "Iv1.abc123…"}
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
             spellCheck={false}
@@ -430,6 +452,14 @@ function IntegrationsTab() {
           >
             {saved ? "Saved" : "Save"}
           </button>
+          {stored && (
+            <button
+              onClick={clear}
+              className="shrink-0 rounded border border-(--color-border) px-3 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+            >
+              Clear
+            </button>
+          )}
         </div>
       </div>
     </div>
