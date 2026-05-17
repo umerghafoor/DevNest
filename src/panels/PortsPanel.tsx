@@ -13,37 +13,63 @@ interface ListeningPort {
   process: string;
 }
 
-// Parse `ss -tlnp` output
-// Netid  State   Recv-Q Send-Q  Local Address:Port   Peer Address:Port  Process
+/**
+ * Parse `ss -tulnp` output. The column count varies across versions:
+ *   - With `-tu`: `Netid State Recv-Q Send-Q Local Peer Process` (7)
+ *   - With `-t` only: `State Recv-Q Send-Q Local Peer Process` (6)
+ * Rather than indexing by position, find the cell whose text matches an
+ * `addr:port` pattern. This is robust to extra/missing columns.
+ */
 function parseSs(output: string): ListeningPort[] {
-  const lines = output.split("\n").slice(1); // skip header
   const results: ListeningPort[] = [];
+  // Match IPv4/IPv6/wildcard followed by `:<port>`. Examples:
+  //   127.0.0.1:631   0.0.0.0:22   [::]:80   [fd7a::1]:34599   *:1716   127.0.0.53%lo:53
+  const addrPortRe = /^(?:\[[^\]]+\]|[^\s:]+):(\d+)$/;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+  for (const rawLine of output.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // Skip header rows from any column ordering.
+    if (/^(Netid|State|Proto|Local Address)\b/i.test(line)) continue;
 
-    // columns: Netid State Recv-Q Send-Q Local:Port Peer:Port [Process]
-    const cols = trimmed.split(/\s+/);
-    if (cols.length < 5) continue;
+    const cols = line.split(/\s+/);
 
-    const proto = cols[0]; // tcp / tcp6 / udp
-    const localFull = cols[4] ?? ""; // e.g. 0.0.0.0:22 or [::]:80
+    // Find the proto cell (tcp / udp / tcp6 / udp6 / sctp...) if present.
+    const proto = cols.find((c) => /^(tcp|udp|sctp)6?$/i.test(c)) ?? "tcp";
+
+    // The Local address is the first `addr:port` cell. Peer (if "*:*" /
+    // "0.0.0.0:*") is filtered out by the digit-port requirement.
+    let localFull: string | null = null;
+    for (const c of cols) {
+      if (addrPortRe.test(c)) {
+        localFull = c;
+        break;
+      }
+    }
+    if (!localFull) continue;
+
     const portMatch = localFull.match(/:(\d+)$/);
     if (!portMatch) continue;
-
     const port = portMatch[1];
     const localAddr = localFull.slice(0, localFull.lastIndexOf(":"));
 
-    // Process column looks like: users:(("sshd",pid=1234,fd=3))
-    const procCol = cols.slice(6).join(" ");
-    const procMatch = procCol.match(/"([^"]+)"/);
+    // Process info, when present, looks like: users:(("sshd",pid=1234,fd=3))
+    const procMatch = line.match(/users:\(\(\s*"([^"]+)"/);
     const process = procMatch ? procMatch[1] : "";
 
     results.push({ proto, localAddr, port, process });
   }
 
-  return results.sort((a, b) => Number(a.port) - Number(b.port));
+  // Deduplicate (some rows repeat under tcp + tcp6 with the same local).
+  const seen = new Set<string>();
+  const deduped = results.filter((r) => {
+    const k = `${r.proto}|${r.localAddr}|${r.port}|${r.process}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  return deduped.sort((a, b) => Number(a.port) - Number(b.port));
 }
 
 // Parse simple nmap/portgrep-style lines like: "631/tcp  open  ipp"
@@ -83,11 +109,14 @@ export function PortsPanel({ deviceId }: Props) {
   const fetch = useCallback(async () => {
     try {
       // Try ss first; fall back to netstat
+      // Use -tulnp: tcp + udp + listening + numeric + processes. -p only
+      // populates the process column when run as root; without sudo we
+      // still get every listening socket, just without process names.
       const out = await invoke<{ stdout: string; exitCode: number }>(
         "run_remote_command",
         {
           deviceId,
-          cmd: "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null",
+          cmd: "ss -tulnp 2>/dev/null || netstat -tulnp 2>/dev/null",
         },
       );
       const parsed = parseSs(out.stdout);
@@ -137,7 +166,7 @@ export function PortsPanel({ deviceId }: Props) {
           Refresh
         </button>
         <span className="ml-auto text-xs text-(--color-fg-muted)">
-          {loading ? "Loading…" : `${displayed.length} listening ports`}
+          {loading ? "Loading…" : `${displayed.length} open ports`}
         </span>
       </div>
 
@@ -203,7 +232,9 @@ export function PortsPanel({ deviceId }: Props) {
         </table>
         {displayed.length === 0 && !loading && !error && (
           <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted)">
-            No listening ports found.
+            No open ports found. If you expect entries here, the command may
+            need sudo for process names — but the list itself shouldn&apos;t
+            require it.
           </div>
         )}
       </div>
