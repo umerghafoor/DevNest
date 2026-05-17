@@ -144,7 +144,11 @@ pub fn docker_logs(
     docker::logs(&state.pool, &device, &container_id, tail.unwrap_or(200))
 }
 
-#[tauri::command]
+// Marked `async` so Tauri runs them on the async runtime instead of the main
+// (UI) thread. The functions themselves are sync — `async` here just opts
+// them out of main-thread execution so a slow shell-out (e.g. dmidecode)
+// never freezes the UI.
+#[tauri::command(async)]
 pub fn metrics_snapshot(
     state: State<'_, AppState>,
     device_id: String,
@@ -153,13 +157,13 @@ pub fn metrics_snapshot(
     metrics::snapshot(&state.pool, &device)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cpu_info(state: State<'_, AppState>, device_id: String) -> AppResult<CpuInfo> {
     let device = require_device(&state, &device_id)?;
     metrics::cpu_info(&state.pool, &device)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn dimm_info(state: State<'_, AppState>, device_id: String) -> AppResult<Vec<DimmModule>> {
     let device = require_device(&state, &device_id)?;
     metrics::dimms(&state.pool, &device)

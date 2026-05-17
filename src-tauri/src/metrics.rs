@@ -159,7 +159,9 @@ for f in /sys/class/thermal/thermal_zone*; do
   [ -n "$t" ] && [ -n "$m" ] && echo "$t $m"
 done
 "#;
-    let out = ssh::run_command(pool, device, cmd)?;
+    // /proc reads don't need sudo — ignore the device's sudo flag so polling
+    // doesn't repeatedly trigger SudoPasswordRequired.
+    let out = ssh::run_command_no_sudo(pool, device, cmd)?;
     if out.exit_code != 0 {
         return Err(AppError::Ssh(format!(
             "metrics exit {}: {}",
@@ -221,7 +223,7 @@ echo '##CPUINFO##'; cat /proc/cpuinfo
 echo '##GOV##'; cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor 2>/dev/null
 echo '##ARCH##'; uname -m
 "#;
-    let out = ssh::run_command(pool, device, cmd)?;
+    let out = ssh::run_command_no_sudo(pool, device, cmd)?;
     if out.exit_code != 0 {
         return Err(AppError::Ssh(format!(
             "cpu_info exit {}: {}",

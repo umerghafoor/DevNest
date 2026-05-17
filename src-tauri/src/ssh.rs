@@ -189,6 +189,30 @@ impl SessionPool {
 /// `sudo -S -p '' sh -c '<cmd>'` and the sudo password is read from the
 /// keychain and piped to stdin. If no sudo password is stored, this returns
 /// `AppError::SudoPasswordRequired` so the frontend can prompt and retry.
+/// Like [`run_command`], but ignores `device.use_sudo`. Used by read-only
+/// commands that read /proc or other public paths and never need sudo, so
+/// turning on the device's sudo flag doesn't break them.
+pub fn run_command_no_sudo(
+    pool: &SessionPool,
+    device: &Device,
+    cmd: &str,
+) -> AppResult<CommandOutput> {
+    let raw = if let Some(prefix) = device.sudo_prefix.as_deref() {
+        format!("{prefix} {cmd}")
+    } else {
+        cmd.to_string()
+    };
+    if device.is_localhost {
+        run_local(&raw, None)
+    } else {
+        let sess = pool
+            .get(&device.id)
+            .ok_or_else(|| AppError::Ssh("device not connected".into()))?;
+        let mut guard = sess.lock();
+        guard.run_with_stdin(&raw, None)
+    }
+}
+
 pub fn run_command(pool: &SessionPool, device: &Device, cmd: &str) -> AppResult<CommandOutput> {
     let raw = if let Some(prefix) = device.sudo_prefix.as_deref() {
         format!("{prefix} {cmd}")

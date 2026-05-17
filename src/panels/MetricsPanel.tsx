@@ -55,7 +55,9 @@ export function MetricsPanel({ deviceId }: Props) {
 
   const poll = useCallback(async () => {
     try {
-      const s = await withSudo(deviceId, () => api.metricsSnapshot(deviceId));
+      // Metrics read /proc + df — no sudo. Wrapping with withSudo would trigger
+      // the password dialog every poll if the user enabled sudo on the device.
+      const s = await api.metricsSnapshot(deviceId);
 
       // ─ per-core CPU% from deltas ─
       const usage: CoreUsage[] = [];

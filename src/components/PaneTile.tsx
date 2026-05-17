@@ -63,6 +63,92 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   systemd: "systemd",
 };
 
+export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
+  dashboard: "Quick overview of devices and panels",
+  sysinfo: "Browser-side host info",
+  terminal: "Interactive shell session",
+  files: "Browse and edit files",
+  processes: "Top processes by CPU and memory",
+  ports: "Listening TCP / UDP ports",
+  docker: "Containers, images, logs",
+  metrics: "CPU, memory, disk, network",
+  logs: "Tail logs from files or journals",
+  systemd: "Manage systemd unit files",
+  services: "Local service definitions",
+  cron: "Scheduled jobs (crontab)",
+  tailscale: "Tailnet status and routes",
+  ngrok: "Public tunnels to local ports",
+  git: "Local repos + GitHub bookmarks",
+  gitGraph: "Commit graph and diffs",
+  editor: "Edit a text or config file",
+  settings: "Theme, shortcuts, integrations",
+};
+
+export type PanelCategory =
+  | "overview"
+  | "remote"
+  | "containers"
+  | "observability"
+  | "services"
+  | "network"
+  | "code"
+  | "app";
+
+export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
+  dashboard: "overview",
+  sysinfo: "overview",
+  terminal: "remote",
+  files: "remote",
+  processes: "remote",
+  ports: "remote",
+  docker: "containers",
+  metrics: "observability",
+  logs: "observability",
+  systemd: "services",
+  services: "services",
+  cron: "services",
+  tailscale: "network",
+  ngrok: "network",
+  git: "code",
+  gitGraph: "code",
+  editor: "code",
+  settings: "app",
+};
+
+export const CATEGORY_LABELS: Record<PanelCategory, string> = {
+  overview: "Overview",
+  remote: "Remote",
+  containers: "Containers",
+  observability: "Observability",
+  services: "Services",
+  network: "Network",
+  code: "Code",
+  app: "App",
+};
+
+/** Display order — both for category sections and within a category. */
+export const CATEGORY_ORDER: PanelCategory[] = [
+  "overview",
+  "remote",
+  "containers",
+  "observability",
+  "services",
+  "network",
+  "code",
+  "app",
+];
+
+export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
+  overview: ["dashboard", "sysinfo"],
+  remote: ["terminal", "files", "processes", "ports"],
+  containers: ["docker"],
+  observability: ["metrics", "logs"],
+  services: ["systemd", "services", "cron"],
+  network: ["tailscale", "ngrok"],
+  code: ["git", "gitGraph", "editor"],
+  app: ["settings"],
+};
+
 function PanelContent({ pane }: { pane: Pane }) {
   switch (pane.panel) {
     case "docker":
