@@ -201,7 +201,13 @@ function PanelContent({ pane }: { pane: Pane }) {
     case "git":
       return <GitPanel />;
     case "gitGraph":
-      return <GitGraphPanel repoPath={pane.extra?.repoPath} paneId={pane.id} />;
+      return (
+        <GitGraphPanel
+          deviceId={pane.deviceId}
+          repoPath={pane.extra?.repoPath}
+          paneId={pane.id}
+        />
+      );
     case "systemd":
       return <SystemdPanel deviceId={pane.deviceId} />;
     case "http":

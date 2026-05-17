@@ -13,6 +13,7 @@ import { usePaneSettings } from "../store/pane-settings-store";
 interface Props {
   repoPath?: string;
   paneId?: string;
+  deviceId: string;
 }
 
 // ─── Lane assignment ─────────────────────────────────────────────────────────
@@ -124,7 +125,7 @@ function parseRefs(refs: string[]): {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function GitGraphPanel({ repoPath, paneId }: Props) {
+export function GitGraphPanel({ repoPath, paneId, deviceId }: Props) {
   const [paneSettings, updatePaneSettings] = usePaneSettings(paneId, {
     detailCollapsed: false,
   });
@@ -145,9 +146,9 @@ export function GitGraphPanel({ repoPath, paneId }: Props) {
     setError(null);
     try {
       const [c, b, t] = await Promise.all([
-        api.gitLog(repoPath, 500),
-        api.gitBranches(repoPath),
-        api.gitTags(repoPath),
+        api.gitLog(deviceId, repoPath, 500),
+        api.gitBranches(deviceId, repoPath),
+        api.gitTags(deviceId, repoPath),
       ]);
       setCommits(c);
       setBranches(b);
@@ -157,12 +158,12 @@ export function GitGraphPanel({ repoPath, paneId }: Props) {
       setError(errorMessage(e));
       setCommits([]);
     }
-  }, [repoPath, selected]);
+  }, [deviceId, repoPath, selected]);
 
   useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repoPath]);
+  }, [deviceId, repoPath]);
 
   // Load commit detail when selection changes.
   useEffect(() => {
@@ -173,7 +174,7 @@ export function GitGraphPanel({ repoPath, paneId }: Props) {
       return;
     }
     void api
-      .gitShow(repoPath, selected)
+      .gitShow(deviceId, repoPath, selected)
       .then((d) => {
         setDetail(d);
         setDiffFile(d.files[0]?.path ?? null);
@@ -182,7 +183,7 @@ export function GitGraphPanel({ repoPath, paneId }: Props) {
         toast.error(`git show: ${errorMessage(e)}`);
         setDetail(null);
       });
-  }, [repoPath, selected]);
+  }, [deviceId, repoPath, selected]);
 
   // Load file diff when file selection changes.
   useEffect(() => {
@@ -192,10 +193,10 @@ export function GitGraphPanel({ repoPath, paneId }: Props) {
     }
     setDiffText(null);
     void api
-      .gitDiff(repoPath, selected, diffFile)
+      .gitDiff(deviceId, repoPath, selected, diffFile)
       .then(setDiffText)
       .catch((e) => setDiffText(`Could not load diff:\n${errorMessage(e)}`));
-  }, [repoPath, selected, diffFile]);
+  }, [deviceId, repoPath, selected, diffFile]);
 
   const laidOut = useMemo(
     () => (commits ? layoutCommits(commits) : []),

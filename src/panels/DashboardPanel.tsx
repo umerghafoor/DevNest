@@ -21,115 +21,57 @@ function makePane(deviceId: string, panel: PanelKind): Pane {
 export function DashboardPanel({ deviceId }: Props) {
   const devices = useAppStore((s) => s.devices);
   const statuses = useAppStore((s) => s.statuses);
+  const activeDeviceId = useAppStore((s) => s.activeDeviceId);
   const openPane = useAppStore((s) => s.openPane);
   const workspaces = useAppStore((s) => s.workspaces);
   const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
   const ws = workspaces.find((w) => w.id === activeWorkspaceId);
-  const device = devices.find((d) => d.id === deviceId);
-
+  // Prefer the live sidebar selection so newly-opened panes target the device
+  // the user is currently looking at, not the one this dashboard was pinned to.
+  const launchDeviceId = activeDeviceId ?? deviceId;
+  const launchDevice = devices.find((d) => d.id === launchDeviceId);
   const onlineCount = devices.filter(
     (d) => d.isLocalhost || statuses[d.id] === "connected",
   ).length;
 
   return (
-    <div className="fade-up h-full overflow-y-auto p-6">
-      <div className="mx-auto max-w-4xl space-y-6">
-        <header>
-          <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-          <p className="mt-1 text-xs text-(--color-fg-muted)">
-            Quick overview of {device ? device.name : "this workspace"}.
-          </p>
+    <div className="fade-up flex h-full flex-col overflow-y-auto px-5 py-4">
+      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4">
+        {/* Header + inline stats */}
+        <header className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <h1 className="text-base font-semibold tracking-tight">Dashboard</h1>
+          <span className="text-[11px] text-(--color-fg-muted)">
+            opens panels on{" "}
+            <span className="font-medium text-(--color-fg)">
+              {launchDevice?.name ?? "—"}
+            </span>
+          </span>
+          <span className="ml-auto flex items-center gap-3 text-[11px] text-(--color-fg-muted)">
+            <Stat label="devices" value={devices.length} />
+            <Stat label="online" value={onlineCount} />
+            <Stat label="workspace" value={ws?.name ?? "—"} />
+          </span>
         </header>
 
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard label="Devices" value={String(devices.length)} />
-          <StatCard label="Online" value={String(onlineCount)} />
-          <StatCard label="Workspace" value={ws?.name ?? "—"} />
-        </div>
-
-        <section>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
-            Quick launch
-          </h2>
-          <div className="space-y-4">
+        {/* Quick launch — denser, single section */}
+        <section className="flex-1">
+          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-3">
             {CATEGORY_ORDER.map((category) => {
               const panels = PANEL_ORDER_IN_CATEGORY[category];
               if (panels.length === 0) return null;
               return (
-                <div key={category}>
-                  <h3 className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-(--color-fg-muted)">
-                    {CATEGORY_LABELS[category]}
-                  </h3>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {panels.map((kind) => (
-                      <button
-                        key={kind}
-                        onClick={() => openPane(makePane(deviceId, kind))}
-                        title={PANEL_DESCRIPTIONS[kind]}
-                        className="group flex items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2 text-left text-xs transition-colors hover:border-(--color-accent)/50 hover:bg-(--color-surface-2)"
-                      >
-                        <span className="text-(--color-fg-muted) group-hover:text-(--color-accent)">
-                          {PANEL_ICONS[kind]}
-                        </span>
-                        <span className="truncate text-(--color-fg)">
-                          {PANEL_LABELS[kind]}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <PaneRow
+                  key={category}
+                  label={CATEGORY_LABELS[category]}
+                  panels={panels}
+                  onOpen={(kind) => openPane(makePane(launchDeviceId, kind))}
+                />
               );
             })}
           </div>
         </section>
 
-        <section>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
-            Devices
-          </h2>
-          <div className="overflow-hidden rounded-lg border border-(--color-border)">
-            {devices.length === 0 ? (
-              <div className="bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">
-                No devices yet. Add one from the sidebar.
-              </div>
-            ) : (
-              devices.map((d) => {
-                const status = d.isLocalhost
-                  ? "connected"
-                  : (statuses[d.id] ?? "offline");
-                return (
-                  <div
-                    key={d.id}
-                    className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--color-surface) px-4 py-2 text-sm last:border-b-0"
-                  >
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${
-                          status === "connected"
-                            ? "bg-(--color-online)"
-                            : status === "error"
-                              ? "bg-(--color-error)"
-                              : "bg-(--color-offline)"
-                        }`}
-                      />
-                      <span className="truncate text-(--color-fg)">
-                        {d.name}
-                      </span>
-                      <span className="truncate text-xs text-(--color-fg-muted)">
-                        {d.host}
-                      </span>
-                    </div>
-                    <span className="text-xs text-(--color-fg-muted)">
-                      {status}
-                    </span>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        <footer className="pt-4 text-center text-[11px] text-(--color-fg-muted)">
+        <footer className="pt-2 text-center text-[10px] text-(--color-fg-muted)">
           Created by{" "}
           <a
             href="https://github.com/umerghafoor"
@@ -145,15 +87,46 @@ export function DashboardPanel({ deviceId }: Props) {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-(--color-border) bg-(--color-surface) px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-(--color-fg-muted)">
+    <span>
+      <span className="font-medium text-(--color-fg) tabular-nums">{value}</span>{" "}
+      {label}
+    </span>
+  );
+}
+
+function PaneRow({
+  label,
+  panels,
+  onOpen,
+}: {
+  label: string;
+  panels: PanelKind[];
+  onOpen: (kind: PanelKind) => void;
+}) {
+  return (
+    <>
+      <div className="self-center pt-1 text-right text-[10px] font-semibold uppercase tracking-wide text-(--color-fg-muted)">
         {label}
       </div>
-      <div className="mt-1 truncate text-lg font-semibold text-(--color-fg)">
-        {value}
+      <div className="flex flex-wrap gap-1.5">
+        {panels.map((kind) => (
+          <button
+            key={kind}
+            onClick={() => onOpen(kind)}
+            title={PANEL_DESCRIPTIONS[kind]}
+            className="group flex items-center gap-1.5 rounded-md border border-(--color-border) bg-(--color-surface) px-2 py-1 text-[11px] transition-colors hover:border-(--color-accent)/50 hover:bg-(--color-surface-2)"
+          >
+            <span className="text-(--color-fg-muted) group-hover:text-(--color-accent)">
+              {PANEL_ICONS[kind]}
+            </span>
+            <span className="truncate text-(--color-fg)">
+              {PANEL_LABELS[kind]}
+            </span>
+          </button>
+        ))}
       </div>
-    </div>
+    </>
   );
 }

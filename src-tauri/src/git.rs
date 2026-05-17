@@ -2,46 +2,117 @@ use std::path::Path;
 use std::process::Command;
 
 use serde::Serialize;
+use tauri::State;
 
+use crate::devices::{self, Device};
 use crate::error::{AppError, AppResult};
+use crate::ssh;
+use crate::state::AppState;
 
-fn run_git(args: &[&str], cwd: Option<&Path>) -> AppResult<String> {
-    let mut cmd = Command::new("git");
-    cmd.args(args);
-    if let Some(dir) = cwd {
-        cmd.current_dir(dir);
-    }
-    let out = cmd
-        .output()
-        .map_err(|e| AppError::Invalid(format!("git not available: {e}")))?;
-    if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-        return Err(AppError::Invalid(if stderr.is_empty() {
-            format!("git exited with status {}", out.status)
-        } else {
-            stderr
-        }));
-    }
-    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+fn require_device(state: &AppState, id: &str) -> AppResult<Device> {
+    devices::get(&state.db, id)?.ok_or_else(|| AppError::NotFound(id.to_string()))
 }
 
-#[tauri::command]
-pub fn git_is_repo(path: String) -> AppResult<bool> {
-    let p = Path::new(&path);
-    if !p.is_dir() {
-        return Ok(false);
+/// Run `git <args>` either locally (when `device.is_localhost`) or via SSH
+/// using the existing pool. For SSH runs we shell-escape every arg so paths
+/// with spaces / quotes survive `sh -c`, and we `cd` first so git operates
+/// against the right working tree.
+fn run_git_for(
+    state: &AppState,
+    device: &Device,
+    args: &[&str],
+    cwd: Option<&str>,
+) -> AppResult<String> {
+    if device.is_localhost {
+        let mut cmd = Command::new("git");
+        cmd.args(args);
+        if let Some(dir) = cwd {
+            cmd.current_dir(Path::new(dir));
+        }
+        let out = cmd
+            .output()
+            .map_err(|e| AppError::Invalid(format!("git not available: {e}")))?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            return Err(AppError::Invalid(if stderr.is_empty() {
+                format!("git exited with status {}", out.status)
+            } else {
+                stderr
+            }));
+        }
+        return Ok(String::from_utf8_lossy(&out.stdout).trim().to_string());
     }
-    let result = run_git(&["rev-parse", "--is-inside-work-tree"], Some(p));
+
+    // Remote — build `cd '<dir>' && git '<arg>' '<arg>' …`
+    let mut shell = String::new();
+    if let Some(dir) = cwd {
+        shell.push_str("cd ");
+        shell.push_str(&single_quote(dir));
+        shell.push_str(" && ");
+    }
+    shell.push_str("git");
+    for a in args {
+        shell.push(' ');
+        shell.push_str(&single_quote(a));
+    }
+    let out = ssh::run_command_no_sudo(&state.pool, device, &shell)?;
+    if out.exit_code != 0 {
+        let stderr = out.stderr.trim();
+        return Err(AppError::Invalid(if stderr.is_empty() {
+            format!("git exited with status {}", out.exit_code)
+        } else {
+            stderr.to_string()
+        }));
+    }
+    Ok(out.stdout.trim_end_matches(['\n', '\r']).to_string())
+}
+
+/// POSIX single-quoting: wrap in `'…'`, escape `'` as `'\''`.
+fn single_quote(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('\'');
+    for ch in s.chars() {
+        if ch == '\'' {
+            out.push_str("'\\''");
+        } else {
+            out.push(ch);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// Check whether the path on `device` is a git repo.
+#[tauri::command]
+pub fn git_is_repo(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> AppResult<bool> {
+    let device = require_device(&state, &device_id)?;
+    if device.is_localhost {
+        let p = Path::new(&path);
+        if !p.is_dir() {
+            return Ok(false);
+        }
+    }
+    let result = run_git_for(
+        &state,
+        &device,
+        &["rev-parse", "--is-inside-work-tree"],
+        Some(&path),
+    );
     Ok(matches!(result, Ok(s) if s == "true"))
 }
 
 #[tauri::command]
-pub fn git_branch(path: String) -> AppResult<Option<String>> {
-    let p = Path::new(&path);
-    if !p.is_dir() {
-        return Ok(None);
-    }
-    match run_git(&["branch", "--show-current"], Some(p)) {
+pub fn git_branch(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> AppResult<Option<String>> {
+    let device = require_device(&state, &device_id)?;
+    match run_git_for(&state, &device, &["branch", "--show-current"], Some(&path)) {
         Ok(b) if b.is_empty() => Ok(None),
         Ok(b) => Ok(Some(b)),
         Err(_) => Ok(None),
@@ -50,6 +121,7 @@ pub fn git_branch(path: String) -> AppResult<Option<String>> {
 
 /// Clone `url` into a subdirectory of `parent_dir` named `repo_name`.
 /// Returns the absolute path of the cloned directory.
+/// Currently localhost-only; cloning to a remote device is not yet supported.
 #[tauri::command]
 pub fn git_clone(
     url: String,
@@ -75,7 +147,18 @@ pub fn git_clone(
         )));
     }
     let target_str = target.to_string_lossy().to_string();
-    run_git(&["clone", "--progress", &url, &target_str], None)?;
+    let out = Command::new("git")
+        .args(["clone", "--progress", &url, &target_str])
+        .output()
+        .map_err(|e| AppError::Invalid(format!("git not available: {e}")))?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        return Err(AppError::Invalid(if stderr.is_empty() {
+            format!("git clone failed with status {}", out.status)
+        } else {
+            stderr
+        }));
+    }
     Ok(target_str)
 }
 
@@ -94,22 +177,26 @@ pub struct GitCommit {
 const COMMIT_SEP: &str = "\x1e";
 const FIELD_SEP: &str = "\x1f";
 
-/// Get the most recent commits. `limit` is capped to 1000 to keep payloads sane.
 #[tauri::command]
-pub fn git_log(path: String, limit: Option<usize>) -> AppResult<Vec<GitCommit>> {
-    let p = Path::new(&path);
+pub fn git_log(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+    limit: Option<usize>,
+) -> AppResult<Vec<GitCommit>> {
+    let device = require_device(&state, &device_id)?;
     let n = limit.unwrap_or(300).min(1000);
-
-    // %H full hash, %h short, %an author name, %ae email, %at unix time,
-    // %s subject, %P space-sep parents, %D ref names (HEAD -> main, origin/main, tag: v1)
     let format = format!(
         "--pretty=format:%H{F}%h{F}%an{F}%ae{F}%at{F}%s{F}%P{F}%D{C}",
         F = FIELD_SEP,
         C = COMMIT_SEP,
     );
-    let out = run_git(
-        &["log", "--all", "--date-order", &format!("-n{n}"), &format],
-        Some(p),
+    let n_arg = format!("-n{n}");
+    let out = run_git_for(
+        &state,
+        &device,
+        &["log", "--all", "--date-order", &n_arg, &format],
+        Some(&path),
     )?;
 
     let mut commits = Vec::new();
@@ -161,15 +248,22 @@ pub struct GitBranch {
 }
 
 #[tauri::command]
-pub fn git_branches(path: String) -> AppResult<Vec<GitBranch>> {
-    let p = Path::new(&path);
-    // %(refname:short) %(HEAD) %(upstream:short) %(objectname:short)
-    // Use \x1f as field separator.
+pub fn git_branches(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> AppResult<Vec<GitBranch>> {
+    let device = require_device(&state, &device_id)?;
     let format = format!(
         "--format=%(HEAD){F}%(refname){F}%(refname:short){F}%(upstream:short){F}%(objectname:short)",
         F = FIELD_SEP,
     );
-    let out = run_git(&["branch", "--list", "--all", &format], Some(p))?;
+    let out = run_git_for(
+        &state,
+        &device,
+        &["branch", "--list", "--all", &format],
+        Some(&path),
+    )?;
     let mut branches = Vec::new();
     for line in out.lines() {
         let parts: Vec<&str> = line.splitn(5, FIELD_SEP).collect();
@@ -177,7 +271,6 @@ pub fn git_branches(path: String) -> AppResult<Vec<GitBranch>> {
             continue;
         }
         let full_ref = parts[1];
-        // Skip remote HEAD pointers like "refs/remotes/origin/HEAD".
         if full_ref.ends_with("/HEAD") {
             continue;
         }
@@ -209,10 +302,14 @@ pub struct GitTag {
 }
 
 #[tauri::command]
-pub fn git_tags(path: String) -> AppResult<Vec<GitTag>> {
-    let p = Path::new(&path);
+pub fn git_tags(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> AppResult<Vec<GitTag>> {
+    let device = require_device(&state, &device_id)?;
     let format = format!("--format=%(refname:short){F}%(objectname:short)", F = FIELD_SEP);
-    let out = run_git(&["tag", "--list", &format], Some(p))?;
+    let out = run_git_for(&state, &device, &["tag", "--list", &format], Some(&path))?;
     let mut tags = Vec::new();
     for line in out.lines() {
         let parts: Vec<&str> = line.splitn(2, FIELD_SEP).collect();
@@ -246,23 +343,23 @@ pub struct GitCommitDetail {
 }
 
 #[tauri::command]
-pub fn git_show(path: String, hash: String) -> AppResult<GitCommitDetail> {
-    let p = Path::new(&path);
+pub fn git_show(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+    hash: String,
+) -> AppResult<GitCommitDetail> {
+    let device = require_device(&state, &device_id)?;
     let format = format!(
         "--pretty=format:%H{F}%an{F}%ae{F}%at{F}%s{F}%P{F}%b{C}",
         F = FIELD_SEP,
         C = COMMIT_SEP,
     );
-    // --name-status appends file changes after the format on subsequent lines.
-    let out = run_git(
-        &[
-            "show",
-            "--no-color",
-            "--name-status",
-            &format,
-            &hash,
-        ],
-        Some(p),
+    let out = run_git_for(
+        &state,
+        &device,
+        &["show", "--no-color", "--name-status", &format, &hash],
+        Some(&path),
     )?;
 
     let (header, files_section) = match out.split_once(COMMIT_SEP) {
@@ -284,7 +381,6 @@ pub fn git_show(path: String, hash: String) -> AppResult<GitCommitDetail> {
         if trimmed.is_empty() {
             continue;
         }
-        // status \t path  (or status \t old \t new for renames)
         let mut split = trimmed.split('\t');
         let status = split.next().unwrap_or("").to_string();
         let collected: Vec<&str> = split.collect();
@@ -309,10 +405,18 @@ pub fn git_show(path: String, hash: String) -> AppResult<GitCommitDetail> {
 /// Get a unified diff for a single file in a single commit.
 /// If the commit has no parents (root commit), uses the empty tree as base.
 #[tauri::command]
-pub fn git_diff(path: String, hash: String, file_path: String) -> AppResult<String> {
-    let p = Path::new(&path);
+pub fn git_diff(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+    hash: String,
+    file_path: String,
+) -> AppResult<String> {
+    let device = require_device(&state, &device_id)?;
     let range = format!("{hash}^!");
-    let out = run_git(
+    let out = run_git_for(
+        &state,
+        &device,
         &[
             "show",
             "--no-color",
@@ -322,12 +426,13 @@ pub fn git_diff(path: String, hash: String, file_path: String) -> AppResult<Stri
             "--",
             &file_path,
         ],
-        Some(p),
+        Some(&path),
     );
-    // Root commits don't have a parent — fall back to showing the commit's tree.
     match out {
         Ok(s) => Ok(s),
-        Err(_) => run_git(
+        Err(_) => run_git_for(
+            &state,
+            &device,
             &[
                 "show",
                 "--no-color",
@@ -337,7 +442,7 @@ pub fn git_diff(path: String, hash: String, file_path: String) -> AppResult<Stri
                 "--",
                 &file_path,
             ],
-            Some(p),
+            Some(&path),
         ),
     }
 }

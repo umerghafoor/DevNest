@@ -298,19 +298,22 @@ export const api = {
   dimmInfo: (deviceId: string) =>
     call<DimmModule[]>("dimm_info", { deviceId }),
 
-  gitIsRepo: (path: string) => call<boolean>("git_is_repo", { path }),
-  gitBranch: (path: string) => call<string | null>("git_branch", { path }),
+  gitIsRepo: (deviceId: string, path: string) =>
+    call<boolean>("git_is_repo", { deviceId, path }),
+  gitBranch: (deviceId: string, path: string) =>
+    call<string | null>("git_branch", { deviceId, path }),
   gitClone: (url: string, parentDir: string, repoName: string) =>
     call<string>("git_clone", { url, parentDir, repoName }),
-  gitLog: (path: string, limit?: number) =>
-    call<GitCommit[]>("git_log", { path, limit: limit ?? null }),
-  gitBranches: (path: string) =>
-    call<GitBranchInfo[]>("git_branches", { path }),
-  gitTags: (path: string) => call<GitTag[]>("git_tags", { path }),
-  gitShow: (path: string, hash: string) =>
-    call<GitCommitDetail>("git_show", { path, hash }),
-  gitDiff: (path: string, hash: string, filePath: string) =>
-    call<string>("git_diff", { path, hash, filePath }),
+  gitLog: (deviceId: string, path: string, limit?: number) =>
+    call<GitCommit[]>("git_log", { deviceId, path, limit: limit ?? null }),
+  gitBranches: (deviceId: string, path: string) =>
+    call<GitBranchInfo[]>("git_branches", { deviceId, path }),
+  gitTags: (deviceId: string, path: string) =>
+    call<GitTag[]>("git_tags", { deviceId, path }),
+  gitShow: (deviceId: string, path: string, hash: string) =>
+    call<GitCommitDetail>("git_show", { deviceId, path, hash }),
+  gitDiff: (deviceId: string, path: string, hash: string, filePath: string) =>
+    call<string>("git_diff", { deviceId, path, hash, filePath }),
 
   fsReadText: (path: string) => call<string>("fs_read_text", { path }),
   fsWriteText: (path: string, content: string) =>

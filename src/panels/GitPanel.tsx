@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { api, errorMessage, type GhRepo, type GhUser } from "../lib/api";
@@ -9,6 +9,7 @@ import { useAppStore } from "../store/app-store";
 
 interface FolderBookmark {
   id: string;
+  deviceId: string;
   path: string;
   branch: string | null;
 }
@@ -20,7 +21,14 @@ function readFolders(): FolderBookmark[] {
     const raw = localStorage.getItem(FOLDERS_KEY);
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as FolderBookmark[]) : [];
+    if (!Array.isArray(parsed)) return [];
+    // Migration: pre-multi-device bookmarks had no deviceId — default to "local".
+    return parsed.map((b: Partial<FolderBookmark> & { path: string; id?: string; branch?: string | null }) => ({
+      id: b.id ?? Math.random().toString(36).slice(2, 10),
+      deviceId: b.deviceId ?? "local",
+      path: b.path,
+      branch: b.branch ?? null,
+    }));
   } catch {
     return [];
   }
@@ -36,20 +44,28 @@ function folderName(path: string): string {
 }
 
 export function GitPanel() {
+  const devices = useAppStore((s) => s.devices);
+  const activeDeviceId = useAppStore((s) => s.activeDeviceId);
+  const openPane = useAppStore((s) => s.openPane);
+
   const [folders, setFolders] = useState<FolderBookmark[]>(readFolders);
   const [signedIn, setSignedIn] = useState<boolean>(false);
   const [user, setUser] = useState<GhUser | null>(null);
   const [repos, setRepos] = useState<GhRepo[] | null>(null);
   const [reposLoading, setReposLoading] = useState(false);
-  const openPane = useAppStore((s) => s.openPane);
-  const activeDeviceId = useAppStore((s) => s.activeDeviceId);
 
-  const openGraph = (path: string) => {
+  const deviceById = useMemo(() => {
+    const m = new Map<string, { name: string; isLocalhost: boolean }>();
+    for (const d of devices) m.set(d.id, { name: d.name, isLocalhost: d.isLocalhost });
+    return m;
+  }, [devices]);
+
+  const openGraph = (deviceId: string, path: string) => {
     const uid = Math.random().toString(36).slice(2, 10);
     openPane({
       id: uid,
       instanceId: uid,
-      deviceId: activeDeviceId ?? "local",
+      deviceId,
       panel: "gitGraph",
       extra: { repoPath: path },
     });
@@ -79,7 +95,7 @@ export function GitPanel() {
     const updated = await Promise.all(
       current.map(async (f) => {
         try {
-          const branch = await api.gitBranch(f.path);
+          const branch = await api.gitBranch(f.deviceId, f.path);
           return { ...f, branch };
         } catch {
           return f;
@@ -95,26 +111,47 @@ export function GitPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const pickAndAddFolder = async () => {
-    const selected = await openDialog({ directory: true, multiple: false });
-    if (typeof selected !== "string") return;
-    const isRepo = await api.gitIsRepo(selected).catch(() => false);
-    if (!isRepo) {
-      toast.error("That folder is not a git repository.");
+  const addBookmark = async (deviceId: string, path: string) => {
+    const trimmed = path.trim();
+    if (!trimmed) {
+      toast.error("Path required.");
       return;
     }
-    if (folders.some((f) => f.path === selected)) {
+    const dev = deviceById.get(deviceId);
+    if (!dev) {
+      toast.error("Pick a device.");
+      return;
+    }
+    if (folders.some((f) => f.deviceId === deviceId && f.path === trimmed)) {
       toast.info("Already bookmarked.");
       return;
     }
-    const branch = await api.gitBranch(selected).catch(() => null);
+    const isRepo = await api.gitIsRepo(deviceId, trimmed).catch(() => false);
+    if (!isRepo) {
+      toast.error(
+        `Not a git repository on ${dev.name}: ${trimmed}`,
+      );
+      return;
+    }
+    const branch = await api.gitBranch(deviceId, trimmed).catch(() => null);
     const next: FolderBookmark[] = [
       ...folders,
-      { id: Math.random().toString(36).slice(2, 10), path: selected, branch },
+      {
+        id: Math.random().toString(36).slice(2, 10),
+        deviceId,
+        path: trimmed,
+        branch,
+      },
     ];
     setFolders(next);
     persistFolders(next);
-    toast.success(`Added ${folderName(selected)}`);
+    toast.success(`Added ${folderName(trimmed)} on ${dev.name}`);
+  };
+
+  const pickLocalFolder = async () => {
+    const selected = await openDialog({ directory: true, multiple: false });
+    if (typeof selected !== "string") return;
+    await addBookmark("local", selected);
   };
 
   const removeFolder = (id: string) => {
@@ -136,17 +173,24 @@ export function GitPanel() {
       <div className="shrink-0 border-b border-(--color-border) bg-(--color-surface) px-4 py-2">
         <h2 className="text-sm font-semibold">Git</h2>
         <p className="text-xs text-(--color-fg-muted)">
-          Track local git folders and clone from GitHub.
+          Track git folders across your devices and clone from GitHub.
         </p>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="mx-auto max-w-3xl space-y-6">
-          <LocalFoldersSection
+          <FoldersSection
             folders={folders}
-            onPick={pickAndAddFolder}
+            devices={devices.map((d) => ({
+              id: d.id,
+              name: d.name,
+              isLocalhost: d.isLocalhost,
+            }))}
+            defaultDeviceId={activeDeviceId ?? "local"}
+            onPickLocal={pickLocalFolder}
+            onAddRemote={addBookmark}
             onRemove={removeFolder}
-            onOpen={openGraph}
+            onOpen={(b) => openGraph(b.deviceId, b.path)}
             onOpenInFileManager={openInFileManager}
             onRefresh={() => void refreshBranches(folders)}
           />
@@ -181,11 +225,14 @@ export function GitPanel() {
                   parent,
                   repo.name,
                 );
-                const branch = await api.gitBranch(cloned).catch(() => null);
+                const branch = await api
+                  .gitBranch("local", cloned)
+                  .catch(() => null);
                 const next: FolderBookmark[] = [
                   ...folders,
                   {
                     id: Math.random().toString(36).slice(2, 10),
+                    deviceId: "local",
                     path: cloned,
                     branch,
                   },
@@ -204,101 +251,174 @@ export function GitPanel() {
   );
 }
 
-function LocalFoldersSection({
+interface DeviceLite {
+  id: string;
+  name: string;
+  isLocalhost: boolean;
+}
+
+function FoldersSection({
   folders,
-  onPick,
+  devices,
+  defaultDeviceId,
+  onPickLocal,
+  onAddRemote,
   onRemove,
   onOpen,
   onOpenInFileManager,
   onRefresh,
 }: {
   folders: FolderBookmark[];
-  onPick: () => void;
+  devices: DeviceLite[];
+  defaultDeviceId: string;
+  onPickLocal: () => void;
+  onAddRemote: (deviceId: string, path: string) => Promise<void>;
   onRemove: (id: string) => void;
-  onOpen: (path: string) => void;
+  onOpen: (bookmark: FolderBookmark) => void;
   onOpenInFileManager: (path: string) => void;
   onRefresh: () => void;
 }) {
+  const [deviceId, setDeviceId] = useState<string>(defaultDeviceId);
+  const [pathInput, setPathInput] = useState("");
+  const [adding, setAdding] = useState(false);
+  const selectedDevice = devices.find((d) => d.id === deviceId);
+  const isLocal = !!selectedDevice?.isLocalhost;
+
+  const submit = async () => {
+    setAdding(true);
+    try {
+      await onAddRemote(deviceId, pathInput);
+      setPathInput("");
+    } finally {
+      setAdding(false);
+    }
+  };
+
   return (
     <section>
       <div className="mb-2 flex items-center justify-between">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
-          Local folders
+          Bookmarked folders
         </h3>
-        <div className="flex gap-2">
+        <button
+          onClick={onRefresh}
+          className="rounded px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* Add-bookmark form */}
+      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) p-2">
+        <select
+          value={deviceId}
+          onChange={(e) => setDeviceId(e.target.value)}
+          className="input h-7 text-xs"
+          title="Device"
+        >
+          {devices.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+              {d.isLocalhost ? " (local)" : ""}
+            </option>
+          ))}
+        </select>
+        {isLocal ? (
           <button
-            onClick={onRefresh}
-            className="rounded px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-          >
-            ↻ Refresh
-          </button>
-          <button
-            onClick={onPick}
+            onClick={onPickLocal}
             className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
           >
-            Open folder…
+            Pick folder…
           </button>
-        </div>
+        ) : (
+          <>
+            <input
+              value={pathInput}
+              onChange={(e) => setPathInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !adding) void submit();
+              }}
+              placeholder="/absolute/path/to/repo"
+              className="input h-7 flex-1 text-xs font-mono"
+            />
+            <button
+              onClick={() => void submit()}
+              disabled={adding || !pathInput.trim()}
+              className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
+            >
+              {adding ? "Checking…" : "Add"}
+            </button>
+          </>
+        )}
       </div>
+
       {folders.length === 0 ? (
         <div className="rounded-lg border border-dashed border-(--color-border) bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">
-          No local repositories bookmarked. Click &quot;Open folder…&quot; to
-          add one.
+          No repositories bookmarked. Pick a device above and add one.
         </div>
       ) : (
         <ul className="space-y-2">
-          {folders.map((f) => (
-            <li
-              key={f.id}
-              className="row-animate flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">
-                    {folderName(f.path)}
-                  </span>
-                  {f.branch && (
-                    <span className="rounded bg-(--color-surface-2) px-1.5 py-0.5 font-mono text-[10px] text-(--color-fg-muted)">
-                      {f.branch}
+          {folders.map((f) => {
+            const dev = devices.find((d) => d.id === f.deviceId);
+            const isLocalhost = dev?.isLocalhost ?? false;
+            return (
+              <li
+                key={f.id}
+                className="row-animate flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate text-sm font-medium">
+                      {folderName(f.path)}
                     </span>
-                  )}
+                    {f.branch && (
+                      <span className="rounded bg-(--color-surface-2) px-1.5 py-0.5 font-mono text-[10px] text-(--color-fg-muted)">
+                        {f.branch}
+                      </span>
+                    )}
+                    <span className="rounded bg-(--color-accent)/15 px-1.5 py-0.5 text-[10px] text-(--color-accent)">
+                      {dev?.name ?? "unknown device"}
+                    </span>
+                  </div>
+                  <div
+                    className="truncate font-mono text-[11px] text-(--color-fg-muted)"
+                    title={f.path}
+                  >
+                    {f.path}
+                  </div>
                 </div>
-                <div
-                  className="truncate font-mono text-[11px] text-(--color-fg-muted)"
-                  title={f.path}
+                <button
+                  onClick={() => onOpen(f)}
+                  title="Open Git Graph"
+                  className="rounded bg-(--color-accent) px-2 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
                 >
-                  {f.path}
-                </div>
-              </div>
-              <button
-                onClick={() => onOpen(f.path)}
-                title="Open Git Graph"
-                className="rounded bg-(--color-accent) px-2 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
-              >
-                Graph
-              </button>
-              <button
-                onClick={() => onOpenInFileManager(f.path)}
-                title="Open in file manager"
-                aria-label="Open in file manager"
-                className="rounded border border-(--color-border) px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-              >
-                ⎘
-              </button>
-              <button
-                onClick={async () => {
-                  const ok = await confirm(`Remove "${folderName(f.path)}"?`, {
-                    title: "Remove bookmark",
-                  });
-                  if (ok) onRemove(f.id);
-                }}
-                className="rounded px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error)"
-                aria-label="Remove"
-              >
-                ×
-              </button>
-            </li>
-          ))}
+                  Graph
+                </button>
+                {isLocalhost && (
+                  <button
+                    onClick={() => onOpenInFileManager(f.path)}
+                    title="Open in file manager"
+                    aria-label="Open in file manager"
+                    className="rounded border border-(--color-border) px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+                  >
+                    ⎘
+                  </button>
+                )}
+                <button
+                  onClick={async () => {
+                    const ok = await confirm(`Remove "${folderName(f.path)}"?`, {
+                      title: "Remove bookmark",
+                    });
+                    if (ok) onRemove(f.id);
+                  }}
+                  className="rounded px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error)"
+                  aria-label="Remove"
+                >
+                  ×
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </section>

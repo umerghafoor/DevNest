@@ -9,6 +9,8 @@
 
 ## DevDash
 
+- Add VNC client panel for remote desktop access to servers (e.g. via TigerVNC or similar)
+
 ### Mid-tier features
 
 - Docker compose support: list compose projects, up/down/restart per service, view logs
