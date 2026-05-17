@@ -30,6 +30,9 @@ fn sftp_list_dir(
 ) -> error::AppResult<Vec<sftp::FileEntry>> {
     let device =
         devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::list_dir(&path);
+    }
     sftp::list_dir(&device, &path)
 }
 
@@ -41,6 +44,9 @@ fn sftp_read_file(
 ) -> error::AppResult<String> {
     let device =
         devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::read_file(&path);
+    }
     sftp::read_file(&device, &path)
 }
 
@@ -53,6 +59,9 @@ fn sftp_write_file(
 ) -> error::AppResult<()> {
     let device =
         devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::write_file(&path, &content);
+    }
     sftp::write_file(&device, &path, &content)
 }
 
@@ -64,6 +73,9 @@ fn sftp_mkdir(
 ) -> error::AppResult<()> {
     let device =
         devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::mkdir(&path);
+    }
     sftp::mkdir(&device, &path)
 }
 
@@ -76,6 +88,9 @@ fn sftp_rename(
 ) -> error::AppResult<()> {
     let device =
         devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::rename(&from, &to);
+    }
     sftp::rename(&device, &from, &to)
 }
 
@@ -88,6 +103,9 @@ fn sftp_delete(
 ) -> error::AppResult<()> {
     let device =
         devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::delete(&path, is_dir);
+    }
     sftp::delete(&device, &path, is_dir)
 }
 
