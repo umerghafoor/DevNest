@@ -188,58 +188,59 @@ function WorkspaceTab({
   return (
     // Intentionally no data-tauri-drag-region — tabs must be clickable
     <div
-      className={`group relative flex h-full items-center gap-1 border-r border-(--color-border) px-3 text-xs cursor-pointer select-none transition-colors shrink-0 ${
-        active
-          ? "bg-(--color-bg) text-(--color-fg)"
-          : "text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-      }`}
+      className="group flex shrink-0 items-center px-0.5 select-none"
       onClick={() => !editing && setActiveWorkspace(id)}
     >
-      {active && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-(--color-accent)" />
-      )}
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") {
-              setDraft(name);
-              setEditing(false);
-            }
-            e.stopPropagation();
-          }}
-          className="w-20 bg-transparent outline-none text-xs"
-          autoFocus
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <span
-          className="max-w-[100px] truncate"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setEditing(true);
-            setTimeout(() => inputRef.current?.select(), 0);
-          }}
-        >
-          {name}
-        </span>
-      )}
-      {workspaceCount > 1 && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            removeWorkspace(id);
-          }}
-          aria-label="Close workspace"
-          className="ml-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 hover:bg-(--color-surface-2) group-hover:opacity-100 transition-opacity"
-        >
-          ×
-        </button>
-      )}
+      <div
+        className={`flex h-6 items-center gap-1 rounded-md px-2.5 text-xs cursor-pointer transition-colors ${
+          active
+            ? "bg-(--color-accent)/15 text-(--color-fg) ring-1 ring-(--color-accent)/40"
+            : "text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        }`}
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") {
+                setDraft(name);
+                setEditing(false);
+              }
+              e.stopPropagation();
+            }}
+            className="w-20 border-0 bg-transparent p-0 text-xs text-(--color-fg) outline-none focus:outline-none focus:ring-0"
+            autoFocus
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span
+            className="max-w-[100px] truncate"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditing(true);
+              setTimeout(() => inputRef.current?.select(), 0);
+            }}
+          >
+            {name}
+          </span>
+        )}
+        {workspaceCount > 1 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              removeWorkspace(id);
+            }}
+            aria-label="Close workspace"
+            className="ml-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 hover:bg-(--color-bg) group-hover:opacity-100 transition-opacity"
+          >
+            ×
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -380,7 +381,7 @@ function NewPanelMenu() {
 
   return (
     <div ref={ref} className="relative flex items-center">
-      <button
+      {/* <button
         onClick={() => setOpen((o) => !o)}
         title="Open panel"
         className={`flex h-full items-center gap-1 px-2.5 text-xs transition-colors ${
@@ -401,7 +402,7 @@ function NewPanelMenu() {
           <path d="M8 3v10M3 8h10" />
         </svg>
         <span>Panel</span>
-      </button>
+      </button> */}
       {open && (
         <div
           className="modal-content absolute right-0 top-full z-50 mt-1 w-[300px] overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface) shadow-2xl"
@@ -645,7 +646,7 @@ export function TitleBar() {
           </span>
         </div>
 
-        <div className="flex items-stretch overflow-x-auto">
+        <div className="flex items-center overflow-x-auto overflow-y-hidden py-1">
           {workspaces.map((ws) => (
             <WorkspaceTab
               key={ws.id}
@@ -657,7 +658,7 @@ export function TitleBar() {
           <button
             onClick={addWorkspace}
             title="New workspace"
-            className="flex h-full w-8 shrink-0 items-center justify-center text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+            className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
           >
             <svg
               width="11"
