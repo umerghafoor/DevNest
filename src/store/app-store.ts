@@ -18,7 +18,8 @@ export type PanelKind =
   | "ngrok"
   | "sysinfo"
   | "editor"
-  | "git";
+  | "git"
+  | "gitGraph";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 
@@ -27,6 +28,8 @@ export interface Pane {
   deviceId: string;
   panel: PanelKind;
   instanceId: string; // unique per PTY / panel instance
+  /** Optional panel-specific params (e.g. repoPath for the Git Graph). */
+  extra?: Record<string, string>;
 }
 
 // ─── Tiling tree ─────────────────────────────────────────────────────────────

@@ -2,6 +2,8 @@ use crate::error::{AppError, AppResult};
 
 const AUTH_SERVICE: &str = "devnest";
 const SUDO_SERVICE: &str = "devnest-sudo";
+const GITHUB_SERVICE: &str = "devnest-github";
+const GITHUB_TOKEN_ID: &str = "oauth-token";
 
 fn entry(service: &str, id: &str) -> AppResult<keyring::Entry> {
     keyring::Entry::new(service, id).map_err(|e| AppError::Ssh(format!("keyring: {e}")))
@@ -41,6 +43,22 @@ pub fn get_sudo(id: &str) -> AppResult<Option<String>> {
 
 pub fn delete_sudo(id: &str) -> AppResult<()> {
     delete_from(SUDO_SERVICE, id)
+}
+
+pub fn set_github_token(token: &str) -> AppResult<()> {
+    entry(GITHUB_SERVICE, GITHUB_TOKEN_ID)?
+        .set_password(token)
+        .map_err(|e| AppError::Ssh(format!("keyring set github: {e}")))
+}
+
+pub fn get_github_token() -> AppResult<String> {
+    entry(GITHUB_SERVICE, GITHUB_TOKEN_ID)?
+        .get_password()
+        .map_err(|e| AppError::Ssh(format!("keyring get github: {e}")))
+}
+
+pub fn delete_github_token() -> AppResult<()> {
+    delete_from(GITHUB_SERVICE, GITHUB_TOKEN_ID)
 }
 
 fn delete_from(service: &str, id: &str) -> AppResult<()> {

@@ -17,6 +17,7 @@ import { NgrokPanel } from "../panels/NgrokPanel";
 import { SysInfoPanel } from "../panels/SysInfoPanel";
 import { EditorPanel } from "../panels/EditorPanel";
 import { GitPanel } from "../panels/GitPanel";
+import { GitGraphPanel } from "../panels/GitGraphPanel";
 import type { PanelKind } from "../store/app-store";
 
 export const PANEL_ICONS: Record<PanelKind, string> = {
@@ -36,6 +37,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   sysinfo: "ℹ",
   editor: "✎",
   git: "⎇",
+  gitGraph: "⌥",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -55,6 +57,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   sysinfo: "System Info",
   editor: "Editor",
   git: "Git",
+  gitGraph: "Git Graph",
 };
 
 function PanelContent({ pane }: { pane: Pane }) {
@@ -93,6 +96,8 @@ function PanelContent({ pane }: { pane: Pane }) {
       return <EditorPanel />;
     case "git":
       return <GitPanel />;
+    case "gitGraph":
+      return <GitGraphPanel repoPath={pane.extra?.repoPath} />;
   }
 }
 

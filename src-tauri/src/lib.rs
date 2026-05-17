@@ -3,6 +3,8 @@ mod db;
 mod devices;
 mod docker;
 mod error;
+mod git;
+mod github;
 mod log_stream;
 mod metrics;
 mod secrets;
@@ -118,6 +120,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let app_data = app
                 .path()
@@ -165,6 +168,20 @@ pub fn run() {
             tailscale_set_exit_node,
             log_stream::log_stream_start,
             log_stream::log_stream_stop,
+            git::git_is_repo,
+            git::git_branch,
+            git::git_clone,
+            git::git_log,
+            git::git_branches,
+            git::git_tags,
+            git::git_show,
+            git::git_diff,
+            github::github_device_start,
+            github::github_device_poll,
+            github::github_signed_in,
+            github::github_sign_out,
+            github::github_user,
+            github::github_list_repos,
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");

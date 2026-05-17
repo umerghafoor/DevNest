@@ -14,6 +14,7 @@ import {
 } from "../store/app-store";
 import { useThemeStore } from "../store/theme-store";
 import { useUiStore } from "../store/ui-store";
+import { useColorsStore } from "../store/colors-store";
 import {
   useShortcutsStore,
   matchesBinding,
@@ -24,6 +25,9 @@ export function App() {
   const setDevices = useAppStore((s) => s.setDevices);
   const initTheme = useThemeStore((s) => s.init);
   const initUi = useUiStore((s) => s.init);
+  const initColors = useColorsStore((s) => s.init);
+  const reapplyColors = useColorsStore((s) => s.reapply);
+  const themeValue = useThemeStore((s) => s.theme);
   const ws = useAppStore(selectActiveWorkspace);
   const closePane = useAppStore((s) => s.closePane);
   const splitPane = useAppStore((s) => s.splitPane);
@@ -35,11 +39,18 @@ export function App() {
   useEffect(() => {
     initTheme();
     initUi();
+    initColors();
     api
       .listDevices()
       .then(setDevices)
       .catch((e) => console.error("listDevices failed", e));
-  }, [initTheme, initUi, setDevices]);
+  }, [initTheme, initUi, initColors, setDevices]);
+
+  // Re-apply color overrides whenever the active theme (light/dark) changes,
+  // since each mode has its own override map.
+  useEffect(() => {
+    reapplyColors();
+  }, [themeValue, reapplyColors]);
 
   // Global keyboard shortcuts driven by the customizable shortcut registry.
   useEffect(() => {

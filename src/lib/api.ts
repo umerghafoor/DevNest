@@ -154,4 +154,93 @@ export const api = {
 
   metricsSnapshot: (deviceId: string) =>
     invoke<MetricsSnapshot>("metrics_snapshot", { deviceId }),
+
+  gitIsRepo: (path: string) => invoke<boolean>("git_is_repo", { path }),
+  gitBranch: (path: string) => invoke<string | null>("git_branch", { path }),
+  gitClone: (url: string, parentDir: string, repoName: string) =>
+    invoke<string>("git_clone", { url, parentDir, repoName }),
+  gitLog: (path: string, limit?: number) =>
+    invoke<GitCommit[]>("git_log", { path, limit: limit ?? null }),
+  gitBranches: (path: string) =>
+    invoke<GitBranchInfo[]>("git_branches", { path }),
+  gitTags: (path: string) => invoke<GitTag[]>("git_tags", { path }),
+  gitShow: (path: string, hash: string) =>
+    invoke<GitCommitDetail>("git_show", { path, hash }),
+  gitDiff: (path: string, hash: string, filePath: string) =>
+    invoke<string>("git_diff", { path, hash, filePath }),
+
+  githubDeviceStart: (clientId: string) =>
+    invoke<DeviceCodeResponse>("github_device_start", { clientId }),
+  githubDevicePoll: (clientId: string, deviceCode: string) =>
+    invoke<string | null>("github_device_poll", { clientId, deviceCode }),
+  githubSignedIn: () => invoke<boolean>("github_signed_in"),
+  githubSignOut: () => invoke<void>("github_sign_out"),
+  githubUser: () => invoke<GhUser>("github_user"),
+  githubListRepos: () => invoke<GhRepo[]>("github_list_repos"),
 };
+
+export interface DeviceCodeResponse {
+  device_code: string;
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  interval: number;
+}
+
+export interface GhUser {
+  login: string;
+  name: string | null;
+  avatar_url: string;
+}
+
+export interface GhRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  description: string | null;
+  private: boolean;
+  html_url: string;
+  clone_url: string;
+  ssh_url: string;
+  default_branch: string | null;
+}
+
+export interface GitCommit {
+  hash: string;
+  short_hash: string;
+  author_name: string;
+  author_email: string;
+  timestamp: number;
+  subject: string;
+  parents: string[];
+  refs: string[];
+}
+
+export interface GitBranchInfo {
+  name: string;
+  is_current: boolean;
+  is_remote: boolean;
+  upstream: string | null;
+  last_commit: string | null;
+}
+
+export interface GitTag {
+  name: string;
+  commit: string | null;
+}
+
+export interface GitChangedFile {
+  status: string;
+  path: string;
+}
+
+export interface GitCommitDetail {
+  hash: string;
+  author_name: string;
+  author_email: string;
+  timestamp: number;
+  subject: string;
+  body: string;
+  parents: string[];
+  files: GitChangedFile[];
+}

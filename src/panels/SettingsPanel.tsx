@@ -1,6 +1,17 @@
 import { useState } from "react";
 import { useThemeStore, type Theme } from "../store/theme-store";
-import { useUiStore, type Density, type FontSize } from "../store/ui-store";
+import {
+  useUiStore,
+  ACCENTS,
+  type Density,
+  type FontSize,
+  type AccentId,
+} from "../store/ui-store";
+import {
+  useColorsStore,
+  COLOR_VARS,
+  type ThemeMode,
+} from "../store/colors-store";
 import {
   SHORTCUTS,
   useShortcutsStore,
@@ -8,7 +19,17 @@ import {
   type ShortcutId,
 } from "../store/shortcuts-store";
 
-type Tab = "appearance" | "shortcuts" | "about";
+type Tab = "appearance" | "shortcuts" | "integrations" | "about";
+
+const GITHUB_CLIENT_ID_KEY = "devnest.github.clientId";
+
+export function getGithubClientId(): string {
+  try {
+    return localStorage.getItem(GITHUB_CLIENT_ID_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 export function SettingsPanel() {
   const [tab, setTab] = useState<Tab>("appearance");
@@ -22,6 +43,12 @@ export function SettingsPanel() {
         <TabButton active={tab === "shortcuts"} onClick={() => setTab("shortcuts")}>
           Keyboard
         </TabButton>
+        <TabButton
+          active={tab === "integrations"}
+          onClick={() => setTab("integrations")}
+        >
+          Integrations
+        </TabButton>
         <TabButton active={tab === "about"} onClick={() => setTab("about")}>
           About
         </TabButton>
@@ -29,6 +56,7 @@ export function SettingsPanel() {
       <div className="min-h-0 flex-1 overflow-y-auto p-6">
         {tab === "appearance" && <AppearanceTab />}
         {tab === "shortcuts" && <ShortcutsTab />}
+        {tab === "integrations" && <IntegrationsTab />}
         {tab === "about" && <AboutTab />}
       </div>
     </div>
@@ -123,6 +151,8 @@ function AppearanceTab() {
   const setDensity = useUiStore((s) => s.setDensity);
   const fontSize = useUiStore((s) => s.fontSize);
   const setFontSize = useUiStore((s) => s.setFontSize);
+  const accent = useUiStore((s) => s.accent);
+  const setAccent = useUiStore((s) => s.setAccent);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -161,7 +191,129 @@ function AppearanceTab() {
             ]}
           />
         </Row>
+        <Row label="Accent preset" hint="Quick swatches for the accent color.">
+          <AccentSwatches value={accent} onChange={setAccent} />
+        </Row>
       </div>
+
+      <div className="mt-6">
+        <ColorEditor />
+      </div>
+    </div>
+  );
+}
+
+function ColorEditor() {
+  const lightOverrides = useColorsStore((s) => s.light);
+  const darkOverrides = useColorsStore((s) => s.dark);
+  const setOverride = useColorsStore((s) => s.setOverride);
+  const resetOverride = useColorsStore((s) => s.resetOverride);
+  const resetAll = useColorsStore((s) => s.resetAll);
+  const currentTheme = useThemeStore((s) => s.theme);
+  // Editor mode follows the *resolved* theme so what you see is what you get.
+  const resolved: ThemeMode =
+    currentTheme === "dark"
+      ? "dark"
+      : currentTheme === "light"
+        ? "light"
+        : window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+  const [mode, setMode] = useState<ThemeMode>(resolved);
+  const overrides = mode === "light" ? lightOverrides : darkOverrides;
+
+  return (
+    <details className="rounded-lg border border-(--color-border) bg-(--color-surface)">
+      <summary className="cursor-pointer px-4 py-3 text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted) hover:text-(--color-fg)">
+        Advanced colors
+      </summary>
+      <div className="border-t border-(--color-border) px-4 py-3">
+        <div className="mb-3 flex items-center justify-between">
+          <Segment<ThemeMode>
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "light", label: "Light theme" },
+              { value: "dark", label: "Dark theme" },
+            ]}
+          />
+          <button
+            onClick={resetAll}
+            className="rounded px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+          >
+            Reset all
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-x-4 gap-y-2 md:grid-cols-2">
+          {COLOR_VARS.map((v) => {
+            const override = overrides[v.name];
+            const value = override ?? v.defaults[mode];
+            return (
+              <div
+                key={v.name}
+                className="flex items-center gap-3 rounded-md px-2 py-1.5 hover:bg-(--color-bg)"
+              >
+                <input
+                  type="color"
+                  value={value}
+                  onChange={(e) => setOverride(mode, v.name, e.target.value)}
+                  className="h-7 w-7 cursor-pointer rounded border border-(--color-border) bg-transparent p-0"
+                  aria-label={v.label}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-medium text-(--color-fg)">
+                    {v.label}
+                  </div>
+                  <div className="truncate text-[10px] text-(--color-fg-muted)">
+                    {v.description}
+                  </div>
+                </div>
+                {override && (
+                  <button
+                    onClick={() => resetOverride(mode, v.name)}
+                    title="Reset to default"
+                    className="rounded px-1.5 py-0.5 text-[10px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+                  >
+                    ↺
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-3 text-[11px] text-(--color-fg-muted)">
+          Customize any color. Each theme (light/dark) is edited separately —
+          switch the toggle above. The Accent preset above writes to{" "}
+          <span className="font-mono">color-accent</span> for both themes.
+        </p>
+      </div>
+    </details>
+  );
+}
+
+function AccentSwatches({
+  value,
+  onChange,
+}: {
+  value: AccentId;
+  onChange: (a: AccentId) => void;
+}) {
+  return (
+    <div className="flex gap-1.5">
+      {ACCENTS.map((a) => (
+        <button
+          key={a.id}
+          onClick={() => onChange(a.id)}
+          title={a.label}
+          aria-label={a.label}
+          className={`h-7 w-7 rounded-full ring-offset-2 ring-offset-(--color-surface) transition-all ${
+            value === a.id
+              ? "ring-2 ring-(--color-fg)"
+              : "ring-1 ring-(--color-border) hover:scale-110"
+          }`}
+          style={{ backgroundColor: a.color }}
+        />
+      ))}
     </div>
   );
 }
@@ -237,6 +389,49 @@ function ShortcutsTab() {
         <span className="font-mono">Ctrl</span> elsewhere. Press{" "}
         <span className="font-mono">Esc</span> while capturing to cancel.
       </p>
+    </div>
+  );
+}
+
+function IntegrationsTab() {
+  const [clientId, setClientId] = useState(() => getGithubClientId());
+  const [saved, setSaved] = useState(false);
+
+  const save = () => {
+    localStorage.setItem(GITHUB_CLIENT_ID_KEY, clientId.trim());
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  };
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <SectionTitle>GitHub</SectionTitle>
+      <div className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+        <div className="text-sm font-medium text-(--color-fg)">
+          OAuth Client ID
+        </div>
+        <p className="mt-1 text-xs text-(--color-fg-muted)">
+          Register an OAuth App at{" "}
+          <span className="font-mono">github.com/settings/developers</span> and
+          enable &quot;Device Flow&quot;. Paste the Client ID here. Tokens are
+          stored in your OS keychain, never in plaintext.
+        </p>
+        <div className="mt-3 flex gap-2">
+          <input
+            className="input"
+            placeholder="Iv1.abc123…"
+            value={clientId}
+            onChange={(e) => setClientId(e.target.value)}
+            spellCheck={false}
+          />
+          <button
+            onClick={save}
+            className="shrink-0 rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
+          >
+            {saved ? "Saved" : "Save"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
