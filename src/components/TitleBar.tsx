@@ -7,6 +7,7 @@ import { PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ALL_PANELS: PanelKind[] = [
+  "dashboard",
   "terminal",
   "docker",
   "metrics",
@@ -16,6 +17,12 @@ const ALL_PANELS: PanelKind[] = [
   "processes",
   "ports",
   "cron",
+  "services",
+  "ngrok",
+  "sysinfo",
+  "editor",
+  "git",
+  "settings",
 ];
 
 // DevNest Cradle mark — matches the brand guidelines SVG

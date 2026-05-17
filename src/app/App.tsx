@@ -13,72 +13,102 @@ import {
   findPaneInTree,
 } from "../store/app-store";
 import { useThemeStore } from "../store/theme-store";
+import { useUiStore } from "../store/ui-store";
+import {
+  useShortcutsStore,
+  matchesBinding,
+  type ShortcutId,
+} from "../store/shortcuts-store";
 
 export function App() {
   const setDevices = useAppStore((s) => s.setDevices);
   const initTheme = useThemeStore((s) => s.init);
+  const initUi = useUiStore((s) => s.init);
   const ws = useAppStore(selectActiveWorkspace);
   const closePane = useAppStore((s) => s.closePane);
   const splitPane = useAppStore((s) => s.splitPane);
+  const openPane = useAppStore((s) => s.openPane);
+  const addWorkspace = useAppStore((s) => s.addWorkspace);
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
+  const getBinding = useShortcutsStore((s) => s.getBinding);
 
   useEffect(() => {
     initTheme();
+    initUi();
     api
       .listDevices()
       .then(setDevices)
       .catch((e) => console.error("listDevices failed", e));
-  }, [initTheme, setDevices]);
+  }, [initTheme, initUi, setDevices]);
 
-  // Global keyboard shortcuts
+  // Global keyboard shortcuts driven by the customizable shortcut registry.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const mod = e.metaKey || e.ctrlKey;
-      if (!mod) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      const inEditable =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        (e.target as HTMLElement | null)?.closest?.(".xterm");
 
+      const matches = (id: ShortcutId) => matchesBinding(e, getBinding(id));
       const { activePaneId, paneRoot } = ws;
+      const splitWith = (dir: "horizontal" | "vertical") => {
+        if (!activePaneId || !activeDeviceId || !paneRoot) return false;
+        const pane = findPaneInTree(paneRoot, activePaneId);
+        if (!pane) return false;
+        const uid = Math.random().toString(36).slice(2, 10);
+        splitPane(activePaneId, dir, {
+          id: uid,
+          instanceId: uid,
+          deviceId: activeDeviceId,
+          panel: pane.panel,
+        });
+        return true;
+      };
 
-      if (e.key === "w" && activePaneId) {
-        const tag = (e.target as HTMLElement).tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA") return;
-        if ((e.target as HTMLElement).closest(".xterm")) return;
+      if (matches("closePane")) {
+        if (inEditable || !activePaneId) return;
         e.preventDefault();
         closePane(activePaneId);
-        return;
-      }
-
-      if (e.key === "\\" && activePaneId && activeDeviceId && paneRoot) {
+      } else if (matches("splitHorizontal")) {
+        if (splitWith("horizontal")) e.preventDefault();
+      } else if (matches("splitVertical")) {
+        if (splitWith("vertical")) e.preventDefault();
+      } else if (matches("newWorkspace")) {
         e.preventDefault();
-        const pane = findPaneInTree(paneRoot, activePaneId);
-        if (!pane) return;
+        addWorkspace();
+      } else if (matches("openSettings")) {
+        e.preventDefault();
         const uid = Math.random().toString(36).slice(2, 10);
-        splitPane(activePaneId, "horizontal", {
+        openPane({
           id: uid,
           instanceId: uid,
-          deviceId: activeDeviceId,
-          panel: pane.panel,
+          deviceId: activeDeviceId ?? "local",
+          panel: "settings",
         });
-        return;
-      }
-
-      if (e.key === "-" && activePaneId && activeDeviceId && paneRoot) {
+      } else if (matches("openDashboard")) {
         e.preventDefault();
-        const pane = findPaneInTree(paneRoot, activePaneId);
-        if (!pane) return;
         const uid = Math.random().toString(36).slice(2, 10);
-        splitPane(activePaneId, "vertical", {
+        openPane({
           id: uid,
           instanceId: uid,
-          deviceId: activeDeviceId,
-          panel: pane.panel,
+          deviceId: activeDeviceId ?? "local",
+          panel: "dashboard",
         });
-        return;
       }
     };
 
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [ws, activeDeviceId, closePane, splitPane]);
+  }, [
+    ws,
+    activeDeviceId,
+    closePane,
+    splitPane,
+    openPane,
+    addWorkspace,
+    getBinding,
+  ]);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-(--color-bg) text-(--color-fg) overflow-hidden">

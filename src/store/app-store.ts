@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ConnectionStatus, Device } from "../lib/api";
+import { randomWorkspaceName } from "../lib/workspace-names";
 
 export type PanelKind =
   | "docker"
@@ -10,7 +11,14 @@ export type PanelKind =
   | "logs"
   | "processes"
   | "ports"
-  | "cron";
+  | "cron"
+  | "dashboard"
+  | "settings"
+  | "services"
+  | "ngrok"
+  | "sysinfo"
+  | "editor"
+  | "git";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 
@@ -120,8 +128,13 @@ export function findPaneInTree(
 
 // ─── Workspace helpers ────────────────────────────────────────────────────────
 
-function defaultWorkspace(name = "Workspace 1"): Workspace {
-  return { id: uid(), name, paneRoot: null, activePaneId: null };
+function defaultWorkspace(name?: string): Workspace {
+  return {
+    id: uid(),
+    name: name ?? randomWorkspaceName(),
+    paneRoot: null,
+    activePaneId: null,
+  };
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -245,7 +258,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addWorkspace: () =>
     set((s) => {
-      const ws = defaultWorkspace(`Workspace ${s.workspaces.length + 1}`);
+      const existing = new Set(s.workspaces.map((w) => w.name));
+      let name = randomWorkspaceName();
+      for (let i = 0; i < 10 && existing.has(name); i++) name = randomWorkspaceName();
+      const ws = defaultWorkspace(name);
       return { workspaces: [...s.workspaces, ws], activeWorkspaceId: ws.id };
     }),
 
@@ -274,13 +290,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       patchActiveWorkspace(s, (w) => {
         const leaf = makeLeaf(pane);
         if (!w.paneRoot) return { paneRoot: leaf, activePaneId: pane.id };
-        if (w.activePaneId) {
-          return {
-            paneRoot: replaceLeaf(w.paneRoot, w.activePaneId, leaf),
-            activePaneId: pane.id,
-          };
+        if (!w.activePaneId) return { paneRoot: leaf, activePaneId: pane.id };
+
+        const active = findPaneInTree(w.paneRoot, w.activePaneId);
+        // Re-opening the same panel kind on the active pane just refocuses it
+        // (no point stacking duplicates of Settings/Dashboard).
+        if (active && active.panel === pane.panel) {
+          return { activePaneId: active.id };
         }
-        return { paneRoot: leaf, activePaneId: pane.id };
+
+        const split: SplitNode = {
+          type: "split",
+          id: uid(),
+          direction: "horizontal",
+          ratio: 0.5,
+          first: makeLeaf(active!),
+          second: leaf,
+        };
+        return {
+          paneRoot: replaceLeaf(w.paneRoot, w.activePaneId, split),
+          activePaneId: pane.id,
+        };
       }),
     ),
 

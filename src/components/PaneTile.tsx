@@ -10,6 +10,13 @@ import { LogViewerPanel } from "../panels/LogViewerPanel";
 import { ProcessPanel } from "../panels/ProcessPanel";
 import { PortsPanel } from "../panels/PortsPanel";
 import { CronPanel } from "../panels/CronPanel";
+import { DashboardPanel } from "../panels/DashboardPanel";
+import { SettingsPanel } from "../panels/SettingsPanel";
+import { ServicesPanel } from "../panels/ServicesPanel";
+import { NgrokPanel } from "../panels/NgrokPanel";
+import { SysInfoPanel } from "../panels/SysInfoPanel";
+import { EditorPanel } from "../panels/EditorPanel";
+import { GitPanel } from "../panels/GitPanel";
 import type { PanelKind } from "../store/app-store";
 
 export const PANEL_ICONS: Record<PanelKind, string> = {
@@ -22,6 +29,13 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   processes: "◎",
   ports: "⊕",
   cron: "⏱",
+  dashboard: "◉",
+  settings: "✦",
+  services: "✪",
+  ngrok: "⇄",
+  sysinfo: "ℹ",
+  editor: "✎",
+  git: "⎇",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -34,6 +48,13 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   processes: "Processes",
   ports: "Ports",
   cron: "Cron",
+  dashboard: "Dashboard",
+  settings: "Settings",
+  services: "Services",
+  ngrok: "Ngrok",
+  sysinfo: "System Info",
+  editor: "Editor",
+  git: "Git",
 };
 
 function PanelContent({ pane }: { pane: Pane }) {
@@ -58,6 +79,20 @@ function PanelContent({ pane }: { pane: Pane }) {
       return <PortsPanel deviceId={pane.deviceId} />;
     case "cron":
       return <CronPanel deviceId={pane.deviceId} />;
+    case "dashboard":
+      return <DashboardPanel deviceId={pane.deviceId} />;
+    case "settings":
+      return <SettingsPanel />;
+    case "services":
+      return <ServicesPanel />;
+    case "ngrok":
+      return <NgrokPanel />;
+    case "sysinfo":
+      return <SysInfoPanel />;
+    case "editor":
+      return <EditorPanel />;
+    case "git":
+      return <GitPanel />;
   }
 }
 
@@ -203,20 +238,25 @@ function Divider({
 
   const isH = direction === "horizontal";
 
+  // Wider invisible hit target around a 1px visible line so the divider is
+  // easy to grab. Negative margins keep it from pushing siblings apart.
   return (
     <div
       onMouseDown={onMouseDown}
-      className={`shrink-0 bg-(--color-border) transition-colors hover:bg-(--color-accent)/50 active:bg-(--color-accent) ${
+      className={`group relative z-10 shrink-0 ${
         isH
-          ? "w-px cursor-col-resize hover:w-[3px]"
-          : "h-px cursor-row-resize hover:h-[3px]"
+          ? "w-[7px] cursor-col-resize -mx-[3px]"
+          : "h-[7px] cursor-row-resize -my-[3px]"
       }`}
-      style={
-        isH
-          ? { marginLeft: "-0.5px", marginRight: "-0.5px" }
-          : { marginTop: "-0.5px", marginBottom: "-0.5px" }
-      }
-    />
+    >
+      <div
+        className={`absolute bg-(--color-border) transition-colors group-hover:bg-(--color-accent)/60 group-active:bg-(--color-accent) ${
+          isH
+            ? "left-[3px] top-0 bottom-0 w-px group-hover:w-[3px] group-hover:left-[2px]"
+            : "top-[3px] left-0 right-0 h-px group-hover:h-[3px] group-hover:top-[2px]"
+        }`}
+      />
+    </div>
   );
 }
 
