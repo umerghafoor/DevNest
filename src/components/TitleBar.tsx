@@ -3,6 +3,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
 import { useRecentsStore } from "../store/recents-store";
+import { usePaletteStore } from "../store/palette-store";
+import {
+  useShortcutsStore,
+  formatBinding,
+} from "../store/shortcuts-store";
 import {
   PANEL_ICONS,
   PANEL_LABELS,
@@ -510,6 +515,39 @@ function MenuRow({
 }
 
 
+// ─── Command palette trigger ──────────────────────────────────────────────────
+
+function PaletteButton() {
+  const open = usePaletteStore((s) => s.show);
+  const binding = useShortcutsStore((s) =>
+    s.getBinding("openCommandPalette"),
+  );
+  return (
+    <button
+      onClick={open}
+      title={`Command palette (${formatBinding(binding)})`}
+      className="flex h-full items-center gap-1.5 px-2.5 text-xs text-(--color-fg-muted) transition-colors hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        aria-hidden
+      >
+        <circle cx="7" cy="7" r="5" />
+        <path d="M11 11l3 3" />
+      </svg>
+      <kbd className="hidden font-mono text-[10px] opacity-70 sm:inline">
+        {formatBinding(binding)}
+      </kbd>
+    </button>
+  );
+}
+
 // ─── Split / close active pane ────────────────────────────────────────────────
 
 function PaneActions() {
@@ -641,6 +679,7 @@ export function TitleBar() {
 
       {/* Right-side actions */}
       <div className="flex items-stretch border-l border-(--color-border)">
+        <PaletteButton />
         <NewPanelMenu />
         <PaneActions />
       </div>

@@ -6,6 +6,8 @@ import { TitleBar } from "../components/TitleBar";
 import { SudoPasswordDialog } from "../components/SudoPasswordDialog";
 import { ToastContainer } from "../components/Toast";
 import { ConfirmDialogHost } from "../components/ConfirmDialog";
+import { CommandPalette } from "../components/CommandPalette";
+import { usePaletteStore } from "../store/palette-store";
 import { api } from "../lib/api";
 import {
   useAppStore,
@@ -35,6 +37,7 @@ export function App() {
   const addWorkspace = useAppStore((s) => s.addWorkspace);
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
   const getBinding = useShortcutsStore((s) => s.getBinding);
+  const togglePalette = usePaletteStore((s) => s.toggle);
 
   useEffect(() => {
     initTheme();
@@ -106,6 +109,9 @@ export function App() {
           deviceId: activeDeviceId ?? "local",
           panel: "dashboard",
         });
+      } else if (matches("openCommandPalette")) {
+        e.preventDefault();
+        togglePalette();
       }
     };
 
@@ -119,6 +125,7 @@ export function App() {
     openPane,
     addWorkspace,
     getBinding,
+    togglePalette,
   ]);
 
   return (
@@ -131,6 +138,7 @@ export function App() {
       <StatusBar />
       <SudoPasswordDialog />
       <ConfirmDialogHost />
+      <CommandPalette />
       <ToastContainer />
     </div>
   );
