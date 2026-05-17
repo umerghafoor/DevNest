@@ -30,7 +30,10 @@ async function ensurePermission(): Promise<boolean> {
  * Fire-and-forget; never throws.
  */
 export function notifyCompleted(title: string, body?: string): void {
-  if (typeof document !== "undefined" && document.visibilityState === "visible") {
+  if (
+    typeof document !== "undefined" &&
+    document.visibilityState === "visible"
+  ) {
     return;
   }
   void (async () => {

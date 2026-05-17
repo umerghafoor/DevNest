@@ -70,7 +70,11 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     searchAddonRef.current = searchAddon;
 
     term.attachCustomKeyEventHandler((e) => {
-      if (e.type === "keydown" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      if (
+        e.type === "keydown" &&
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "f"
+      ) {
         e.preventDefault();
         setSearchOpen(true);
         requestAnimationFrame(() => searchInputRef.current?.select());
@@ -227,40 +231,40 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         </div>
       )}
       <div className="relative flex-1">
-      {/* xterm container — always mounted so the terminal is ready as soon as the PTY opens */}
-      <div
-        ref={containerRef}
-        className="h-full w-full p-2"
-        style={{
-          fontVariantLigatures: "none",
-          // Hide (but keep alive) until connected so the user sees the overlay
-          opacity: connectState === "connected" ? 1 : 0,
-          transition: "opacity 0.25s ease",
-        }}
-      />
+        {/* xterm container — always mounted so the terminal is ready as soon as the PTY opens */}
+        <div
+          ref={containerRef}
+          className="h-full w-full p-2"
+          style={{
+            fontVariantLigatures: "none",
+            // Hide (but keep alive) until connected so the user sees the overlay
+            opacity: connectState === "connected" ? 1 : 0,
+            transition: "opacity 0.25s ease",
+          }}
+        />
 
-      {/* Connecting overlay — rendered on top, doesn't block xterm setup */}
-      {connectState === "connecting" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-bg)">
-          <span className="h-5 w-5 rounded-full border-2 border-(--color-accent) border-t-transparent animate-spin" />
-          <span className="text-xs text-(--color-fg-muted)">
-            Opening terminal…
-          </span>
-        </div>
-      )}
-
-      {connectState === "error" && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-bg) px-6 text-center">
-          <span className="text-sm text-(--color-error)">
-            Could not open terminal
-          </span>
-          {errorMsg && (
-            <span className="text-xs text-(--color-fg-muted) font-mono max-w-sm">
-              {errorMsg}
+        {/* Connecting overlay — rendered on top, doesn't block xterm setup */}
+        {connectState === "connecting" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-bg)">
+            <span className="h-5 w-5 rounded-full border-2 border-(--color-accent) border-t-transparent animate-spin" />
+            <span className="text-xs text-(--color-fg-muted)">
+              Opening terminal…
             </span>
-          )}
-        </div>
-      )}
+          </div>
+        )}
+
+        {connectState === "error" && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-bg) px-6 text-center">
+            <span className="text-sm text-(--color-error)">
+              Could not open terminal
+            </span>
+            {errorMsg && (
+              <span className="text-xs text-(--color-fg-muted) font-mono max-w-sm">
+                {errorMsg}
+              </span>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

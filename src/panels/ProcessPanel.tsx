@@ -191,13 +191,7 @@ export function ProcessPanel({ deviceId, paneId }: Props) {
     return [...filtered].sort(cmp);
   }, [procs, filter, sortBy, sortDir]);
 
-  const SortHeader = ({
-    col,
-    label,
-  }: {
-    col: SortKey;
-    label: string;
-  }) => {
+  const SortHeader = ({ col, label }: { col: SortKey; label: string }) => {
     const active = sortBy === col;
     return (
       <ResizableTh
@@ -242,7 +236,10 @@ export function ProcessPanel({ deviceId, paneId }: Props) {
         <SkeletonTable rows={8} cols={6} />
       ) : (
         <div className="flex-1 overflow-auto">
-          <table className="table-fixed border-collapse text-xs" style={{ minWidth: "100%" }}>
+          <table
+            className="table-fixed border-collapse text-xs"
+            style={{ minWidth: "100%" }}
+          >
             <colgroup>
               <col style={{ width: widthFor("pid") }} />
               <col style={{ width: widthFor("user") }} />

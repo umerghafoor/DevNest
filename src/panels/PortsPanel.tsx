@@ -233,7 +233,10 @@ export function PortsPanel({ deviceId, paneId }: Props) {
       )}
 
       <div className="flex-1 overflow-auto">
-        <table className="table-fixed border-collapse text-xs" style={{ minWidth: "100%" }}>
+        <table
+          className="table-fixed border-collapse text-xs"
+          style={{ minWidth: "100%" }}
+        >
           <colgroup>
             <col style={{ width: widthFor("port") }} />
             <col style={{ width: widthFor("proto") }} />
@@ -242,17 +245,49 @@ export function PortsPanel({ deviceId, paneId }: Props) {
           </colgroup>
           <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
             <tr>
-              <ResizableTh columnId="port" ResizeHandle={ResizeHandle} onClick={() => toggleSort("port")}>
-                <ColLabel label="Port" active={sortKey === "port"} dir={sortDir} />
+              <ResizableTh
+                columnId="port"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("port")}
+              >
+                <ColLabel
+                  label="Port"
+                  active={sortKey === "port"}
+                  dir={sortDir}
+                />
               </ResizableTh>
-              <ResizableTh columnId="proto" ResizeHandle={ResizeHandle} onClick={() => toggleSort("proto")}>
-                <ColLabel label="Proto" active={sortKey === "proto"} dir={sortDir} />
+              <ResizableTh
+                columnId="proto"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("proto")}
+              >
+                <ColLabel
+                  label="Proto"
+                  active={sortKey === "proto"}
+                  dir={sortDir}
+                />
               </ResizableTh>
-              <ResizableTh columnId="addr" ResizeHandle={ResizeHandle} onClick={() => toggleSort("addr")}>
-                <ColLabel label="Address" active={sortKey === "addr"} dir={sortDir} />
+              <ResizableTh
+                columnId="addr"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("addr")}
+              >
+                <ColLabel
+                  label="Address"
+                  active={sortKey === "addr"}
+                  dir={sortDir}
+                />
               </ResizableTh>
-              <ResizableTh columnId="process" ResizeHandle={ResizeHandle} onClick={() => toggleSort("process")}>
-                <ColLabel label="Process" active={sortKey === "process"} dir={sortDir} />
+              <ResizableTh
+                columnId="process"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("process")}
+              >
+                <ColLabel
+                  label="Process"
+                  active={sortKey === "process"}
+                  dir={sortDir}
+                />
               </ResizableTh>
             </tr>
           </thead>

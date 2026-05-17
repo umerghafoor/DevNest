@@ -10,7 +10,10 @@ import { useAppStore } from "../store/app-store";
  * This makes every panel's API call sudo-safe by default, without each call
  * site needing to wrap in `withSudo()`.
  */
-async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+async function call<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
@@ -295,8 +298,7 @@ export const api = {
   metricsSnapshot: (deviceId: string) =>
     call<MetricsSnapshot>("metrics_snapshot", { deviceId }),
   cpuInfo: (deviceId: string) => call<CpuInfo>("cpu_info", { deviceId }),
-  dimmInfo: (deviceId: string) =>
-    call<DimmModule[]>("dimm_info", { deviceId }),
+  dimmInfo: (deviceId: string) => call<DimmModule[]>("dimm_info", { deviceId }),
 
   gitIsRepo: (deviceId: string, path: string) =>
     call<boolean>("git_is_repo", { deviceId, path }),

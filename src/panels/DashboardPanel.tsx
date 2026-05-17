@@ -90,7 +90,9 @@ export function DashboardPanel({ deviceId }: Props) {
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
     <span>
-      <span className="font-medium text-(--color-fg) tabular-nums">{value}</span>{" "}
+      <span className="font-medium text-(--color-fg) tabular-nums">
+        {value}
+      </span>{" "}
       {label}
     </span>
   );

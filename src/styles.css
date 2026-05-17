@@ -126,8 +126,7 @@ body {
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 2px solid
-    color-mix(in oklch, var(--color-accent) 60%, transparent);
+  outline: 2px solid color-mix(in oklch, var(--color-accent) 60%, transparent);
   outline-offset: 1px;
 }
 

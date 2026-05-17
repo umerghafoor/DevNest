@@ -6,7 +6,7 @@ self-hosters who want one window for SSH, Docker, logs, metrics, Git, an
 HTTP client, a SQL client, and so on.
 
 This folder is the orientation manual for the code itself. If you want to
-*use* the app, start with the top-level `README.md`. If you want to extend
+_use_ the app, start with the top-level `README.md`. If you want to extend
 it, start here.
 
 ## At a glance

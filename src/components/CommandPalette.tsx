@@ -224,7 +224,9 @@ export function CommandPalette() {
           <span>
             <Kbd>↑↓</Kbd> navigate · <Kbd>↵</Kbd> open · <Kbd>Esc</Kbd> close
           </span>
-          <span>{items.length} {items.length === 1 ? "result" : "results"}</span>
+          <span>
+            {items.length} {items.length === 1 ? "result" : "results"}
+          </span>
         </div>
       </div>
     </div>
@@ -264,9 +266,7 @@ function Row({
         role="option"
         aria-selected={active}
         className={`group relative flex w-full items-center gap-3 px-3 py-2 text-left transition-colors ${
-          active
-            ? "bg-(--color-accent)/15"
-            : "hover:bg-(--color-surface-2)"
+          active ? "bg-(--color-accent)/15" : "hover:bg-(--color-surface-2)"
         }`}
       >
         {active && (

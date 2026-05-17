@@ -23,12 +23,20 @@ function readFolders(): FolderBookmark[] {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     // Migration: pre-multi-device bookmarks had no deviceId — default to "local".
-    return parsed.map((b: Partial<FolderBookmark> & { path: string; id?: string; branch?: string | null }) => ({
-      id: b.id ?? Math.random().toString(36).slice(2, 10),
-      deviceId: b.deviceId ?? "local",
-      path: b.path,
-      branch: b.branch ?? null,
-    }));
+    return parsed.map(
+      (
+        b: Partial<FolderBookmark> & {
+          path: string;
+          id?: string;
+          branch?: string | null;
+        },
+      ) => ({
+        id: b.id ?? Math.random().toString(36).slice(2, 10),
+        deviceId: b.deviceId ?? "local",
+        path: b.path,
+        branch: b.branch ?? null,
+      }),
+    );
   } catch {
     return [];
   }
@@ -56,7 +64,8 @@ export function GitPanel() {
 
   const deviceById = useMemo(() => {
     const m = new Map<string, { name: string; isLocalhost: boolean }>();
-    for (const d of devices) m.set(d.id, { name: d.name, isLocalhost: d.isLocalhost });
+    for (const d of devices)
+      m.set(d.id, { name: d.name, isLocalhost: d.isLocalhost });
     return m;
   }, [devices]);
 
@@ -128,9 +137,7 @@ export function GitPanel() {
     }
     const isRepo = await api.gitIsRepo(deviceId, trimmed).catch(() => false);
     if (!isRepo) {
-      toast.error(
-        `Not a git repository on ${dev.name}: ${trimmed}`,
-      );
+      toast.error(`Not a git repository on ${dev.name}: ${trimmed}`);
       return;
     }
     const branch = await api.gitBranch(deviceId, trimmed).catch(() => null);
@@ -406,9 +413,12 @@ function FoldersSection({
                 )}
                 <button
                   onClick={async () => {
-                    const ok = await confirm(`Remove "${folderName(f.path)}"?`, {
-                      title: "Remove bookmark",
-                    });
+                    const ok = await confirm(
+                      `Remove "${folderName(f.path)}"?`,
+                      {
+                        title: "Remove bookmark",
+                      },
+                    );
                     if (ok) onRemove(f.id);
                   }}
                   className="rounded px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error)"

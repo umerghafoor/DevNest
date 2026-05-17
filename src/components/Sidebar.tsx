@@ -297,9 +297,7 @@ export function Sidebar() {
                         size={16}
                         strokeWidth={1.75}
                         className={
-                          active
-                            ? "text-(--color-fg)"
-                            : statusIconColor[status]
+                          active ? "text-(--color-fg)" : statusIconColor[status]
                         }
                       />
                       {status === "connecting" && (

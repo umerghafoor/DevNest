@@ -313,10 +313,7 @@ function TemplateCard({
       }`}
     >
       {/* Preview strip: bg, surface, accent, fg */}
-      <div
-        className="flex h-10"
-        style={{ backgroundColor: c["color-bg"] }}
-      >
+      <div className="flex h-10" style={{ backgroundColor: c["color-bg"] }}>
         <div className="flex-1" style={{ backgroundColor: c["color-bg"] }} />
         <div
           className="flex-1"

@@ -4,10 +4,7 @@ import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
 import { useRecentsStore } from "../store/recents-store";
 import { usePaletteStore } from "../store/palette-store";
-import {
-  useShortcutsStore,
-  formatBinding,
-} from "../store/shortcuts-store";
+import { useShortcutsStore, formatBinding } from "../store/shortcuts-store";
 import {
   PANEL_ICONS,
   PANEL_LABELS,
@@ -515,14 +512,11 @@ function MenuRow({
   );
 }
 
-
 // ─── Command palette trigger ──────────────────────────────────────────────────
 
 function PaletteButton() {
   const open = usePaletteStore((s) => s.show);
-  const binding = useShortcutsStore((s) =>
-    s.getBinding("openCommandPalette"),
-  );
+  const binding = useShortcutsStore((s) => s.getBinding("openCommandPalette"));
   return (
     <button
       onClick={open}

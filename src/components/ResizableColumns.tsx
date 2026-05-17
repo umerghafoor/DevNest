@@ -54,7 +54,11 @@ export function useResizableColumns(
     [draft, persisted, columns],
   );
 
-  const onDragStart = (columnId: string, startX: number, startWidth: number) => {
+  const onDragStart = (
+    columnId: string,
+    startX: number,
+    startWidth: number,
+  ) => {
     const col = columns.find((c) => c.id === columnId);
     const minWidth = col?.minWidth ?? 32;
     const live = { ...persisted, ...(draft ?? {}) };
@@ -136,7 +140,9 @@ export function ResizableTh({
     <th
       onClick={onClick}
       className={`relative px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted) ${
-        onClick ? "cursor-pointer select-none hover:text-(--color-fg) transition-colors" : ""
+        onClick
+          ? "cursor-pointer select-none hover:text-(--color-fg) transition-colors"
+          : ""
       } ${className}`}
     >
       {children}

@@ -6,7 +6,15 @@ import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { notifyCompleted } from "../lib/notify";
 
-const METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"] as const;
+const METHODS = [
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+] as const;
 type Method = (typeof METHODS)[number];
 
 interface HeaderRow {
@@ -103,7 +111,11 @@ export function HttpPanel() {
   };
 
   const loadSaved = (r: SavedRequest) => {
-    setMethod(METHODS.includes(r.spec.method as Method) ? (r.spec.method as Method) : "GET");
+    setMethod(
+      METHODS.includes(r.spec.method as Method)
+        ? (r.spec.method as Method)
+        : "GET",
+    );
     setUrl(r.spec.url);
     const rows = headerRowsFromPairs(r.spec.headers);
     setHeaders(rows.length === 0 ? [emptyHeader()] : rows);
@@ -201,7 +213,10 @@ export function HttpPanel() {
 
         {/* Tabs */}
         <div className="flex shrink-0 gap-0 border-b border-(--color-border) bg-(--color-surface) px-2">
-          <TabButton active={tab === "headers"} onClick={() => setTab("headers")}>
+          <TabButton
+            active={tab === "headers"}
+            onClick={() => setTab("headers")}
+          >
             Headers
             {headers.filter((h) => h.enabled && h.name.trim()).length > 0 && (
               <span className="ml-1 text-(--color-fg-muted)">

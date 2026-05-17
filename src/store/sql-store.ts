@@ -44,7 +44,9 @@ function persist(list: SavedSqlConnection[]) {
 interface SqlState {
   saved: SavedSqlConnection[];
   activeId: string | null;
-  add: (conn: Omit<SavedSqlConnection, "id" | "updatedAt">) => SavedSqlConnection;
+  add: (
+    conn: Omit<SavedSqlConnection, "id" | "updatedAt">,
+  ) => SavedSqlConnection;
   update: (id: string, patch: Partial<SavedSqlConnection>) => void;
   remove: (id: string) => void;
   setActive: (id: string | null) => void;

@@ -37,28 +37,28 @@ it needs.
 
 ## Modules
 
-| File | Purpose |
-|---|---|
-| `commands.rs` | Thin Tauri layer — wraps the modules below as `#[tauri::command]`s. Where the surface area lives. |
-| `error.rs` | `AppError` (`Ssh`, `Db`, `NotFound`, `Invalid`, `SudoPasswordRequired`, `Io`) + JSON-friendly `Serialize` so the frontend gets `{kind, message, detail}`. |
-| `db.rs` | SQLite wrapper for app data; opens the DB under `dirs::data_local_dir()/devnest`. |
-| `devices.rs` | CRUD for `Device { id, name, host, port, username, authType, … }`. |
-| `secrets.rs` | OS keyring access. Namespaced by service: `devnest` (SSH auth), `devnest-sudo`, `devnest-github`, `devnest-sql`. |
-| `ssh.rs` | `SessionPool` of `SshSession`s (one per device). Synchronous via the `ssh2` crate. `run_command` adds the optional sudo wrapping. |
-| `ssh_tunnel.rs` | `TunnelPool` — opens a dedicated SSH session per tunnel and bridges a local 127.0.0.1 listener to `channel_direct_tcpip`. Used by the SQL client when a saved connection has `viaDeviceId`. |
-| `sql.rs` | `SqlPool` of async sqlx pools (Postgres/MySQL/SQLite). 1k-row cap; converts driver-specific rows to JSON. |
-| `docker.rs` | `docker ps`/`logs`/`start`/`stop` over the device's SSH session (or local shell). |
-| `metrics.rs` | CPU, memory, disk, network, thermal — built by reading `/proc` (Linux) or running shell commands. |
-| `local_fs.rs` | Local file ops (read/write) for localhost devices. |
-| `sftp.rs` | Remote file ops over the SSH session. |
-| `git.rs` | Wraps `git` CLI for repo introspection (log, branches, tags, diff). |
-| `github.rs` | GitHub OAuth device flow + `gh` API for repos/user. Token in keyring. |
-| `http_client.rs` | One async command: send an arbitrary HTTP request, return status/headers/body. |
-| `terminal.rs` / `terminal_commands.rs` | PTY lifecycle (`terminal_open` / `_write` / `_resize` / `_close`). Local PTYs via `portable-pty`, remote via SSH channel. Streams bytes back via `terminal:<id>` Tauri events. |
-| `log_stream.rs` | `tail -F`-style streaming. Spawns a process, streams stdout/stderr as `log:<id>` events. |
-| `ngrok.rs` | Manage local `ngrok` tunnels. |
-| `tailscale.rs` | `tailscale status` + set-exit-node. |
-| `systemd.rs` | List units, get status, edit unit files via SFTP. |
+| File                                   | Purpose                                                                                                                                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `commands.rs`                          | Thin Tauri layer — wraps the modules below as `#[tauri::command]`s. Where the surface area lives.                                                                                           |
+| `error.rs`                             | `AppError` (`Ssh`, `Db`, `NotFound`, `Invalid`, `SudoPasswordRequired`, `Io`) + JSON-friendly `Serialize` so the frontend gets `{kind, message, detail}`.                                   |
+| `db.rs`                                | SQLite wrapper for app data; opens the DB under `dirs::data_local_dir()/devnest`.                                                                                                           |
+| `devices.rs`                           | CRUD for `Device { id, name, host, port, username, authType, … }`.                                                                                                                          |
+| `secrets.rs`                           | OS keyring access. Namespaced by service: `devnest` (SSH auth), `devnest-sudo`, `devnest-github`, `devnest-sql`.                                                                            |
+| `ssh.rs`                               | `SessionPool` of `SshSession`s (one per device). Synchronous via the `ssh2` crate. `run_command` adds the optional sudo wrapping.                                                           |
+| `ssh_tunnel.rs`                        | `TunnelPool` — opens a dedicated SSH session per tunnel and bridges a local 127.0.0.1 listener to `channel_direct_tcpip`. Used by the SQL client when a saved connection has `viaDeviceId`. |
+| `sql.rs`                               | `SqlPool` of async sqlx pools (Postgres/MySQL/SQLite). 1k-row cap; converts driver-specific rows to JSON.                                                                                   |
+| `docker.rs`                            | `docker ps`/`logs`/`start`/`stop` over the device's SSH session (or local shell).                                                                                                           |
+| `metrics.rs`                           | CPU, memory, disk, network, thermal — built by reading `/proc` (Linux) or running shell commands.                                                                                           |
+| `local_fs.rs`                          | Local file ops (read/write) for localhost devices.                                                                                                                                          |
+| `sftp.rs`                              | Remote file ops over the SSH session.                                                                                                                                                       |
+| `git.rs`                               | Wraps `git` CLI for repo introspection (log, branches, tags, diff).                                                                                                                         |
+| `github.rs`                            | GitHub OAuth device flow + `gh` API for repos/user. Token in keyring.                                                                                                                       |
+| `http_client.rs`                       | One async command: send an arbitrary HTTP request, return status/headers/body.                                                                                                              |
+| `terminal.rs` / `terminal_commands.rs` | PTY lifecycle (`terminal_open` / `_write` / `_resize` / `_close`). Local PTYs via `portable-pty`, remote via SSH channel. Streams bytes back via `terminal:<id>` Tauri events.              |
+| `log_stream.rs`                        | `tail -F`-style streaming. Spawns a process, streams stdout/stderr as `log:<id>` events.                                                                                                    |
+| `ngrok.rs`                             | Manage local `ngrok` tunnels.                                                                                                                                                               |
+| `tailscale.rs`                         | `tailscale status` + set-exit-node.                                                                                                                                                         |
+| `systemd.rs`                           | List units, get status, edit unit files via SFTP.                                                                                                                                           |
 
 ## How a command typically looks
 
@@ -92,7 +92,7 @@ without serialising.
 
 Implications:
 
-- A long-running command on a device blocks other commands on the *same*
+- A long-running command on a device blocks other commands on the _same_
   device while it holds the lock. Different devices are independent.
 - The SQL client's SSH tunnels intentionally open a **new** SSH session
   per tunnel (`ssh_tunnel.rs::open_session`) so high-bandwidth tunnel

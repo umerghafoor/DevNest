@@ -471,17 +471,15 @@ function SqlEditor({
       options={{
         minimap: { enabled: false },
         fontSize: 13,
-        fontFamily:
-          '"Cascadia Code", "Fira Code", "Jetbrains Mono", monospace',
+        fontFamily: '"Cascadia Code", "Fira Code", "Jetbrains Mono", monospace',
         scrollBeyondLastLine: false,
         wordWrap: "on",
         renderLineHighlight: "line",
         automaticLayout: true,
       }}
       onMount={(editor, monaco) => {
-        editor.addCommand(
-          monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
-          () => onRun(),
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter, () =>
+          onRun(),
         );
       }}
     />
@@ -558,7 +556,10 @@ function ResultsPane({
         <span>{result.elapsedMs} ms</span>
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
-        <table className="table-fixed border-collapse font-mono text-xs" style={{ minWidth: "100%" }}>
+        <table
+          className="table-fixed border-collapse font-mono text-xs"
+          style={{ minWidth: "100%" }}
+        >
           <colgroup>
             {result.columns.map((c) => (
               <col key={c.name} style={{ width: widthFor(`col:${c.name}`) }} />
@@ -637,7 +638,9 @@ function ConnectionEditor({
   );
 
   const [name, setName] = useState(initial?.name ?? "");
-  const [engine, setEngine] = useState<SqlEngine>(initial?.engine ?? "postgres");
+  const [engine, setEngine] = useState<SqlEngine>(
+    initial?.engine ?? "postgres",
+  );
   const [host, setHost] = useState(initial?.host ?? "127.0.0.1");
   const [port, setPort] = useState<number>(
     initial?.port ?? ENGINE_DEFAULT_PORTS["postgres"],

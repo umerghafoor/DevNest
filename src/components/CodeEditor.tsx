@@ -1,8 +1,24 @@
 import { useEffect, useMemo, useRef } from "react";
 import { EditorState, Compartment } from "@codemirror/state";
-import { EditorView, keymap, lineNumbers, highlightActiveLine } from "@codemirror/view";
-import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { bracketMatching, indentOnInput, syntaxHighlighting, defaultHighlightStyle, StreamLanguage } from "@codemirror/language";
+import {
+  EditorView,
+  keymap,
+  lineNumbers,
+  highlightActiveLine,
+} from "@codemirror/view";
+import {
+  defaultKeymap,
+  history,
+  historyKeymap,
+  indentWithTab,
+} from "@codemirror/commands";
+import {
+  bracketMatching,
+  indentOnInput,
+  syntaxHighlighting,
+  defaultHighlightStyle,
+  StreamLanguage,
+} from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { yaml } from "@codemirror/lang-yaml";
 import { toml as legacyToml } from "@codemirror/legacy-modes/mode/toml";
@@ -30,7 +46,9 @@ interface Props {
 /**
  * Guess a language by file extension. Falls back to "text" (no highlighting).
  */
-export function languageFromFilename(name: string | null | undefined): CodeEditorLanguage {
+export function languageFromFilename(
+  name: string | null | undefined,
+): CodeEditorLanguage {
   if (!name) return "text";
   const lower = name.toLowerCase();
   if (lower.endsWith(".json")) return "json";
@@ -181,5 +199,10 @@ export function CodeEditor({
     });
   }, [value]);
 
-  return <div ref={hostRef} className={`h-full min-h-0 overflow-auto ${className}`} />;
+  return (
+    <div
+      ref={hostRef}
+      className={`h-full min-h-0 overflow-auto ${className}`}
+    />
+  );
 }

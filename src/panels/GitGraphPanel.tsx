@@ -246,12 +246,12 @@ export function GitGraphPanel({ repoPath, paneId, deviceId }: Props) {
           onSelect={setSelected}
         />
         {!detailCollapsed && (
-        <DetailPane
-          detail={detail}
-          diffFile={diffFile}
-          diffText={diffText}
-          onSelectFile={setDiffFile}
-        />
+          <DetailPane
+            detail={detail}
+            diffFile={diffFile}
+            diffText={diffText}
+            onSelectFile={setDiffFile}
+          />
         )}
       </div>
     </div>

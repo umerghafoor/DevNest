@@ -68,19 +68,19 @@ All stores use Zustand. Conventions:
 
 The stores that matter:
 
-| File | What it owns |
-|---|---|
-| `app-store.ts` | Devices, workspaces, pane tree, connection statuses |
-| `theme-store.ts` | `light` / `dark` / `system` + applies CSS classes |
-| `ui-store.ts` | Accent colour preset |
-| `colors-store.ts` | Per-CSS-var overrides for advanced theme customisation |
-| `shortcuts-store.ts` | Customisable keybindings (`closePane`, `splitHorizontal`, …) |
-| `palette-store.ts` | Command-palette open state |
-| `recents-store.ts` | Recently used files / commands |
-| `http-store.ts` | Saved HTTP requests |
-| `sql-store.ts` | Saved SQL connections (password lives in OS keyring, not here) |
-| `services-store.ts` | Local service definitions |
-| `sudo-store.ts` | Pending sudo-password prompts |
+| File                 | What it owns                                                   |
+| -------------------- | -------------------------------------------------------------- |
+| `app-store.ts`       | Devices, workspaces, pane tree, connection statuses            |
+| `theme-store.ts`     | `light` / `dark` / `system` + applies CSS classes              |
+| `ui-store.ts`        | Accent colour preset                                           |
+| `colors-store.ts`    | Per-CSS-var overrides for advanced theme customisation         |
+| `shortcuts-store.ts` | Customisable keybindings (`closePane`, `splitHorizontal`, …)   |
+| `palette-store.ts`   | Command-palette open state                                     |
+| `recents-store.ts`   | Recently used files / commands                                 |
+| `http-store.ts`      | Saved HTTP requests                                            |
+| `sql-store.ts`       | Saved SQL connections (password lives in OS keyring, not here) |
+| `services-store.ts`  | Local service definitions                                      |
+| `sudo-store.ts`      | Pending sudo-password prompts                                  |
 
 ## API layer
 
