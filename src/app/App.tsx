@@ -27,6 +27,7 @@ export function App() {
   const setDevices = useAppStore((s) => s.setDevices);
   const initTheme = useThemeStore((s) => s.init);
   const initUi = useUiStore((s) => s.init);
+  const reapplyAccent = useUiStore((s) => s.reapplyAccent);
   const initColors = useColorsStore((s) => s.init);
   const reapplyColors = useColorsStore((s) => s.reapply);
   const themeValue = useThemeStore((s) => s.theme);
@@ -49,11 +50,14 @@ export function App() {
       .catch((e) => console.error("listDevices failed", e));
   }, [initTheme, initUi, initColors, setDevices]);
 
-  // Re-apply color overrides whenever the active theme (light/dark) changes,
-  // since each mode has its own override map.
+  // Re-apply color overrides AND the accent preset whenever the active theme
+  // changes. colors-store.reapply wipes any inline --color-* before applying
+  // its own overrides, which would also clear the accent preset that lives as
+  // an inline style — so accent gets reapplied right after.
   useEffect(() => {
     reapplyColors();
-  }, [themeValue, reapplyColors]);
+    reapplyAccent();
+  }, [themeValue, reapplyColors, reapplyAccent]);
 
   // Global keyboard shortcuts driven by the customizable shortcut registry.
   useEffect(() => {

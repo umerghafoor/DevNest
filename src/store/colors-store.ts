@@ -139,6 +139,9 @@ interface ColorsState extends Stored {
   setOverride: (mode: ThemeMode, name: string, value: string) => void;
   resetOverride: (mode: ThemeMode, name: string) => void;
   resetAll: () => void;
+  /** Replace ALL overrides for one mode with the given map. Used by theme
+   * templates. */
+  applyTemplate: (mode: ThemeMode, overrides: Record<string, string>) => void;
   reapply: () => void;
   init: () => void;
 }
@@ -167,6 +170,17 @@ export const useColorsStore = create<ColorsState>((set, get) => ({
   },
   resetAll: () => {
     const next: Stored = { light: {}, dark: {} };
+    persist(next);
+    set(next);
+    applyOverrides(next);
+  },
+  applyTemplate: (mode, overrides) => {
+    const s = get();
+    const next: Stored = {
+      light: s.light,
+      dark: s.dark,
+      [mode]: { ...overrides },
+    };
     persist(next);
     set(next);
     applyOverrides(next);

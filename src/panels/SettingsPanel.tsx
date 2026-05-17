@@ -18,6 +18,7 @@ import {
   formatBinding,
   type ShortcutId,
 } from "../store/shortcuts-store";
+import { THEME_TEMPLATES, type ThemeTemplate } from "../lib/theme-templates";
 
 type Tab = "appearance" | "shortcuts" | "integrations" | "about";
 
@@ -218,9 +219,127 @@ function AppearanceTab() {
       </div>
 
       <div className="mt-6">
+        <ThemeTemplatesPicker />
+      </div>
+
+      <div className="mt-6">
         <ColorEditor />
       </div>
     </div>
+  );
+}
+
+function ThemeTemplatesPicker() {
+  const setTheme = useThemeStore((s) => s.setTheme);
+  const applyTemplate = useColorsStore((s) => s.applyTemplate);
+  const lightOverrides = useColorsStore((s) => s.light);
+  const darkOverrides = useColorsStore((s) => s.dark);
+
+  // A template is "active" when every color in its palette equals the current
+  // overrides for that mode.
+  const isActive = (t: ThemeTemplate) => {
+    const overrides = t.mode === "dark" ? darkOverrides : lightOverrides;
+    return Object.entries(t.colors).every(
+      ([k, v]) => overrides[k]?.toLowerCase() === v.toLowerCase(),
+    );
+  };
+
+  const pick = (t: ThemeTemplate) => {
+    setTheme(t.mode);
+    applyTemplate(t.mode, t.colors);
+  };
+
+  const darkTemplates = THEME_TEMPLATES.filter((t) => t.mode === "dark");
+  const lightTemplates = THEME_TEMPLATES.filter((t) => t.mode === "light");
+
+  return (
+    <div>
+      <SectionTitle>Templates</SectionTitle>
+      <div className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--color-fg-muted)">
+          Dark
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+          {darkTemplates.map((t) => (
+            <TemplateCard
+              key={t.id}
+              template={t}
+              active={isActive(t)}
+              onPick={() => pick(t)}
+            />
+          ))}
+        </div>
+        <div className="mt-4 mb-2 text-[10px] font-semibold uppercase tracking-wider text-(--color-fg-muted)">
+          Light
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+          {lightTemplates.map((t) => (
+            <TemplateCard
+              key={t.id}
+              template={t}
+              active={isActive(t)}
+              onPick={() => pick(t)}
+            />
+          ))}
+        </div>
+        <p className="mt-3 text-[11px] text-(--color-fg-muted)">
+          Picking a template replaces all 12 colors for that mode. You can
+          fine-tune any single color afterward in Advanced colors below.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TemplateCard({
+  template,
+  active,
+  onPick,
+}: {
+  template: ThemeTemplate;
+  active: boolean;
+  onPick: () => void;
+}) {
+  const c = template.colors;
+  return (
+    <button
+      onClick={onPick}
+      title={template.description}
+      aria-pressed={active}
+      className={`group flex flex-col overflow-hidden rounded-md border text-left transition-all ${
+        active
+          ? "border-(--color-accent) ring-2 ring-(--color-accent)/40"
+          : "border-(--color-border) hover:border-(--color-fg-muted)"
+      }`}
+    >
+      {/* Preview strip: bg, surface, accent, fg */}
+      <div
+        className="flex h-10"
+        style={{ backgroundColor: c["color-bg"] }}
+      >
+        <div className="flex-1" style={{ backgroundColor: c["color-bg"] }} />
+        <div
+          className="flex-1"
+          style={{ backgroundColor: c["color-surface"] }}
+        />
+        <div
+          className="flex-1"
+          style={{ backgroundColor: c["color-surface-2"] }}
+        />
+        <div
+          className="flex-1"
+          style={{ backgroundColor: c["color-accent"] }}
+        />
+      </div>
+      <div className="flex items-center justify-between gap-1 px-2 py-1.5">
+        <span className="truncate text-xs font-medium">{template.name}</span>
+        {active && (
+          <span className="shrink-0 text-(--color-accent)" aria-hidden>
+            ✓
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
 

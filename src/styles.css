@@ -2,7 +2,14 @@
 
 @custom-variant dark (&:where(.theme-dark, .theme-dark *));
 
-@theme {
+/* Color tokens live on :root / .theme-dark — NOT inside @theme. Tailwind v4
+ * emits @theme tokens to a higher cascade layer than ordinary rules, which
+ * means a `.theme-dark { … }` block can't override @theme defaults. Keeping
+ * these as plain custom properties guarantees `.theme-dark` wins via normal
+ * source-order cascade. Tailwind's `bg-(--color-bg)` arbitrary-property
+ * syntax works on these all the same. */
+:root,
+.theme-light {
   /* Light — warm cream-white tints, amber accent */
   --color-bg: oklch(0.985 0.005 80);
   --color-surface: oklch(0.96 0.006 75);

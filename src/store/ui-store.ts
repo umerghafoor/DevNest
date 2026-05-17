@@ -98,6 +98,9 @@ interface UiState extends Stored {
   setDensity: (d: Density) => void;
   setFontSize: (f: FontSize) => void;
   setAccent: (a: AccentId) => void;
+  /** Re-apply current accent inline — used after theme switch since the
+   * colors-store wipes inline --color-* on mode change. */
+  reapplyAccent: () => void;
   init: () => void;
 }
 
@@ -136,6 +139,9 @@ export const useUiStore = create<UiState>((set, get) => ({
       accent: next.accent,
     });
     set({ accent });
+  },
+  reapplyAccent: () => {
+    applyAccent(get().accent);
   },
   init: () => {
     const s = readStored();

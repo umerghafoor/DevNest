@@ -11,9 +11,9 @@
 
 ### In progress / next up
 
-- HTTP request runner (Postman-lite): method, URL, headers, body, response; saved requests per workspace
-- `.env` / secrets manager: structured editor for `.env` files with masked values; optional sync to OS keyring
 - SQL client: connect to Postgres / MySQL / SQLite, run queries, tabular results, saved connections
+- `.env` / secrets manager: structured editor for `.env` files with masked values; optional sync to OS keyring
+- When no panels are open, show a dashboard with quick actions
 
 ### Mid-tier features
 

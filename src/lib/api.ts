@@ -1,4 +1,30 @@
 import { invoke } from "@tauri-apps/api/core";
+import { useSudoStore } from "../store/sudo-store";
+import { useAppStore } from "../store/app-store";
+
+/**
+ * Wraps Tauri's `invoke` with automatic sudo retry. When the backend returns
+ * `SudoPasswordRequired`, the global sudo dialog is opened; on save the call
+ * is retried once. On cancel the original error is rethrown.
+ *
+ * This makes every panel's API call sudo-safe by default, without each call
+ * site needing to wrap in `withSudo()`.
+ */
+async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  try {
+    return await invoke<T>(cmd, args);
+  } catch (e) {
+    if (!isSudoRequired(e)) throw e;
+    const deviceId = sudoRequiredDeviceId(e);
+    if (!deviceId) throw e;
+    const name =
+      useAppStore.getState().devices.find((d) => d.id === deviceId)?.name ??
+      deviceId;
+    const saved = await useSudoStore.getState().request(deviceId, name);
+    if (!saved) throw e;
+    return await invoke<T>(cmd, args);
+  }
+}
 
 export type AuthType = "key" | "password" | "localhost";
 
@@ -197,95 +223,89 @@ export interface DimmModule {
 export type ConnectionStatus = "connected" | "offline";
 
 export const api = {
-  ping: () => invoke<string>("ping"),
-  appVersion: () => invoke<string>("app_version"),
+  ping: () => call<string>("ping"),
+  appVersion: () => call<string>("app_version"),
 
-  listDevices: () => invoke<Device[]>("list_devices"),
+  listDevices: () => call<Device[]>("list_devices"),
   createDevice: (newDevice: NewDevice, secret: string | null) =>
-    invoke<Device>("create_device", { new: newDevice, secret }),
-  deleteDevice: (id: string) => invoke<void>("delete_device", { id }),
+    call<Device>("create_device", { new: newDevice, secret }),
+  deleteDevice: (id: string) => call<void>("delete_device", { id }),
   setUseSudo: (id: string, value: boolean) =>
-    invoke<Device>("set_use_sudo", { id, value }),
+    call<Device>("set_use_sudo", { id, value }),
   setSudoPassword: (id: string, password: string) =>
-    invoke<void>("set_sudo_password", { id, password }),
-  hasSudoPassword: (id: string) => invoke<boolean>("has_sudo_password", { id }),
-  clearSudoPassword: (id: string) =>
-    invoke<void>("clear_sudo_password", { id }),
-  connectDevice: (id: string) => invoke<void>("connect_device", { id }),
-  disconnectDevice: (id: string) => invoke<void>("disconnect_device", { id }),
-  deviceStatus: (id: string) =>
-    invoke<ConnectionStatus>("device_status", { id }),
+    call<void>("set_sudo_password", { id, password }),
+  hasSudoPassword: (id: string) => call<boolean>("has_sudo_password", { id }),
+  clearSudoPassword: (id: string) => call<void>("clear_sudo_password", { id }),
+  connectDevice: (id: string) => call<void>("connect_device", { id }),
+  disconnectDevice: (id: string) => call<void>("disconnect_device", { id }),
+  deviceStatus: (id: string) => call<ConnectionStatus>("device_status", { id }),
   runRemoteCommand: (deviceId: string, cmd: string) =>
-    invoke<CommandOutput>("run_remote_command", { deviceId, cmd }),
+    call<CommandOutput>("run_remote_command", { deviceId, cmd }),
 
   dockerListContainers: (deviceId: string) =>
-    invoke<ContainerSummary[]>("docker_list_containers", { deviceId }),
+    call<ContainerSummary[]>("docker_list_containers", { deviceId }),
   dockerAction: (deviceId: string, containerId: string, action: string) =>
-    invoke<CommandOutput>("docker_action", {
-      deviceId,
-      containerId,
-      action,
-    }),
+    call<CommandOutput>("docker_action", { deviceId, containerId, action }),
   dockerLogs: (deviceId: string, containerId: string, tail = 200) =>
-    invoke<string>("docker_logs", { deviceId, containerId, tail }),
+    call<string>("docker_logs", { deviceId, containerId, tail }),
 
   metricsSnapshot: (deviceId: string) =>
-    invoke<MetricsSnapshot>("metrics_snapshot", { deviceId }),
-  cpuInfo: (deviceId: string) => invoke<CpuInfo>("cpu_info", { deviceId }),
+    call<MetricsSnapshot>("metrics_snapshot", { deviceId }),
+  cpuInfo: (deviceId: string) => call<CpuInfo>("cpu_info", { deviceId }),
   dimmInfo: (deviceId: string) =>
-    invoke<DimmModule[]>("dimm_info", { deviceId }),
+    call<DimmModule[]>("dimm_info", { deviceId }),
 
-  gitIsRepo: (path: string) => invoke<boolean>("git_is_repo", { path }),
-  gitBranch: (path: string) => invoke<string | null>("git_branch", { path }),
+  gitIsRepo: (path: string) => call<boolean>("git_is_repo", { path }),
+  gitBranch: (path: string) => call<string | null>("git_branch", { path }),
   gitClone: (url: string, parentDir: string, repoName: string) =>
-    invoke<string>("git_clone", { url, parentDir, repoName }),
+    call<string>("git_clone", { url, parentDir, repoName }),
   gitLog: (path: string, limit?: number) =>
-    invoke<GitCommit[]>("git_log", { path, limit: limit ?? null }),
+    call<GitCommit[]>("git_log", { path, limit: limit ?? null }),
   gitBranches: (path: string) =>
-    invoke<GitBranchInfo[]>("git_branches", { path }),
-  gitTags: (path: string) => invoke<GitTag[]>("git_tags", { path }),
+    call<GitBranchInfo[]>("git_branches", { path }),
+  gitTags: (path: string) => call<GitTag[]>("git_tags", { path }),
   gitShow: (path: string, hash: string) =>
-    invoke<GitCommitDetail>("git_show", { path, hash }),
+    call<GitCommitDetail>("git_show", { path, hash }),
   gitDiff: (path: string, hash: string, filePath: string) =>
-    invoke<string>("git_diff", { path, hash, filePath }),
+    call<string>("git_diff", { path, hash, filePath }),
 
-  fsReadText: (path: string) => invoke<string>("fs_read_text", { path }),
+  fsReadText: (path: string) => call<string>("fs_read_text", { path }),
   fsWriteText: (path: string, content: string) =>
-    invoke<void>("fs_write_text", { path, content }),
+    call<void>("fs_write_text", { path, content }),
 
   githubDeviceStart: (clientId: string) =>
-    invoke<DeviceCodeResponse>("github_device_start", { clientId }),
+    call<DeviceCodeResponse>("github_device_start", { clientId }),
   githubDevicePoll: (clientId: string, deviceCode: string) =>
-    invoke<string | null>("github_device_poll", { clientId, deviceCode }),
-  githubSignedIn: () => invoke<boolean>("github_signed_in"),
-  githubSignOut: () => invoke<void>("github_sign_out"),
-  githubUser: () => invoke<GhUser>("github_user"),
-  githubListRepos: () => invoke<GhRepo[]>("github_list_repos"),
+    call<string | null>("github_device_poll", { clientId, deviceCode }),
+  githubSignedIn: () => call<boolean>("github_signed_in"),
+  githubSignOut: () => call<void>("github_sign_out"),
+  githubUser: () => call<GhUser>("github_user"),
+  githubListRepos: () => call<GhRepo[]>("github_list_repos"),
 
   httpRequest: (spec: HttpRequestSpec) =>
-    invoke<HttpResponse>("http_request", { spec }),
+    call<HttpResponse>("http_request", { spec }),
 
-  ngrokAvailable: () => invoke<boolean>("ngrok_available"),
-  ngrokList: () => invoke<NgrokTunnel[]>("ngrok_list"),
+  ngrokAvailable: () => call<boolean>("ngrok_available"),
+  ngrokList: () => call<NgrokTunnel[]>("ngrok_list"),
   ngrokStart: (port: number, proto: "http" | "tcp") =>
-    invoke<NgrokTunnel>("ngrok_start", { port, proto }),
-  ngrokStop: (id: string) => invoke<void>("ngrok_stop", { id }),
+    call<NgrokTunnel>("ngrok_start", { port, proto }),
+  ngrokStop: (id: string) => call<void>("ngrok_stop", { id }),
 
   systemdList: (deviceId: string) =>
-    invoke<SystemdUnit[]>("systemd_list", { deviceId }),
+    call<SystemdUnit[]>("systemd_list", { deviceId }),
   systemdStatus: (deviceId: string, name: string) =>
-    invoke<SystemdUnitStatus>("systemd_status", { deviceId, name }),
+    call<SystemdUnitStatus>("systemd_status", { deviceId, name }),
   systemdCat: (deviceId: string, name: string) =>
-    invoke<string>("systemd_cat", { deviceId, name }),
+    call<string>("systemd_cat", { deviceId, name }),
   systemdAction: (
     deviceId: string,
     name: string,
     action: "start" | "stop" | "restart" | "reload" | "enable" | "disable",
-  ) => invoke<string>("systemd_action", { deviceId, name, action }),
+  ) => call<string>("systemd_action", { deviceId, name, action }),
   systemdWriteUnit: (deviceId: string, name: string, content: string) =>
-    invoke<void>("systemd_write_unit", { deviceId, name, content }),
+    call<void>("systemd_write_unit", { deviceId, name, content }),
   systemdDeleteUnit: (deviceId: string, name: string) =>
-    invoke<void>("systemd_delete_unit", { deviceId, name }),
+    call<void>("systemd_delete_unit", { deviceId, name }),
 };
 
 export interface SystemdUnit {
