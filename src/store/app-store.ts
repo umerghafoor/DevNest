@@ -129,11 +129,18 @@ export function findPaneInTree(
 // ─── Workspace helpers ────────────────────────────────────────────────────────
 
 function defaultWorkspace(name?: string): Workspace {
+  const paneId = uid();
+  const dashboard: Pane = {
+    id: paneId,
+    instanceId: paneId,
+    deviceId: "local",
+    panel: "dashboard",
+  };
   return {
     id: uid(),
     name: name ?? randomWorkspaceName(),
-    paneRoot: null,
-    activePaneId: null,
+    paneRoot: makeLeaf(dashboard),
+    activePaneId: paneId,
   };
 }
 
@@ -176,15 +183,59 @@ interface AppState {
   updateSplitRatio: (splitId: string, ratio: number) => void;
 }
 
-const initial = defaultWorkspace();
+const PERSIST_KEY = "devnest.workspaces";
+
+interface PersistedShape {
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+}
+
+function loadPersisted(): PersistedShape | null {
+  try {
+    const raw = localStorage.getItem(PERSIST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedShape;
+    if (
+      !parsed ||
+      !Array.isArray(parsed.workspaces) ||
+      parsed.workspaces.length === 0 ||
+      typeof parsed.activeWorkspaceId !== "string"
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persistWorkspaces(s: {
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+}) {
+  try {
+    localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({
+        workspaces: s.workspaces,
+        activeWorkspaceId: s.activeWorkspaceId,
+      }),
+    );
+  } catch {
+    // localStorage may be unavailable; degrade silently.
+  }
+}
+
+const persisted = loadPersisted();
+const initial = persisted ? null : defaultWorkspace();
 
 export const useAppStore = create<AppState>((set, get) => ({
   devices: [],
   statuses: {},
   activeDeviceId: null,
 
-  workspaces: [initial],
-  activeWorkspaceId: initial.id,
+  workspaces: persisted?.workspaces ?? [initial!],
+  activeWorkspaceId: persisted?.activeWorkspaceId ?? initial!.id,
 
   // Proxy getters — read active workspace fields directly
   get paneRoot() {
@@ -361,6 +412,24 @@ export const useAppStore = create<AppState>((set, get) => ({
       })),
     ),
 }));
+
+// Save workspace tree + active workspace whenever they change, so panel
+// layouts survive a restart. Subscribed once at module load.
+let lastWorkspaces = useAppStore.getState().workspaces;
+let lastActiveId = useAppStore.getState().activeWorkspaceId;
+useAppStore.subscribe((s) => {
+  if (
+    s.workspaces !== lastWorkspaces ||
+    s.activeWorkspaceId !== lastActiveId
+  ) {
+    lastWorkspaces = s.workspaces;
+    lastActiveId = s.activeWorkspaceId;
+    persistWorkspaces({
+      workspaces: s.workspaces,
+      activeWorkspaceId: s.activeWorkspaceId,
+    });
+  }
+});
 
 // ─── Helper: patch the active workspace immutably ─────────────────────────────
 
