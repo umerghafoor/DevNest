@@ -67,6 +67,18 @@ impl SshSession {
             return Err(AppError::Ssh("authentication failed".into()));
         }
 
+        // Apply SSH-layer keepalive when the device asked for it. libssh2
+        // sends a SSH_MSG_IGNORE every `interval` seconds, which keeps
+        // NAT/firewall state warm and satisfies the server's
+        // `ClientAliveInterval`. We pass `want_reply=true` so a dead
+        // connection surfaces as a read error rather than silently linger.
+        if device.keep_alive {
+            // Args are (want_reply, interval_secs). want_reply=true asks the
+            // server to ACK, which means a dead link surfaces as an error on
+            // the next read instead of lingering silently.
+            session.set_keepalive(true, 30);
+        }
+
         Ok(Self { session })
     }
 

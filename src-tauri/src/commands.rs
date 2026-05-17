@@ -1,6 +1,6 @@
 use tauri::State;
 
-use crate::devices::{self, Device, NewDevice};
+use crate::devices::{self, Device, DeviceUpdate, NewDevice};
 use crate::docker::{self, ContainerSummary};
 use crate::error::{AppError, AppResult};
 use crate::metrics::{self, CpuInfo, DimmModule, MetricsSnapshot};
@@ -48,12 +48,51 @@ pub fn delete_device(state: State<'_, AppState>, id: String) -> AppResult<()> {
     devices::delete(&state.db, &id)
 }
 
+/// Update an existing device's config. `secret` semantics:
+///  - `None`  → keep the stored keyring entry as-is.
+///  - `Some("")` → clear the keyring entry (e.g. drop a key passphrase).
+///  - `Some(s)`  → overwrite the keyring entry with `s`.
+///
+/// Drops any live SSH session for this device so the new config takes
+/// effect on the next connect (the heartbeat will reconnect within ~15s
+/// if the device was previously connected).
+#[tauri::command]
+pub fn update_device(
+    state: State<'_, AppState>,
+    id: String,
+    patch: DeviceUpdate,
+    secret: Option<String>,
+) -> AppResult<Device> {
+    let device = devices::update(&state.db, &id, patch)?;
+    if let Some(s) = secret {
+        if s.is_empty() {
+            secrets::delete(&id).ok();
+        } else {
+            secrets::set(&id, &s)?;
+        }
+    }
+    // Force a reconnect with the new config.
+    state.pool.disconnect(&id);
+    Ok(device)
+}
+
 #[tauri::command]
 pub fn set_use_sudo(state: State<'_, AppState>, id: String, value: bool) -> AppResult<Device> {
     devices::set_use_sudo(&state.db, &id, value)?;
     if !value {
         secrets::delete_sudo(&id).ok();
     }
+    require_device(&state, &id)
+}
+
+/// Toggle the per-device `keep_alive` flag. When the device is currently
+/// connected we don't reconfigure the live session here — the new value
+/// takes effect on the next connect (which is when the SSH session is
+/// rebuilt anyway). The heartbeat will reconnect within ~15s if the user
+/// flipped this because their session was dropping.
+#[tauri::command]
+pub fn set_keep_alive(state: State<'_, AppState>, id: String, value: bool) -> AppResult<Device> {
+    devices::set_keep_alive(&state.db, &id, value)?;
     require_device(&state, &id)
 }
 

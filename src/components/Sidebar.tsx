@@ -24,7 +24,7 @@ const statusIconColor: Record<Status, string> = {
   error: "text-(--color-error)",
 };
 
-const HOVER_EXPAND_DELAY_MS = 200;
+const HOVER_EXPAND_DELAY_MS = 1200;
 
 function CradleMark({
   size = 28,
@@ -69,6 +69,8 @@ export function Sidebar() {
   const upsertDevice = useAppStore((s) => s.upsertDevice);
   const removeDevice = useAppStore((s) => s.removeDevice);
   const [dialogOpen, setDialogOpen] = useState(false);
+  /** Non-null while the device-dialog is open in "edit" mode. */
+  const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
@@ -147,6 +149,19 @@ export function Sidebar() {
     }
   };
 
+  const onToggleKeepAlive = async (device: Device) => {
+    try {
+      const updated = await api.setKeepAlive(device.id, !device.keepAlive);
+      upsertDevice(updated);
+      toast.info(
+        `keep-alive ${updated.keepAlive ? "enabled" : "disabled"} for ${device.name}` +
+          (updated.keepAlive ? " — reconnect to apply" : ""),
+      );
+    } catch (e) {
+      toast.error(`Could not toggle keep-alive: ${errorMessage(e)}`);
+    }
+  };
+
   return (
     <>
       <aside
@@ -174,7 +189,10 @@ export function Sidebar() {
               >
                 <div className="flex-1" />
                 <button
-                  onClick={() => setDialogOpen(true)}
+                  onClick={() => {
+                    setEditingDevice(null);
+                    setDialogOpen(true);
+                  }}
                   title="Add device"
                   className="rounded px-1.5 py-0.5 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors whitespace-nowrap"
                 >
@@ -241,6 +259,14 @@ export function Sidebar() {
                             sudo
                           </span>
                         )}
+                        {d.keepAlive && !d.isLocalhost && (
+                          <span
+                            title="SSH keep-alive enabled"
+                            className="shrink-0 rounded bg-(--color-accent)/15 px-1 text-[9px] font-semibold uppercase text-(--color-accent) whitespace-nowrap"
+                          >
+                            alive
+                          </span>
+                        )}
                       </button>
 
                       <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
@@ -256,6 +282,39 @@ export function Sidebar() {
                         >
                           ⚡
                         </button>
+                        {!d.isLocalhost && (
+                          <button
+                            onClick={() => void onToggleKeepAlive(d)}
+                            aria-label={
+                              d.keepAlive
+                                ? "Disable SSH keep-alive"
+                                : "Enable SSH keep-alive"
+                            }
+                            title={
+                              d.keepAlive
+                                ? "Disable SSH keep-alive"
+                                : "Enable SSH keep-alive (reconnect to apply)"
+                            }
+                            className={`rounded px-1 text-[10px] hover:bg-(--color-bg) transition-colors ${
+                              d.keepAlive ? "text-(--color-accent)" : ""
+                            }`}
+                          >
+                            ↻
+                          </button>
+                        )}
+                        {!d.isLocalhost && (
+                          <button
+                            onClick={() => {
+                              setEditingDevice(d);
+                              setDialogOpen(true);
+                            }}
+                            aria-label="Edit device"
+                            title="Edit device"
+                            className="rounded px-1 text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-fg) transition-colors"
+                          >
+                            ✎
+                          </button>
+                        )}
                         {!d.isLocalhost && (
                           <button
                             onClick={() => void onDelete(d.id)}
@@ -312,7 +371,10 @@ export function Sidebar() {
               })}
               <li>
                 <button
-                  onClick={() => setDialogOpen(true)}
+                  onClick={() => {
+                    setEditingDevice(null);
+                    setDialogOpen(true);
+                  }}
                   title="Add device"
                   aria-label="Add device"
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
@@ -356,7 +418,14 @@ export function Sidebar() {
         </div>
       </aside>
 
-      <AddDeviceDialog open={dialogOpen} onClose={() => setDialogOpen(false)} />
+      <AddDeviceDialog
+        open={dialogOpen}
+        editing={editingDevice}
+        onClose={() => {
+          setDialogOpen(false);
+          setEditingDevice(null);
+        }}
+      />
     </>
   );
 }

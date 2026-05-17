@@ -123,6 +123,7 @@ struct RemoteParams {
     auth_type: AuthType,
     key_path: Option<String>,
     passphrase: Option<String>,
+    keep_alive: bool,
 }
 
 /// Spawn a remote SSH shell. The entire SSH session + channel is created
@@ -145,6 +146,7 @@ where
         auth_type: device.auth_type,
         key_path: device.key_path.clone(),
         passphrase: secrets::get(&device.id).ok(),
+        keep_alive: device.keep_alive,
     };
 
     let (tx, rx) = mpsc::sync_channel::<TermInput>(256);
@@ -284,6 +286,10 @@ fn open_ssh_session(params: &RemoteParams, _cols: u32, _rows: u32) -> AppResult<
 
     if !session.authenticated() {
         return Err(AppError::Ssh("auth failed".into()));
+    }
+
+    if params.keep_alive {
+        session.set_keepalive(true, 30);
     }
 
     Ok(session)

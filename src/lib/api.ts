@@ -42,6 +42,7 @@ export interface Device {
   isLocalhost: boolean;
   sudoPrefix: string | null;
   useSudo: boolean;
+  keepAlive: boolean;
   createdAt: number;
   updatedAt: number;
 }
@@ -55,7 +56,11 @@ export interface NewDevice {
   keyPath: string | null;
   sudoPrefix: string | null;
   useSudo: boolean;
+  keepAlive: boolean;
 }
+
+/** PATCH shape for `updateDevice` — same fields as NewDevice, no id. */
+export type DeviceUpdate = Omit<NewDevice, never>;
 
 export interface AppErrorPayload {
   kind: "ssh" | "db" | "notFound" | "invalid" | "sudoPasswordRequired" | "io";
@@ -247,9 +252,22 @@ export const api = {
   listDevices: () => call<Device[]>("list_devices"),
   createDevice: (newDevice: NewDevice, secret: string | null) =>
     call<Device>("create_device", { new: newDevice, secret }),
+  /**
+   * Update an existing device. `secret` semantics:
+   *  - `null`  → keep stored keyring entry as-is.
+   *  - `""`    → clear the keyring entry.
+   *  - string  → overwrite the keyring entry.
+   */
+  updateDevice: (
+    id: string,
+    patch: DeviceUpdate,
+    secret: string | null,
+  ) => call<Device>("update_device", { id, patch, secret }),
   deleteDevice: (id: string) => call<void>("delete_device", { id }),
   setUseSudo: (id: string, value: boolean) =>
     call<Device>("set_use_sudo", { id, value }),
+  setKeepAlive: (id: string, value: boolean) =>
+    call<Device>("set_keep_alive", { id, value }),
   setSudoPassword: (id: string, password: string) =>
     call<void>("set_sudo_password", { id, password }),
   hasSudoPassword: (id: string) => call<boolean>("has_sudo_password", { id }),

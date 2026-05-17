@@ -161,6 +161,11 @@ fn open_session(device: &Device) -> AppResult<Session> {
     if !session.authenticated() {
         return Err(AppError::Ssh("tunnel authentication failed".into()));
     }
+    // Honour the device's keep-alive preference for the dedicated tunnel
+    // session too, otherwise a long-idle DB session would still die.
+    if device.keep_alive {
+        session.set_keepalive(true, 30);
+    }
     Ok(session)
 }
 
