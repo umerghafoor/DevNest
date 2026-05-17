@@ -103,6 +103,27 @@ pub fn device_status(state: State<'_, AppState>, id: String) -> AppResult<&'stat
     })
 }
 
+/// Actively probe the SSH session for liveness. Unlike `device_status`,
+/// this opens a channel on the existing session and runs a no-op; if the
+/// probe fails (TCP drop, server kicked us, etc.) the pooled session is
+/// dropped so the next status call returns "offline". Returns the
+/// post-probe status.
+#[tauri::command]
+pub fn device_ping(state: State<'_, AppState>, id: String) -> AppResult<&'static str> {
+    let device = require_device(&state, &id)?;
+    if device.is_localhost {
+        return Ok("connected");
+    }
+    if !state.pool.is_connected(&id) {
+        return Ok("offline");
+    }
+    Ok(if state.pool.probe(&id) {
+        "connected"
+    } else {
+        "offline"
+    })
+}
+
 #[tauri::command]
 pub fn run_remote_command(
     state: State<'_, AppState>,

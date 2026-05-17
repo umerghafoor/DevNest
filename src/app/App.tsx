@@ -22,6 +22,7 @@ import {
   matchesBinding,
   type ShortcutId,
 } from "../store/shortcuts-store";
+import { useDeviceHeartbeat } from "./use-device-heartbeat";
 
 export function App() {
   const setDevices = useAppStore((s) => s.setDevices);
@@ -39,6 +40,8 @@ export function App() {
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
   const getBinding = useShortcutsStore((s) => s.getBinding);
   const togglePalette = usePaletteStore((s) => s.toggle);
+
+  useDeviceHeartbeat();
 
   useEffect(() => {
     initTheme();

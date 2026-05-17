@@ -180,6 +180,24 @@ impl SessionPool {
     pub fn get(&self, id: &str) -> Option<Arc<Mutex<SshSession>>> {
         self.inner.lock().get(id).cloned()
     }
+
+    /// Actively probe the session by opening a channel and running `:`.
+    /// Returns true if the probe succeeds; on any failure the session is
+    /// dropped from the pool so the next status call reflects reality.
+    pub fn probe(&self, id: &str) -> bool {
+        let sess = match self.get(id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let ok = {
+            let mut guard = sess.lock();
+            guard.run_with_stdin(":", None).is_ok()
+        };
+        if !ok {
+            self.disconnect(id);
+        }
+        ok
+    }
 }
 
 /// Run a shell command on a device. For localhost devices this shells out

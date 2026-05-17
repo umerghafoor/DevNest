@@ -179,6 +179,7 @@ pub fn run() {
             commands::connect_device,
             commands::disconnect_device,
             commands::device_status,
+            commands::device_ping,
             commands::run_remote_command,
             commands::docker_list_containers,
             commands::docker_action,

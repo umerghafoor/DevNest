@@ -239,6 +239,7 @@ export const api = {
   connectDevice: (id: string) => call<void>("connect_device", { id }),
   disconnectDevice: (id: string) => call<void>("disconnect_device", { id }),
   deviceStatus: (id: string) => call<ConnectionStatus>("device_status", { id }),
+  devicePing: (id: string) => call<ConnectionStatus>("device_ping", { id }),
   runRemoteCommand: (deviceId: string, cmd: string) =>
     call<CommandOutput>("run_remote_command", { deviceId, cmd }),
 
