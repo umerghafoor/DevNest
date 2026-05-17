@@ -12,11 +12,9 @@
 ### In progress / next up
 
 - SQL client: connect to Postgres / MySQL / SQLite, run queries, tabular results, saved connections
-- When no panels are open, show a dashboard with quick actions
 - `.env` / secrets manager: structured editor for `.env` files with masked values; optional sync to OS keyring
 - Auto-reconnect SSH devices + connection-status heartbeat
-- Per-pane settings persistence (log filter, ports filter, git graph collapsed state survive restart) also enhance the UI by adding sort features to the panels with listings (Processes, Ports, Git) and implementing a search functionality (Ctrl-F) for better navigation through logs and terminal output. Additionally, integrating real syntax highlighting in the Editor and Systemd text view using CodeMirror 6 will improve readability and user experience. Notifications for long-running commands can be implemented using the Tauri notification plugin to keep users informed about the status of their tasks.
-- Search across logs / terminal output (Ctrl-F)
+- Per-pane settings persistence (log filter, ports filter, git graph collapsed state survive restart) also enhance the UI by adding sort features to the panels with listings (Processes, Ports, Git). Additionally, integrating real syntax highlighting in the Editor and Systemd text view using CodeMirror 6 will improve readability and user experience. Notifications for long-running commands can be implemented using the Tauri notification plugin to keep users informed about the status of their tasks.
 
 ### Mid-tier features
 
@@ -30,7 +28,6 @@
 
 - Per-pane settings persistence (log filter, ports filter, git graph collapsed state survive restart)
 - Real syntax highlighting in the Editor + Systemd text view (CodeMirror 6) — replaces the regex-based highlighter and the plain textarea
-- Search across logs / terminal output (Ctrl-F)
 - Multi-select on Processes panel: kill multiple, sort by column
 - Notifications when long-running commands finish (Tauri notification plugin)
 

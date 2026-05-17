@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
+import { SearchAddon } from "@xterm/addon-search";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
@@ -18,9 +19,13 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
   const termRef = useRef<Terminal | null>(null);
   const termIdRef = useRef<string | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const searchAddonRef = useRef<SearchAddon | null>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const [connectState, setConnectState] = useState<ConnectState>("connecting");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
   const sessionKey = instanceId ?? deviceId;
 
@@ -52,12 +57,25 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       allowProposedApi: true,
     });
     const fit = new FitAddon();
+    const searchAddon = new SearchAddon();
     term.loadAddon(fit);
     term.loadAddon(new WebLinksAddon());
+    term.loadAddon(searchAddon);
     term.open(container);
     fit.fit();
     termRef.current = term;
     fitAddonRef.current = fit;
+    searchAddonRef.current = searchAddon;
+
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type === "keydown" && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setSearchOpen(true);
+        requestAnimationFrame(() => searchInputRef.current?.select());
+        return false;
+      }
+      return true;
+    });
 
     let termId: string | null = null;
     let unlisten: (() => void) | null = null;
@@ -124,8 +142,77 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     };
   }, [sessionKey, deviceId]);
 
+  const findNext = useCallback(() => {
+    if (!search) return;
+    searchAddonRef.current?.findNext(search, { incremental: false });
+  }, [search]);
+
+  const findPrev = useCallback(() => {
+    if (!search) return;
+    searchAddonRef.current?.findPrevious(search, { incremental: false });
+  }, [search]);
+
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    searchAddonRef.current?.clearDecorations();
+    termRef.current?.focus();
+  }, []);
+
   return (
-    <div className="relative h-full w-full bg-(--color-bg)">
+    <div className="relative flex h-full w-full flex-col bg-(--color-bg)">
+      {searchOpen && (
+        <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs">
+          <input
+            ref={searchInputRef}
+            value={search}
+            onChange={(e) => {
+              const v = e.target.value;
+              setSearch(v);
+              if (v) {
+                searchAddonRef.current?.findNext(v, { incremental: true });
+              } else {
+                searchAddonRef.current?.clearDecorations();
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                if (e.shiftKey) findPrev();
+                else findNext();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                closeSearch();
+              }
+            }}
+            placeholder="Search…"
+            className="input flex-1 py-1 text-xs"
+          />
+          <button
+            onClick={findPrev}
+            disabled={!search}
+            className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) disabled:opacity-40"
+            title="Previous (Shift+Enter)"
+          >
+            ↑
+          </button>
+          <button
+            onClick={findNext}
+            disabled={!search}
+            className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) disabled:opacity-40"
+            title="Next (Enter)"
+          >
+            ↓
+          </button>
+          <button
+            onClick={closeSearch}
+            className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
+            title="Close (Esc)"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="relative flex-1">
       {/* xterm container — always mounted so the terminal is ready as soon as the PTY opens */}
       <div
         ref={containerRef}
@@ -160,6 +247,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }
