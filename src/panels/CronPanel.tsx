@@ -105,8 +105,8 @@ function EntryForm({ initial, onSave, onCancel }: EntryFormProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[480px] rounded-xl border border-(--color-border) bg-(--color-bg) p-5 shadow-2xl">
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="modal-content w-[480px] rounded-xl border border-(--color-border) bg-(--color-bg) p-5 shadow-2xl">
         <h3 className="mb-4 text-sm font-semibold">
           {initial ? "Edit cron job" : "New cron job"}
         </h3>

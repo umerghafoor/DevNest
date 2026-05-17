@@ -191,7 +191,8 @@ function LeafPane({ pane }: { pane: Pane }) {
 
   return (
     <div
-      className={`relative flex h-full flex-col overflow-hidden ${
+      key={pane.id}
+      className={`pane-enter ring-smooth relative flex h-full flex-col overflow-hidden ${
         isActive ? "ring-1 ring-inset ring-(--color-accent)/30" : ""
       }`}
       onMouseDown={() => setActivePane(pane.id)}

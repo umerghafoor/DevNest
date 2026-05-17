@@ -80,8 +80,8 @@ function ToastItem({
   return (
     <div
       className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 shadow-lg text-xs max-w-sm
-        transition-all duration-300 ease-out
-        ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}
+        transition-all duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]
+        ${visible ? "opacity-100 translate-x-0 scale-100" : "opacity-0 translate-x-4 scale-95"}
         ${kindStyles[t.kind]}`}
     >
       <span className="mt-px shrink-0 font-semibold">{kindIcon[t.kind]}</span>

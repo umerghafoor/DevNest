@@ -129,10 +129,10 @@ function NewServiceForm({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <form
         onSubmit={submit}
-        className="w-full max-w-md rounded-lg border border-(--color-border) bg-(--color-bg) p-4 shadow-xl"
+        className="modal-content w-full max-w-md rounded-lg border border-(--color-border) bg-(--color-bg) p-4 shadow-xl"
       >
         <h3 className="mb-3 text-sm font-semibold">New service</h3>
         <div className="space-y-3">
