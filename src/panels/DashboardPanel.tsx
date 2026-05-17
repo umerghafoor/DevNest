@@ -15,6 +15,7 @@ const QUICK_PANELS: PanelKind[] = [
   "files",
   "ports",
   "services",
+  "systemd",
   "sysinfo",
   "editor",
   "git",

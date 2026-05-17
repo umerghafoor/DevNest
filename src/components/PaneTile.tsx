@@ -18,6 +18,7 @@ import { SysInfoPanel } from "../panels/SysInfoPanel";
 import { EditorPanel } from "../panels/EditorPanel";
 import { GitPanel } from "../panels/GitPanel";
 import { GitGraphPanel } from "../panels/GitGraphPanel";
+import { SystemdPanel } from "../panels/SystemdPanel";
 import type { PanelKind } from "../store/app-store";
 
 export const PANEL_ICONS: Record<PanelKind, string> = {
@@ -38,6 +39,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   editor: "✎",
   git: "⎇",
   gitGraph: "⌥",
+  systemd: "⚙",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -58,6 +60,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   editor: "Editor",
   git: "Git",
   gitGraph: "Git Graph",
+  systemd: "systemd",
 };
 
 function PanelContent({ pane }: { pane: Pane }) {
@@ -98,6 +101,8 @@ function PanelContent({ pane }: { pane: Pane }) {
       return <GitPanel />;
     case "gitGraph":
       return <GitGraphPanel repoPath={pane.extra?.repoPath} />;
+    case "systemd":
+      return <SystemdPanel deviceId={pane.deviceId} />;
   }
 }
 

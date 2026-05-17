@@ -13,6 +13,7 @@ mod secrets;
 mod sftp;
 mod ssh;
 mod state;
+mod systemd;
 mod tailscale;
 mod terminal;
 mod terminal_commands;
@@ -198,6 +199,12 @@ pub fn run() {
             ngrok::ngrok_stop,
             ngrok::ngrok_list,
             ngrok::ngrok_available,
+            systemd::systemd_list,
+            systemd::systemd_status,
+            systemd::systemd_cat,
+            systemd::systemd_action,
+            systemd::systemd_write_unit,
+            systemd::systemd_delete_unit,
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");

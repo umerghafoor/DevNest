@@ -18,6 +18,7 @@ const ALL_PANELS: PanelKind[] = [
   "ports",
   "cron",
   "services",
+  "systemd",
   "ngrok",
   "sysinfo",
   "editor",

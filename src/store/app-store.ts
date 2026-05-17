@@ -19,7 +19,8 @@ export type PanelKind =
   | "sysinfo"
   | "editor"
   | "git"
-  | "gitGraph";
+  | "gitGraph"
+  | "systemd";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 

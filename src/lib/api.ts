@@ -187,7 +187,47 @@ export const api = {
   ngrokStart: (port: number, proto: "http" | "tcp") =>
     invoke<NgrokTunnel>("ngrok_start", { port, proto }),
   ngrokStop: (id: string) => invoke<void>("ngrok_stop", { id }),
+
+  systemdList: (deviceId: string) =>
+    invoke<SystemdUnit[]>("systemd_list", { deviceId }),
+  systemdStatus: (deviceId: string, name: string) =>
+    invoke<SystemdUnitStatus>("systemd_status", { deviceId, name }),
+  systemdCat: (deviceId: string, name: string) =>
+    invoke<string>("systemd_cat", { deviceId, name }),
+  systemdAction: (
+    deviceId: string,
+    name: string,
+    action:
+      | "start"
+      | "stop"
+      | "restart"
+      | "reload"
+      | "enable"
+      | "disable",
+  ) => invoke<string>("systemd_action", { deviceId, name, action }),
+  systemdWriteUnit: (deviceId: string, name: string, content: string) =>
+    invoke<void>("systemd_write_unit", { deviceId, name, content }),
+  systemdDeleteUnit: (deviceId: string, name: string) =>
+    invoke<void>("systemd_delete_unit", { deviceId, name }),
 };
+
+export interface SystemdUnit {
+  name: string;
+  load: string;
+  active: string;
+  sub: string;
+  description: string;
+  unitFileState: string | null;
+}
+
+export interface SystemdUnitStatus {
+  name: string;
+  active: string;
+  sub: string;
+  enabled: string | null;
+  mainPid: number | null;
+  description: string;
+}
 
 export type NgrokTunnelStatus = "starting" | "active" | "stopped" | "error";
 
