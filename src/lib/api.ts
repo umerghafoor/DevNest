@@ -262,6 +262,9 @@ export const api = {
   githubUser: () => invoke<GhUser>("github_user"),
   githubListRepos: () => invoke<GhRepo[]>("github_list_repos"),
 
+  httpRequest: (spec: HttpRequestSpec) =>
+    invoke<HttpResponse>("http_request", { spec }),
+
   ngrokAvailable: () => invoke<boolean>("ngrok_available"),
   ngrokList: () => invoke<NgrokTunnel[]>("ngrok_list"),
   ngrokStart: (port: number, proto: "http" | "tcp") =>
@@ -301,6 +304,25 @@ export interface SystemdUnitStatus {
   enabled: string | null;
   mainPid: number | null;
   description: string;
+}
+
+export interface HttpRequestSpec {
+  method: string;
+  url: string;
+  headers: [string, string][];
+  body: string;
+  timeoutMs?: number;
+  followRedirects?: boolean;
+}
+
+export interface HttpResponse {
+  status: number;
+  statusText: string;
+  headers: [string, string][];
+  body: string;
+  binary: boolean;
+  elapsedMs: number;
+  finalUrl: string;
 }
 
 export type NgrokTunnelStatus = "starting" | "active" | "stopped" | "error";

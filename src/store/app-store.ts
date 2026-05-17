@@ -20,7 +20,8 @@ export type PanelKind =
   | "editor"
   | "git"
   | "gitGraph"
-  | "systemd";
+  | "systemd"
+  | "http";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 

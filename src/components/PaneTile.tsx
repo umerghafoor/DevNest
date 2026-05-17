@@ -19,6 +19,7 @@ import { EditorPanel } from "../panels/EditorPanel";
 import { GitPanel } from "../panels/GitPanel";
 import { GitGraphPanel } from "../panels/GitGraphPanel";
 import { SystemdPanel } from "../panels/SystemdPanel";
+import { HttpPanel } from "../panels/HttpPanel";
 import type { PanelKind } from "../store/app-store";
 
 export const PANEL_ICONS: Record<PanelKind, string> = {
@@ -40,6 +41,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   git: "⎇",
   gitGraph: "⌥",
   systemd: "⚙",
+  http: "⇨",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -61,6 +63,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   git: "Git",
   gitGraph: "Git Graph",
   systemd: "systemd",
+  http: "HTTP Client",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
@@ -82,6 +85,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   gitGraph: "Commit graph and diffs",
   editor: "Edit a text or config file",
   settings: "Theme, shortcuts, integrations",
+  http: "Send HTTP requests, save collections",
 };
 
 export type PanelCategory =
@@ -113,6 +117,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   gitGraph: "code",
   editor: "code",
   settings: "app",
+  http: "network",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -144,7 +149,7 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   containers: ["docker"],
   observability: ["metrics", "logs"],
   services: ["systemd", "services", "cron"],
-  network: ["tailscale", "ngrok"],
+  network: ["http", "tailscale", "ngrok"],
   code: ["git", "gitGraph", "editor"],
   app: ["settings"],
 };
@@ -189,6 +194,8 @@ function PanelContent({ pane }: { pane: Pane }) {
       return <GitGraphPanel repoPath={pane.extra?.repoPath} />;
     case "systemd":
       return <SystemdPanel deviceId={pane.deviceId} />;
+    case "http":
+      return <HttpPanel />;
   }
 }
 

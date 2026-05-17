@@ -9,9 +9,8 @@
 
 ## DevDash
 
-### High-value features (build first)
+### In progress / next up
 
-- Command palette (⌘K): fuzzy search across panels, devices, recent files, recent git repos, and saved commands
 - HTTP request runner (Postman-lite): method, URL, headers, body, response; saved requests per workspace
 - `.env` / secrets manager: structured editor for `.env` files with masked values; optional sync to OS keyring
 - SQL client: connect to Postgres / MySQL / SQLite, run queries, tabular results, saved connections

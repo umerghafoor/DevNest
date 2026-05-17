@@ -19,6 +19,7 @@ const QUICK_PANELS: PanelKind[] = [
   "sysinfo",
   "editor",
   "git",
+  "http",
   "ngrok",
 ];
 

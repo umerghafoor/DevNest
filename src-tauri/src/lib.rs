@@ -5,6 +5,7 @@ mod docker;
 mod error;
 mod git;
 mod github;
+mod http_client;
 mod local_fs;
 mod log_stream;
 mod metrics;
@@ -213,6 +214,7 @@ pub fn run() {
             github::github_sign_out,
             github::github_user,
             github::github_list_repos,
+            http_client::http_request,
             local_fs::fs_read_text,
             local_fs::fs_write_text,
             ngrok::ngrok_start,
