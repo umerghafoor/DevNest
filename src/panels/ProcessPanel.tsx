@@ -1,12 +1,28 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "../lib/api";
 import { toast } from "../components/Toast";
 import { SkeletonTable } from "../components/Skeleton";
+import { usePaneSettings } from "../store/pane-settings-store";
+import {
+  useResizableColumns,
+  ResizableTh,
+  type ColumnSpec,
+} from "../components/ResizableColumns";
 
 interface Props {
   deviceId: string;
+  paneId?: string;
 }
+
+const PROC_COLUMNS: ColumnSpec[] = [
+  { id: "pid", defaultWidth: 80, minWidth: 50 },
+  { id: "user", defaultWidth: 110, minWidth: 60 },
+  { id: "cpu", defaultWidth: 80, minWidth: 50 },
+  { id: "mem", defaultWidth: 80, minWidth: 50 },
+  { id: "command", defaultWidth: 400, minWidth: 100 },
+  { id: "actions", defaultWidth: 64, minWidth: 48 },
+];
 
 interface Process {
   pid: string;
@@ -16,7 +32,20 @@ interface Process {
   command: string;
 }
 
-type SortKey = "cpu" | "mem" | "pid";
+type SortKey = "pid" | "user" | "cpu" | "mem" | "command";
+type SortDir = "asc" | "desc";
+
+interface ProcessSettings {
+  filter: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
+}
+
+const DEFAULT_PROC_SETTINGS: ProcessSettings = {
+  filter: "",
+  sortKey: "cpu",
+  sortDir: "desc",
+};
 
 function parsePs(output: string): Process[] {
   return output
@@ -45,16 +74,31 @@ const SIGNALS = [
   "SIGUSR2",
 ];
 
-export function ProcessPanel({ deviceId }: Props) {
+export function ProcessPanel({ deviceId, paneId }: Props) {
   const [procs, setProcs] = useState<Process[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sortBy, setSortBy] = useState<SortKey>("cpu");
-  const [filter, setFilter] = useState("");
+  const [settings, updateSettings] = usePaneSettings<ProcessSettings>(
+    paneId,
+    DEFAULT_PROC_SETTINGS,
+  );
+  const { filter, sortKey: sortBy, sortDir } = settings;
+  const setFilter = (v: string) => updateSettings({ filter: v });
+  const toggleSort = (key: SortKey) => {
+    if (sortBy === key) {
+      updateSettings({ sortDir: sortDir === "asc" ? "desc" : "asc" });
+    } else {
+      // Numeric columns default to descending (largest first); text ascending.
+      const numericDefault: SortDir =
+        key === "cpu" || key === "mem" || key === "pid" ? "desc" : "asc";
+      updateSettings({ sortKey: key, sortDir: numericDefault });
+    }
+  };
   const [killTarget, setKillTarget] = useState<Process | null>(null);
   const [killSignal, setKillSignal] = useState("SIGTERM");
   const [killing, setKilling] = useState(false);
   const [killDialogVisible, setKillDialogVisible] = useState(false);
+  const { widthFor, ResizeHandle } = useResizableColumns(PROC_COLUMNS, paneId);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetch = useCallback(async () => {
@@ -121,37 +165,48 @@ export function ProcessPanel({ deviceId }: Props) {
     }
   };
 
-  const sorted = [...procs]
-    .filter(
+  const sorted = useMemo(() => {
+    const filtered = procs.filter(
       (p) =>
         !filter ||
         p.command.toLowerCase().includes(filter.toLowerCase()) ||
         p.user.toLowerCase().includes(filter.toLowerCase()) ||
         p.pid.includes(filter),
-    )
-    .sort((a, b) => {
-      if (sortBy === "pid") return Number(a.pid) - Number(b.pid);
-      if (sortBy === "mem") return Number(b.mem) - Number(a.mem);
-      return Number(b.cpu) - Number(a.cpu);
-    });
+    );
+    const dir = sortDir === "asc" ? 1 : -1;
+    const cmp = (a: Process, b: Process) => {
+      switch (sortBy) {
+        case "pid":
+          return (Number(a.pid) - Number(b.pid)) * dir;
+        case "cpu":
+          return (Number(a.cpu) - Number(b.cpu)) * dir;
+        case "mem":
+          return (Number(a.mem) - Number(b.mem)) * dir;
+        case "user":
+          return a.user.localeCompare(b.user) * dir;
+        case "command":
+          return a.command.localeCompare(b.command) * dir;
+      }
+    };
+    return [...filtered].sort(cmp);
+  }, [procs, filter, sortBy, sortDir]);
 
-  const SortHeader = ({
-    col,
-    label,
-    className = "",
-  }: {
-    col: SortKey;
-    label: string;
-    className?: string;
-  }) => (
-    <th
-      className={`cursor-pointer select-none px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted) hover:text-(--color-fg) transition-colors ${className}`}
-      onClick={() => setSortBy(col)}
-    >
-      {label}
-      {sortBy === col && <span className="ml-1 opacity-60">↓</span>}
-    </th>
-  );
+  const SortHeader = ({ col, label }: { col: SortKey; label: string }) => {
+    const active = sortBy === col;
+    return (
+      <ResizableTh
+        columnId={col}
+        ResizeHandle={ResizeHandle}
+        onClick={() => toggleSort(col)}
+        className={active ? "text-(--color-fg)" : ""}
+      >
+        {label}
+        <span className="ml-1 text-[9px]">
+          {active ? (sortDir === "asc" ? "▲" : "▼") : "↕"}
+        </span>
+      </ResizableTh>
+    );
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -171,7 +226,9 @@ export function ProcessPanel({ deviceId }: Props) {
       </div>
 
       {error && (
-        <div className="px-4 py-2 text-xs text-(--color-error) fade-up">{error}</div>
+        <div className="px-4 py-2 text-xs text-(--color-error) fade-up">
+          {error}
+        </div>
       )}
 
       {/* Table */}
@@ -179,27 +236,28 @@ export function ProcessPanel({ deviceId }: Props) {
         <SkeletonTable rows={8} cols={6} />
       ) : (
         <div className="flex-1 overflow-auto">
-          <table className="w-full table-fixed border-collapse text-xs">
+          <table
+            className="table-fixed border-collapse text-xs"
+            style={{ minWidth: "100%" }}
+          >
             <colgroup>
-              <col style={{ width: "70px" }} />
-              <col style={{ width: "100px" }} />
-              <col style={{ width: "70px" }} />
-              <col style={{ width: "70px" }} />
-              <col />
-              <col style={{ width: "60px" }} />
+              <col style={{ width: widthFor("pid") }} />
+              <col style={{ width: widthFor("user") }} />
+              <col style={{ width: widthFor("cpu") }} />
+              <col style={{ width: widthFor("mem") }} />
+              <col style={{ width: widthFor("command") }} />
+              <col style={{ width: widthFor("actions") }} />
             </colgroup>
             <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
               <tr>
                 <SortHeader col="pid" label="PID" />
-                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                  User
-                </th>
+                <SortHeader col="user" label="User" />
                 <SortHeader col="cpu" label="CPU %" />
                 <SortHeader col="mem" label="MEM %" />
-                <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                  Command
+                <SortHeader col="command" label="Command" />
+                <th className="relative px-3 py-2">
+                  <ResizeHandle columnId="actions" />
                 </th>
-                <th className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
@@ -233,8 +291,8 @@ export function ProcessPanel({ deviceId }: Props) {
                     <td className="px-2 py-1.5">
                       <button
                         onClick={() => setKillTarget(p)}
-                        className="rounded border border-(--color-border) px-2 py-0.5 text-[10px] text-(--color-fg-muted)
-                          opacity-0 transition-all hover:border-(--color-error) hover:text-(--color-error) group-hover:opacity-100"
+                        className="rounded bg-(--color-surface-2) px-2 py-0.5 text-[10px] text-(--color-fg-muted)
+                          opacity-0 transition-all hover:bg-(--color-error)/15 hover:text-(--color-error) group-hover:opacity-100"
                       >
                         Kill
                       </button>

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { ConnectionStatus, Device } from "../lib/api";
+import { randomWorkspaceName } from "../lib/workspace-names";
 
 export type PanelKind =
   | "docker"
@@ -10,7 +11,18 @@ export type PanelKind =
   | "logs"
   | "processes"
   | "ports"
-  | "cron";
+  | "cron"
+  | "dashboard"
+  | "settings"
+  | "services"
+  | "ngrok"
+  | "sysinfo"
+  | "editor"
+  | "git"
+  | "gitGraph"
+  | "systemd"
+  | "http"
+  | "sql";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 
@@ -19,6 +31,8 @@ export interface Pane {
   deviceId: string;
   panel: PanelKind;
   instanceId: string; // unique per PTY / panel instance
+  /** Optional panel-specific params (e.g. repoPath for the Git Graph). */
+  extra?: Record<string, string>;
 }
 
 // ─── Tiling tree ─────────────────────────────────────────────────────────────
@@ -120,8 +134,20 @@ export function findPaneInTree(
 
 // ─── Workspace helpers ────────────────────────────────────────────────────────
 
-function defaultWorkspace(name = "Workspace 1"): Workspace {
-  return { id: uid(), name, paneRoot: null, activePaneId: null };
+function defaultWorkspace(name?: string): Workspace {
+  const paneId = uid();
+  const dashboard: Pane = {
+    id: paneId,
+    instanceId: paneId,
+    deviceId: "local",
+    panel: "dashboard",
+  };
+  return {
+    id: uid(),
+    name: name ?? randomWorkspaceName(),
+    paneRoot: makeLeaf(dashboard),
+    activePaneId: paneId,
+  };
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -163,15 +189,59 @@ interface AppState {
   updateSplitRatio: (splitId: string, ratio: number) => void;
 }
 
-const initial = defaultWorkspace();
+const PERSIST_KEY = "devnest.workspaces";
+
+interface PersistedShape {
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+}
+
+function loadPersisted(): PersistedShape | null {
+  try {
+    const raw = localStorage.getItem(PERSIST_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedShape;
+    if (
+      !parsed ||
+      !Array.isArray(parsed.workspaces) ||
+      parsed.workspaces.length === 0 ||
+      typeof parsed.activeWorkspaceId !== "string"
+    ) {
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function persistWorkspaces(s: {
+  workspaces: Workspace[];
+  activeWorkspaceId: string;
+}) {
+  try {
+    localStorage.setItem(
+      PERSIST_KEY,
+      JSON.stringify({
+        workspaces: s.workspaces,
+        activeWorkspaceId: s.activeWorkspaceId,
+      }),
+    );
+  } catch {
+    // localStorage may be unavailable; degrade silently.
+  }
+}
+
+const persisted = loadPersisted();
+const initial = persisted ? null : defaultWorkspace();
 
 export const useAppStore = create<AppState>((set, get) => ({
   devices: [],
   statuses: {},
   activeDeviceId: null,
 
-  workspaces: [initial],
-  activeWorkspaceId: initial.id,
+  workspaces: persisted?.workspaces ?? [initial!],
+  activeWorkspaceId: persisted?.activeWorkspaceId ?? initial!.id,
 
   // Proxy getters — read active workspace fields directly
   get paneRoot() {
@@ -245,7 +315,11 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   addWorkspace: () =>
     set((s) => {
-      const ws = defaultWorkspace(`Workspace ${s.workspaces.length + 1}`);
+      const existing = new Set(s.workspaces.map((w) => w.name));
+      let name = randomWorkspaceName();
+      for (let i = 0; i < 10 && existing.has(name); i++)
+        name = randomWorkspaceName();
+      const ws = defaultWorkspace(name);
       return { workspaces: [...s.workspaces, ws], activeWorkspaceId: ws.id };
     }),
 
@@ -274,13 +348,27 @@ export const useAppStore = create<AppState>((set, get) => ({
       patchActiveWorkspace(s, (w) => {
         const leaf = makeLeaf(pane);
         if (!w.paneRoot) return { paneRoot: leaf, activePaneId: pane.id };
-        if (w.activePaneId) {
-          return {
-            paneRoot: replaceLeaf(w.paneRoot, w.activePaneId, leaf),
-            activePaneId: pane.id,
-          };
+        if (!w.activePaneId) return { paneRoot: leaf, activePaneId: pane.id };
+
+        const active = findPaneInTree(w.paneRoot, w.activePaneId);
+        // Re-opening the same panel kind on the active pane just refocuses it
+        // (no point stacking duplicates of Settings/Dashboard).
+        if (active && active.panel === pane.panel) {
+          return { activePaneId: active.id };
         }
-        return { paneRoot: leaf, activePaneId: pane.id };
+
+        const split: SplitNode = {
+          type: "split",
+          id: uid(),
+          direction: "horizontal",
+          ratio: 0.5,
+          first: makeLeaf(active!),
+          second: leaf,
+        };
+        return {
+          paneRoot: replaceLeaf(w.paneRoot, w.activePaneId, split),
+          activePaneId: pane.id,
+        };
       }),
     ),
 
@@ -331,6 +419,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       })),
     ),
 }));
+
+// Save workspace tree + active workspace whenever they change, so panel
+// layouts survive a restart. Subscribed once at module load.
+let lastWorkspaces = useAppStore.getState().workspaces;
+let lastActiveId = useAppStore.getState().activeWorkspaceId;
+useAppStore.subscribe((s) => {
+  if (s.workspaces !== lastWorkspaces || s.activeWorkspaceId !== lastActiveId) {
+    lastWorkspaces = s.workspaces;
+    lastActiveId = s.activeWorkspaceId;
+    persistWorkspaces({
+      workspaces: s.workspaces,
+      activeWorkspaceId: s.activeWorkspaceId,
+    });
+  }
+});
 
 // ─── Helper: patch the active workspace immutably ─────────────────────────────
 

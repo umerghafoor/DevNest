@@ -151,10 +151,10 @@ export function TailscalePanel({ deviceId }: Props) {
                             : peer.hostName,
                         )
                       }
-                      className={`rounded border px-2 py-0.5 text-[10px] disabled:opacity-50 ${
+                      className={`rounded px-2 py-0.5 text-[10px] disabled:opacity-50 ${
                         status.currentExitNode === peer.hostName
-                          ? "border-(--color-online) text-(--color-online)"
-                          : "border-(--color-border) hover:bg-(--color-surface-2)"
+                          ? "bg-(--color-online)/15 text-(--color-online)"
+                          : "hover:bg-(--color-surface-2)"
                       }`}
                     >
                       {settingExit === peer.hostName

@@ -2,12 +2,24 @@
 
 @custom-variant dark (&:where(.theme-dark, .theme-dark *));
 
-@theme {
-  /* Light — warm cream-white tints, amber accent */
+/* Color tokens live on :root / .theme-dark — NOT inside @theme. Tailwind v4
+ * emits @theme tokens to a higher cascade layer than ordinary rules, which
+ * means a `.theme-dark { … }` block can't override @theme defaults. Keeping
+ * these as plain custom properties guarantees `.theme-dark` wins via normal
+ * source-order cascade. Tailwind's `bg-(--color-bg)` arbitrary-property
+ * syntax works on these all the same. */
+:root,
+.theme-light {
+  /* Light — warm cream-white tints, amber accent.
+   *
+   * Borderless aesthetic: --color-border is intentionally a near-transparent
+   * tint so every existing `border-(--color-border)` in the app fades into
+   * the background. Visual separation is carried by --color-surface vs
+   * --color-surface-2 instead. */
   --color-bg: oklch(0.985 0.005 80);
   --color-surface: oklch(0.96 0.006 75);
-  --color-surface-2: oklch(0.92 0.007 70);
-  --color-border: oklch(0.88 0.008 60);
+  --color-surface-2: oklch(0.9 0.008 70);
+  --color-border: oklch(0.55 0.008 60 / 0.08);
   --color-fg: oklch(0.18 0.012 60);
   --color-fg-muted: oklch(0.55 0.008 60);
   --color-accent: oklch(0.74 0.17 58);
@@ -22,7 +34,7 @@
   --color-bg: oklch(0.16 0.01 60);
   --color-surface: oklch(0.21 0.01 60);
   --color-surface-2: oklch(0.26 0.01 60);
-  --color-border: oklch(0.28 0.01 60);
+  --color-border: oklch(0.7 0.01 60 / 0.1);
   --color-fg: oklch(0.96 0.005 80);
   --color-fg-muted: oklch(0.58 0.01 65);
   --color-accent: oklch(0.74 0.17 58);
@@ -38,6 +50,28 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-fg);
+}
+
+/* Font size + density compose into the root font-size, which Tailwind's
+ * rem-based text/spacing utilities all read. Defaults match the previous
+ * hard-coded 14px so nothing shifts until the user changes the setting. */
+:root {
+  --app-font-size-base: 14px;
+  --app-font-scale: 1;
+}
+html {
+  font-size: calc(var(--app-font-size-base) * var(--app-font-scale));
+}
+
+/* Sync the native color-scheme so default widgets (scrollbars before our
+ * overrides paint, date pickers, form-control defaults) match the app theme. */
+html.theme-dark {
+  color-scheme: dark;
+}
+html.theme-light {
+  color-scheme: light;
 }
 
 body {
@@ -52,24 +86,97 @@ body {
     Helvetica,
     Arial,
     sans-serif;
-  font-size: 14px;
+  /* Root font-size is set on <html> above; inherit it so the user's Font
+   * size + Density settings actually take effect across all rem-based
+   * Tailwind utilities. */
+  font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  /* Tints the body subtly with the active accent so the whole canvas reflects
+   * the theme — barely visible (2%) but unmistakable on switch. */
+  background-image: linear-gradient(
+    color-mix(in oklch, var(--color-accent) 2%, transparent),
+    color-mix(in oklch, var(--color-accent) 2%, transparent)
+  );
+}
+
+/* Text selection across the app. */
+::selection {
+  background: color-mix(in oklch, var(--color-accent) 35%, transparent);
+  color: var(--color-fg);
+}
+
+/* Scrollbars — Firefox + WebKit. */
+* {
+  scrollbar-color: color-mix(in oklch, var(--color-fg-muted) 50%, transparent)
+    transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--color-fg-muted) 35%, transparent);
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+  transition: background-color 0.15s ease-out;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--color-accent) 60%, transparent);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Generic focus ring for every interactive input/textarea/select, not just
+ * those carrying the .input utility class. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--color-accent) 60%, transparent);
+  outline-offset: 1px;
 }
 
 button {
   cursor: pointer;
 }
 
+/* Tactile press: tiny scale-down on click for primary interactions.
+ * Always smooth — buttons get a base transform transition that Tailwind utility
+ * classes don't override (since they don't set transform transitions). */
+button:not([data-tauri-drag-region]) {
+  transition-property: transform;
+  transition-duration: 0.08s;
+  transition-timing-function: ease-out;
+}
+
+button:active:not(:disabled):not([data-tauri-drag-region]) {
+  transform: scale(0.97);
+}
+
 .input {
   width: 100%;
   border-radius: 8px;
-  border: 1px solid var(--color-border);
-  background-color: var(--color-bg);
+  /* Borderless: rely on --color-surface-2 contrast against --color-surface
+   * for visual definition. The 1px transparent border is kept so layouts
+   * that depend on the input's box size don't shift when focus is applied. */
+  border: 1px solid transparent;
+  background-color: var(--color-surface-2);
   color: var(--color-fg);
-  padding: 8px 12px;
-  font-size: 13.5px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
   font-family: inherit;
   outline: none;
   transition:
@@ -83,10 +190,27 @@ button {
     color-mix(in oklch, var(--color-accent) 20%, transparent);
 }
 
+/* Native <select> sometimes ignores `color` from the surrounding theme and
+ * renders the currently-selected option using OS defaults — invisible on
+ * a tinted surface in light mode. Force the foreground explicitly and
+ * theme the dropdown panel too. */
+select.input {
+  color: var(--color-fg);
+}
+
+select.input option {
+  background-color: var(--color-surface);
+  color: var(--color-fg);
+}
+
 /* ── Skeleton shimmer ─────────────────────────────────────────────────── */
 @keyframes shimmer {
-  0%   { background-position: -400px 0; }
-  100% { background-position:  400px 0; }
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
 }
 
 .skeleton {
@@ -103,8 +227,14 @@ button {
 
 /* ── Fade-in for panel content ────────────────────────────────────────── */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: 1; transform: translateY(0);   }
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .fade-up {
@@ -113,15 +243,140 @@ button {
 
 /* ── Staggered row animation ──────────────────────────────────────────── */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .row-animate {
   animation: fadeIn 0.18s ease-out both;
 }
 
-/* Disk bar transition */
+/* Disk bar / usage bar transition */
 .disk-bar {
-  transition: width 0.6s ease-out;
+  transition: width 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Pane enter ───────────────────────────────────────────────────────── */
+@keyframes paneEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.985) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.pane-enter {
+  animation: paneEnter 0.16s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+/* ── Modal / dialog enter ─────────────────────────────────────────────── */
+@keyframes modalBackdropIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalContentIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.modal-backdrop {
+  animation: modalBackdropIn 0.14s ease-out both;
+}
+
+.modal-content {
+  animation: modalContentIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+/* ── Toast enter / exit ───────────────────────────────────────────────── */
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(16px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+@keyframes toastOut {
+  from {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(16px) scale(0.96);
+  }
+}
+
+.toast-in {
+  animation: toastIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+.toast-out {
+  animation: toastOut 0.14s ease-in both;
+  will-change: transform, opacity;
+}
+
+/* ── Tactile press feedback ───────────────────────────────────────────── */
+.press,
+button.press,
+.btn-press {
+  transition:
+    transform 0.08s ease-out,
+    filter 0.12s ease-out;
+}
+
+.press:active:not(:disabled),
+button.press:active:not(:disabled),
+.btn-press:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ── Smooth ring transition on focused/active panes ───────────────────── */
+.ring-smooth {
+  transition: box-shadow 0.18s ease-out;
+}
+
+/* ── Reduced motion: turn everything off ──────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .fade-up,
+  .row-animate,
+  .pane-enter,
+  .modal-backdrop,
+  .modal-content,
+  .toast-in,
+  .toast-out {
+    animation: none !important;
+  }
+  .press:active:not(:disabled),
+  button.press:active:not(:disabled),
+  .btn-press:active:not(:disabled) {
+    transform: none !important;
+  }
+  .disk-bar {
+    transition: none !important;
+  }
 }

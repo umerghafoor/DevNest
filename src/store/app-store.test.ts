@@ -102,14 +102,17 @@ describe("app-store — workspaces", () => {
     });
   });
 
-  it("addWorkspace creates a new empty workspace and switches to it", () => {
+  it("addWorkspace creates a new workspace seeded with a Dashboard pane and switches to it", () => {
     useAppStore.getState().addWorkspace();
     expect(useAppStore.getState().workspaces).toHaveLength(2);
     const activeId = useAppStore.getState().activeWorkspaceId;
     const active = useAppStore
       .getState()
       .workspaces.find((w) => w.id === activeId)!;
-    expect(active.paneRoot).toBeNull();
+    expect(active.paneRoot?.type).toBe("leaf");
+    expect(
+      (active.paneRoot as { type: "leaf"; pane: { panel: string } }).pane.panel,
+    ).toBe("dashboard");
   });
 
   it("removeWorkspace removes it and falls back to another", () => {
@@ -134,7 +137,12 @@ describe("app-store — workspaces", () => {
       instanceId: "i1",
     });
     useAppStore.getState().addWorkspace(); // switches to new workspace
-    expect(activeWs().paneRoot).toBeNull(); // new workspace is empty
+    // New workspace is seeded with a Dashboard, not the docker pane.
+    const root = activeWs().paneRoot;
+    expect(root?.type).toBe("leaf");
+    expect((root as { type: "leaf"; pane: { panel: string } }).pane.panel).toBe(
+      "dashboard",
+    );
   });
 
   it("renameWorkspace updates the name", () => {

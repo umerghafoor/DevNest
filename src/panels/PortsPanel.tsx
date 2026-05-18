@@ -1,10 +1,39 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "../lib/api";
+import { usePaneSettings } from "../store/pane-settings-store";
+import {
+  useResizableColumns,
+  ResizableTh,
+  type ColumnSpec,
+} from "../components/ResizableColumns";
+
+const PORT_COLUMNS: ColumnSpec[] = [
+  { id: "port", defaultWidth: 130, minWidth: 80 },
+  { id: "proto", defaultWidth: 80 },
+  { id: "addr", defaultWidth: 200 },
+  { id: "process", defaultWidth: 240 },
+];
 
 interface Props {
   deviceId: string;
+  paneId?: string;
 }
+
+type SortKey = "port" | "proto" | "addr" | "process";
+type SortDir = "asc" | "desc";
+
+interface PortsSettings {
+  filter: string;
+  sortKey: SortKey;
+  sortDir: SortDir;
+}
+
+const DEFAULT_PORTS_SETTINGS: PortsSettings = {
+  filter: "",
+  sortKey: "port",
+  sortDir: "asc",
+};
 
 interface ListeningPort {
   proto: string;
@@ -13,37 +42,63 @@ interface ListeningPort {
   process: string;
 }
 
-// Parse `ss -tlnp` output
-// Netid  State   Recv-Q Send-Q  Local Address:Port   Peer Address:Port  Process
+/**
+ * Parse `ss -tulnp` output. The column count varies across versions:
+ *   - With `-tu`: `Netid State Recv-Q Send-Q Local Peer Process` (7)
+ *   - With `-t` only: `State Recv-Q Send-Q Local Peer Process` (6)
+ * Rather than indexing by position, find the cell whose text matches an
+ * `addr:port` pattern. This is robust to extra/missing columns.
+ */
 function parseSs(output: string): ListeningPort[] {
-  const lines = output.split("\n").slice(1); // skip header
   const results: ListeningPort[] = [];
+  // Match IPv4/IPv6/wildcard followed by `:<port>`. Examples:
+  //   127.0.0.1:631   0.0.0.0:22   [::]:80   [fd7a::1]:34599   *:1716   127.0.0.53%lo:53
+  const addrPortRe = /^(?:\[[^\]]+\]|[^\s:]+):(\d+)$/;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
+  for (const rawLine of output.split("\n")) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // Skip header rows from any column ordering.
+    if (/^(Netid|State|Proto|Local Address)\b/i.test(line)) continue;
 
-    // columns: Netid State Recv-Q Send-Q Local:Port Peer:Port [Process]
-    const cols = trimmed.split(/\s+/);
-    if (cols.length < 5) continue;
+    const cols = line.split(/\s+/);
 
-    const proto = cols[0]; // tcp / tcp6 / udp
-    const localFull = cols[4] ?? ""; // e.g. 0.0.0.0:22 or [::]:80
+    // Find the proto cell (tcp / udp / tcp6 / udp6 / sctp...) if present.
+    const proto = cols.find((c) => /^(tcp|udp|sctp)6?$/i.test(c)) ?? "tcp";
+
+    // The Local address is the first `addr:port` cell. Peer (if "*:*" /
+    // "0.0.0.0:*") is filtered out by the digit-port requirement.
+    let localFull: string | null = null;
+    for (const c of cols) {
+      if (addrPortRe.test(c)) {
+        localFull = c;
+        break;
+      }
+    }
+    if (!localFull) continue;
+
     const portMatch = localFull.match(/:(\d+)$/);
     if (!portMatch) continue;
-
     const port = portMatch[1];
     const localAddr = localFull.slice(0, localFull.lastIndexOf(":"));
 
-    // Process column looks like: users:(("sshd",pid=1234,fd=3))
-    const procCol = cols.slice(6).join(" ");
-    const procMatch = procCol.match(/"([^"]+)"/);
+    // Process info, when present, looks like: users:(("sshd",pid=1234,fd=3))
+    const procMatch = line.match(/users:\(\(\s*"([^"]+)"/);
     const process = procMatch ? procMatch[1] : "";
 
     results.push({ proto, localAddr, port, process });
   }
 
-  return results.sort((a, b) => Number(a.port) - Number(b.port));
+  // Deduplicate (some rows repeat under tcp + tcp6 with the same local).
+  const seen = new Set<string>();
+  const deduped = results.filter((r) => {
+    const k = `${r.proto}|${r.localAddr}|${r.port}|${r.process}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  return deduped.sort((a, b) => Number(a.port) - Number(b.port));
 }
 
 // Parse simple nmap/portgrep-style lines like: "631/tcp  open  ipp"
@@ -73,21 +128,37 @@ const COMMON_PORTS = new Set([
   "27017",
 ]);
 
-export function PortsPanel({ deviceId }: Props) {
+export function PortsPanel({ deviceId, paneId }: Props) {
   const [ports, setPorts] = useState<ListeningPort[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
+  const [settings, updateSettings] = usePaneSettings<PortsSettings>(
+    paneId,
+    DEFAULT_PORTS_SETTINGS,
+  );
+  const { filter, sortKey, sortDir } = settings;
+  const setFilter = (v: string) => updateSettings({ filter: v });
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      updateSettings({ sortDir: sortDir === "asc" ? "desc" : "asc" });
+    } else {
+      updateSettings({ sortKey: key, sortDir: "asc" });
+    }
+  };
+  const { widthFor, ResizeHandle } = useResizableColumns(PORT_COLUMNS, paneId);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetch = useCallback(async () => {
     try {
       // Try ss first; fall back to netstat
+      // Use -tulnp: tcp + udp + listening + numeric + processes. -p only
+      // populates the process column when run as root; without sudo we
+      // still get every listening socket, just without process names.
       const out = await invoke<{ stdout: string; exitCode: number }>(
         "run_remote_command",
         {
           deviceId,
-          cmd: "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null",
+          cmd: "ss -tulnp 2>/dev/null || netstat -tulnp 2>/dev/null",
         },
       );
       const parsed = parseSs(out.stdout);
@@ -112,13 +183,29 @@ export function PortsPanel({ deviceId }: Props) {
     };
   }, [fetch]);
 
-  const displayed = ports.filter(
-    (p) =>
-      !filter ||
-      p.port.includes(filter) ||
-      p.process.toLowerCase().includes(filter.toLowerCase()) ||
-      p.localAddr.includes(filter),
-  );
+  const displayed = useMemo(() => {
+    const filtered = ports.filter(
+      (p) =>
+        !filter ||
+        p.port.includes(filter) ||
+        p.process.toLowerCase().includes(filter.toLowerCase()) ||
+        p.localAddr.includes(filter),
+    );
+    const dir = sortDir === "asc" ? 1 : -1;
+    const cmp = (a: ListeningPort, b: ListeningPort) => {
+      switch (sortKey) {
+        case "port":
+          return (Number(a.port) - Number(b.port)) * dir;
+        case "proto":
+          return a.proto.localeCompare(b.proto) * dir;
+        case "addr":
+          return a.localAddr.localeCompare(b.localAddr) * dir;
+        case "process":
+          return a.process.localeCompare(b.process) * dir;
+      }
+    };
+    return [...filtered].sort(cmp);
+  }, [ports, filter, sortKey, sortDir]);
 
   return (
     <div className="flex h-full flex-col">
@@ -137,7 +224,7 @@ export function PortsPanel({ deviceId }: Props) {
           Refresh
         </button>
         <span className="ml-auto text-xs text-(--color-fg-muted)">
-          {loading ? "Loading…" : `${displayed.length} listening ports`}
+          {loading ? "Loading…" : `${displayed.length} open ports`}
         </span>
       </div>
 
@@ -146,27 +233,62 @@ export function PortsPanel({ deviceId }: Props) {
       )}
 
       <div className="flex-1 overflow-auto">
-        <table className="w-full table-fixed border-collapse text-xs">
+        <table
+          className="table-fixed border-collapse text-xs"
+          style={{ minWidth: "100%" }}
+        >
           <colgroup>
-            <col style={{ width: "60px" }} />
-            <col style={{ width: "80px" }} />
-            <col style={{ width: "180px" }} />
-            <col />
+            <col style={{ width: widthFor("port") }} />
+            <col style={{ width: widthFor("proto") }} />
+            <col style={{ width: widthFor("addr") }} />
+            <col style={{ width: widthFor("process") }} />
           </colgroup>
           <thead className="sticky top-0 z-10 border-b border-(--color-border) bg-(--color-surface)">
             <tr>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Port
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Proto
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Address
-              </th>
-              <th className="px-3 py-2 text-left text-xs font-semibold text-(--color-fg-muted)">
-                Process
-              </th>
+              <ResizableTh
+                columnId="port"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("port")}
+              >
+                <ColLabel
+                  label="Port"
+                  active={sortKey === "port"}
+                  dir={sortDir}
+                />
+              </ResizableTh>
+              <ResizableTh
+                columnId="proto"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("proto")}
+              >
+                <ColLabel
+                  label="Proto"
+                  active={sortKey === "proto"}
+                  dir={sortDir}
+                />
+              </ResizableTh>
+              <ResizableTh
+                columnId="addr"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("addr")}
+              >
+                <ColLabel
+                  label="Address"
+                  active={sortKey === "addr"}
+                  dir={sortDir}
+                />
+              </ResizableTh>
+              <ResizableTh
+                columnId="process"
+                ResizeHandle={ResizeHandle}
+                onClick={() => toggleSort("process")}
+              >
+                <ColLabel
+                  label="Process"
+                  active={sortKey === "process"}
+                  dir={sortDir}
+                />
+              </ResizableTh>
             </tr>
           </thead>
           <tbody>
@@ -203,10 +325,33 @@ export function PortsPanel({ deviceId }: Props) {
         </table>
         {displayed.length === 0 && !loading && !error && (
           <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted)">
-            No listening ports found.
+            No open ports found. If you expect entries here, the command may
+            need sudo for process names — but the list itself shouldn&apos;t
+            require it.
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+function ColLabel({
+  label,
+  active,
+  dir,
+}: {
+  label: string;
+  active: boolean;
+  dir: SortDir;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 ${active ? "text-(--color-fg)" : ""}`}
+    >
+      {label}
+      <span className="text-[9px]">
+        {active ? (dir === "asc" ? "▲" : "▼") : "↕"}
+      </span>
+    </span>
   );
 }

@@ -1,4 +1,4 @@
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, lazy, Suspense } from "react";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PaneNode, SplitDirection, Pane } from "../store/app-store";
 import { DockerPanel } from "../panels/DockerPanel";
@@ -10,7 +10,23 @@ import { LogViewerPanel } from "../panels/LogViewerPanel";
 import { ProcessPanel } from "../panels/ProcessPanel";
 import { PortsPanel } from "../panels/PortsPanel";
 import { CronPanel } from "../panels/CronPanel";
+import { DashboardPanel } from "../panels/DashboardPanel";
+import { SettingsPanel } from "../panels/SettingsPanel";
+import { ServicesPanel } from "../panels/ServicesPanel";
+import { NgrokPanel } from "../panels/NgrokPanel";
+import { SysInfoPanel } from "../panels/SysInfoPanel";
+import { EditorPanel } from "../panels/EditorPanel";
+import { GitPanel } from "../panels/GitPanel";
+import { GitGraphPanel } from "../panels/GitGraphPanel";
+import { SystemdPanel } from "../panels/SystemdPanel";
+import { HttpPanel } from "../panels/HttpPanel";
 import type { PanelKind } from "../store/app-store";
+
+// SqlPanel pulls in Monaco (~3 MB). Lazy-load it so the rest of the app
+// isn't paying for it unless the user opens the SQL Client.
+const SqlPanel = lazy(() =>
+  import("../panels/SqlPanel").then((m) => ({ default: m.SqlPanel })),
+);
 
 export const PANEL_ICONS: Record<PanelKind, string> = {
   docker: "▣",
@@ -22,6 +38,17 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   processes: "◎",
   ports: "⊕",
   cron: "⏱",
+  dashboard: "◉",
+  settings: "✦",
+  services: "✪",
+  ngrok: "⇄",
+  sysinfo: "ℹ",
+  editor: "✎",
+  git: "⎇",
+  gitGraph: "⌥",
+  systemd: "⚙",
+  http: "⇨",
+  sql: "◰",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -34,6 +61,107 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   processes: "Processes",
   ports: "Ports",
   cron: "Cron",
+  dashboard: "Dashboard",
+  settings: "Settings",
+  services: "Services",
+  ngrok: "Ngrok",
+  sysinfo: "System Info",
+  editor: "Editor",
+  git: "Git",
+  gitGraph: "Git Graph",
+  systemd: "systemd",
+  http: "HTTP Client",
+  sql: "SQL Client",
+};
+
+export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
+  dashboard: "Quick overview of devices and panels",
+  sysinfo: "Browser-side host info",
+  terminal: "Interactive shell session",
+  files: "Browse and edit files",
+  processes: "Top processes by CPU and memory",
+  ports: "Listening TCP / UDP ports",
+  docker: "Containers, images, logs",
+  metrics: "CPU, memory, disk, network",
+  logs: "Tail logs from files or journals",
+  systemd: "Manage systemd unit files",
+  services: "Local service definitions",
+  cron: "Scheduled jobs (crontab)",
+  tailscale: "Tailnet status and routes",
+  ngrok: "Public tunnels to local ports",
+  git: "Local repos + GitHub bookmarks",
+  gitGraph: "Commit graph and diffs",
+  editor: "Edit a text or config file",
+  settings: "Theme, shortcuts, integrations",
+  http: "Send HTTP requests, save collections",
+  sql: "Connect to Postgres / MySQL / SQLite",
+};
+
+export type PanelCategory =
+  | "overview"
+  | "remote"
+  | "containers"
+  | "observability"
+  | "services"
+  | "network"
+  | "code"
+  | "app";
+
+export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
+  dashboard: "overview",
+  sysinfo: "overview",
+  terminal: "remote",
+  files: "remote",
+  processes: "remote",
+  ports: "remote",
+  docker: "containers",
+  metrics: "observability",
+  logs: "observability",
+  systemd: "services",
+  services: "services",
+  cron: "services",
+  tailscale: "network",
+  ngrok: "network",
+  git: "code",
+  gitGraph: "code",
+  editor: "code",
+  settings: "app",
+  http: "network",
+  sql: "code",
+};
+
+export const CATEGORY_LABELS: Record<PanelCategory, string> = {
+  overview: "Overview",
+  remote: "Remote",
+  containers: "Containers",
+  observability: "Observability",
+  services: "Services",
+  network: "Network",
+  code: "Code",
+  app: "App",
+};
+
+/** Display order — both for category sections and within a category. */
+export const CATEGORY_ORDER: PanelCategory[] = [
+  "overview",
+  "remote",
+  "containers",
+  "observability",
+  "services",
+  "network",
+  "code",
+  "app",
+];
+
+export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
+  overview: ["dashboard", "sysinfo"],
+  remote: ["terminal", "files", "processes", "ports"],
+  containers: ["docker"],
+  observability: ["metrics", "logs"],
+  services: ["systemd", "services", "cron"],
+  network: ["http", "tailscale", "ngrok"],
+  code: ["git", "gitGraph", "editor", "sql"],
+  app: ["settings"],
 };
 
 function PanelContent({ pane }: { pane: Pane }) {
@@ -51,13 +179,51 @@ function PanelContent({ pane }: { pane: Pane }) {
     case "files":
       return <FileBrowserPanel deviceId={pane.deviceId} />;
     case "logs":
-      return <LogViewerPanel deviceId={pane.deviceId} />;
+      return <LogViewerPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "processes":
-      return <ProcessPanel deviceId={pane.deviceId} />;
+      return <ProcessPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "ports":
-      return <PortsPanel deviceId={pane.deviceId} />;
+      return <PortsPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "cron":
       return <CronPanel deviceId={pane.deviceId} />;
+    case "dashboard":
+      return <DashboardPanel deviceId={pane.deviceId} />;
+    case "settings":
+      return <SettingsPanel />;
+    case "services":
+      return <ServicesPanel />;
+    case "ngrok":
+      return <NgrokPanel />;
+    case "sysinfo":
+      return <SysInfoPanel />;
+    case "editor":
+      return <EditorPanel />;
+    case "git":
+      return <GitPanel />;
+    case "gitGraph":
+      return (
+        <GitGraphPanel
+          deviceId={pane.deviceId}
+          repoPath={pane.extra?.repoPath}
+          paneId={pane.id}
+        />
+      );
+    case "systemd":
+      return <SystemdPanel deviceId={pane.deviceId} />;
+    case "http":
+      return <HttpPanel />;
+    case "sql":
+      return (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
+              Loading editor…
+            </div>
+          }
+        >
+          <SqlPanel paneId={pane.id} />
+        </Suspense>
+      );
   }
 }
 
@@ -146,7 +312,8 @@ function LeafPane({ pane }: { pane: Pane }) {
 
   return (
     <div
-      className={`relative flex h-full flex-col overflow-hidden ${
+      key={pane.id}
+      className={`pane-enter ring-smooth relative flex h-full flex-col overflow-hidden ${
         isActive ? "ring-1 ring-inset ring-(--color-accent)/30" : ""
       }`}
       onMouseDown={() => setActivePane(pane.id)}
@@ -203,20 +370,25 @@ function Divider({
 
   const isH = direction === "horizontal";
 
+  // Wider invisible hit target around a 1px visible line so the divider is
+  // easy to grab. Negative margins keep it from pushing siblings apart.
   return (
     <div
       onMouseDown={onMouseDown}
-      className={`shrink-0 bg-(--color-border) transition-colors hover:bg-(--color-accent)/50 active:bg-(--color-accent) ${
+      className={`group relative z-10 shrink-0 ${
         isH
-          ? "w-px cursor-col-resize hover:w-[3px]"
-          : "h-px cursor-row-resize hover:h-[3px]"
+          ? "w-[7px] cursor-col-resize -mx-[3px]"
+          : "h-[7px] cursor-row-resize -my-[3px]"
       }`}
-      style={
-        isH
-          ? { marginLeft: "-0.5px", marginRight: "-0.5px" }
-          : { marginTop: "-0.5px", marginBottom: "-0.5px" }
-      }
-    />
+    >
+      <div
+        className={`absolute bg-(--color-border) transition-colors group-hover:bg-(--color-accent)/60 group-active:bg-(--color-accent) ${
+          isH
+            ? "left-[3px] top-0 bottom-0 w-px group-hover:w-[3px] group-hover:left-[2px]"
+            : "top-[3px] left-0 right-0 h-px group-hover:h-[3px] group-hover:top-[2px]"
+        }`}
+      />
+    </div>
   );
 }
 
