@@ -2,10 +2,8 @@ import { useState } from "react";
 import { useThemeStore, type Theme } from "../store/theme-store";
 import {
   useUiStore,
-  ACCENTS,
   type Density,
   type FontSize,
-  type AccentId,
 } from "../store/ui-store";
 import {
   useColorsStore,
@@ -173,8 +171,6 @@ function AppearanceTab() {
   const setDensity = useUiStore((s) => s.setDensity);
   const fontSize = useUiStore((s) => s.fontSize);
   const setFontSize = useUiStore((s) => s.setFontSize);
-  const accent = useUiStore((s) => s.accent);
-  const setAccent = useUiStore((s) => s.setAccent);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -212,9 +208,6 @@ function AppearanceTab() {
               { value: "spacious", label: "Spacious" },
             ]}
           />
-        </Row>
-        <Row label="Accent preset" hint="Quick swatches for the accent color.">
-          <AccentSwatches value={accent} onChange={setAccent} />
         </Row>
       </div>
 
@@ -420,38 +413,11 @@ function ColorEditor() {
         </div>
         <p className="mt-3 text-[11px] text-(--color-fg-muted)">
           Customize any color. Each theme (light/dark) is edited separately —
-          switch the toggle above. The Accent preset above writes to{" "}
-          <span className="font-mono">color-accent</span> for both themes.
+          switch the toggle above. Picking a template above applies all 12
+          colors at once.
         </p>
       </div>
     </details>
-  );
-}
-
-function AccentSwatches({
-  value,
-  onChange,
-}: {
-  value: AccentId;
-  onChange: (a: AccentId) => void;
-}) {
-  return (
-    <div className="flex gap-1.5">
-      {ACCENTS.map((a) => (
-        <button
-          key={a.id}
-          onClick={() => onChange(a.id)}
-          title={a.label}
-          aria-label={a.label}
-          className={`h-7 w-7 rounded-full ring-offset-2 ring-offset-(--color-surface) transition-all ${
-            value === a.id
-              ? "ring-2 ring-(--color-fg)"
-              : "ring-1 ring-(--color-border) hover:scale-110"
-          }`}
-          style={{ backgroundColor: a.color }}
-        />
-      ))}
-    </div>
   );
 }
 

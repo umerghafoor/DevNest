@@ -30,7 +30,6 @@ export function App() {
   const setDevices = useAppStore((s) => s.setDevices);
   const initTheme = useThemeStore((s) => s.init);
   const initUi = useUiStore((s) => s.init);
-  const reapplyAccent = useUiStore((s) => s.reapplyAccent);
   const initColors = useColorsStore((s) => s.init);
   const reapplyColors = useColorsStore((s) => s.reapply);
   const themeValue = useThemeStore((s) => s.theme);
@@ -69,14 +68,13 @@ export function App() {
     }
   }, [initTheme, initUi, initColors, setDevices]);
 
-  // Re-apply color overrides AND the accent preset whenever the active theme
-  // changes. colors-store.reapply wipes any inline --color-* before applying
-  // its own overrides, which would also clear the accent preset that lives as
-  // an inline style — so accent gets reapplied right after.
+  // Re-apply color overrides whenever the active theme changes. The
+  // colors-store owns all --color-* now (templates set everything in one
+  // shot, including --color-accent), so there's no separate accent
+  // override layer to re-apply.
   useEffect(() => {
     reapplyColors();
-    reapplyAccent();
-  }, [themeValue, reapplyColors, reapplyAccent]);
+  }, [themeValue, reapplyColors]);
 
   // Global keyboard shortcuts driven by the customizable shortcut registry.
   useEffect(() => {

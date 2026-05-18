@@ -54,6 +54,17 @@ body,
   color: var(--color-fg);
 }
 
+/* Font size + density compose into the root font-size, which Tailwind's
+ * rem-based text/spacing utilities all read. Defaults match the previous
+ * hard-coded 14px so nothing shifts until the user changes the setting. */
+:root {
+  --app-font-size-base: 14px;
+  --app-font-scale: 1;
+}
+html {
+  font-size: calc(var(--app-font-size-base) * var(--app-font-scale));
+}
+
 /* Sync the native color-scheme so default widgets (scrollbars before our
  * overrides paint, date pickers, form-control defaults) match the app theme. */
 html.theme-dark {
@@ -75,7 +86,10 @@ body {
     Helvetica,
     Arial,
     sans-serif;
-  font-size: 14px;
+  /* Root font-size is set on <html> above; inherit it so the user's Font
+   * size + Density settings actually take effect across all rem-based
+   * Tailwind utilities. */
+  font-size: 1rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -161,8 +175,8 @@ button:active:not(:disabled):not([data-tauri-drag-region]) {
   border: 1px solid transparent;
   background-color: var(--color-surface-2);
   color: var(--color-fg);
-  padding: 8px 12px;
-  font-size: 13.5px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.95rem;
   font-family: inherit;
   outline: none;
   transition:
