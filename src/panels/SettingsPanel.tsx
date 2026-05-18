@@ -306,10 +306,10 @@ function TemplateCard({
       onClick={onPick}
       title={template.description}
       aria-pressed={active}
-      className={`group flex flex-col overflow-hidden rounded-md border text-left transition-all ${
+      className={`group flex flex-col overflow-hidden rounded-md text-left transition-all ${
         active
-          ? "border-(--color-accent) ring-2 ring-(--color-accent)/40"
-          : "border-(--color-border) hover:border-(--color-fg-muted)"
+          ? "ring-2 ring-(--color-accent)/60"
+          : "ring-1 ring-transparent hover:ring-1 hover:ring-(--color-fg-muted)/30"
       }`}
     >
       {/* Preview strip: bg, surface, accent, fg */}
@@ -501,10 +501,10 @@ function ShortcutsTab() {
                 <button
                   onClick={() => setCapturingId(s.id)}
                   onKeyDown={(e) => capturing && onCapture(e, s.id)}
-                  className={`min-w-[110px] rounded border px-2 py-1 text-xs font-mono ${
+                  className={`min-w-[110px] rounded px-2 py-1 text-xs font-mono ${
                     capturing
-                      ? "border-(--color-accent) bg-(--color-accent)/10 text-(--color-fg)"
-                      : "border-(--color-border) bg-(--color-bg) text-(--color-fg-muted) hover:text-(--color-fg)"
+                      ? "bg-(--color-accent)/15 text-(--color-fg) ring-1 ring-(--color-accent)/40"
+                      : "bg-(--color-surface-2) text-(--color-fg-muted) hover:text-(--color-fg)"
                   }`}
                 >
                   {capturing ? "Press keys…" : formatBinding(current)}

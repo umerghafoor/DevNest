@@ -258,11 +258,8 @@ export const api = {
    *  - `""`    → clear the keyring entry.
    *  - string  → overwrite the keyring entry.
    */
-  updateDevice: (
-    id: string,
-    patch: DeviceUpdate,
-    secret: string | null,
-  ) => call<Device>("update_device", { id, patch, secret }),
+  updateDevice: (id: string, patch: DeviceUpdate, secret: string | null) =>
+    call<Device>("update_device", { id, patch, secret }),
   deleteDevice: (id: string) => call<void>("delete_device", { id }),
   setUseSudo: (id: string, value: boolean) =>
     call<Device>("set_use_sudo", { id, value }),

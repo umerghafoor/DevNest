@@ -310,8 +310,8 @@ export function AddDeviceDialog({ open, onClose, editing }: Props) {
               Keep connection alive
             </span>
             <span className="mt-0.5 block text-(--color-fg-muted)">
-              Send SSH keepalive packets every 30 s so NAT/firewall timeouts
-              and the server&apos;s{" "}
+              Send SSH keepalive packets every 30 s so NAT/firewall timeouts and
+              the server&apos;s{" "}
               <code className="font-mono">ClientAliveInterval</code> don&apos;t
               drop the idle connection.
             </span>

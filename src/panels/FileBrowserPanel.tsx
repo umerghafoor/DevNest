@@ -283,7 +283,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
                       </button>
                       <button
                         onClick={() => void deleteEntry(e)}
-                        className="rounded border border-(--color-error)/30 px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/10 transition-colors"
+                        className="rounded bg-(--color-error)/10 px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/20 transition-colors"
                       >
                         Del
                       </button>

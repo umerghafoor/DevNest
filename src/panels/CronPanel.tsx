@@ -346,7 +346,7 @@ export function CronPanel({ deviceId }: Props) {
                       </button>
                       <button
                         onClick={() => remove(entry)}
-                        className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:border-(--color-error) hover:text-(--color-error)"
+                        className="rounded bg-(--color-surface-2) px-1.5 py-0.5 text-[10px] hover:bg-(--color-error)/15 hover:text-(--color-error)"
                       >
                         ×
                       </button>

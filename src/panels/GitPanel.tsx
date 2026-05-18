@@ -360,7 +360,7 @@ function FoldersSection({
       </div>
 
       {folders.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-(--color-border) bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">
+        <div className="rounded-lg bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">
           No repositories bookmarked. Pick a device above and add one.
         </div>
       ) : (

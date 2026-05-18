@@ -291,8 +291,8 @@ export function ProcessPanel({ deviceId, paneId }: Props) {
                     <td className="px-2 py-1.5">
                       <button
                         onClick={() => setKillTarget(p)}
-                        className="rounded border border-(--color-border) px-2 py-0.5 text-[10px] text-(--color-fg-muted)
-                          opacity-0 transition-all hover:border-(--color-error) hover:text-(--color-error) group-hover:opacity-100"
+                        className="rounded bg-(--color-surface-2) px-2 py-0.5 text-[10px] text-(--color-fg-muted)
+                          opacity-0 transition-all hover:bg-(--color-error)/15 hover:text-(--color-error) group-hover:opacity-100"
                       >
                         Kill
                       </button>

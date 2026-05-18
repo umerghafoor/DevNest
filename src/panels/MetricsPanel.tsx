@@ -413,7 +413,7 @@ export function MetricsPanel({ deviceId }: Props) {
             </div>
           )}
           {dimms === null && !dimmError && (
-            <div className="rounded border border-dashed border-(--color-border) bg-(--color-surface) p-3 text-center text-xs text-(--color-fg-muted)">
+            <div className="rounded bg-(--color-surface) p-3 text-center text-xs text-(--color-fg-muted)">
               DIMM details require root (calls{" "}
               <span className="font-mono">dmidecode -t memory</span>). Click
               &quot;Show DIMMs&quot; — you&apos;ll be prompted for sudo.

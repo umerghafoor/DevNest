@@ -258,10 +258,10 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
           )}
           <button
             onClick={() => setPaused((p) => !p)}
-            className={`rounded border px-2 py-0.5 transition-colors ${
+            className={`rounded px-2 py-0.5 transition-colors ${
               paused
-                ? "border-(--color-warn) text-(--color-warn)"
-                : "border-(--color-border) hover:bg-(--color-surface-2)"
+                ? "bg-(--color-warn)/15 text-(--color-warn)"
+                : "hover:bg-(--color-surface-2)"
             }`}
           >
             {paused ? "Resume" : "Pause"}
