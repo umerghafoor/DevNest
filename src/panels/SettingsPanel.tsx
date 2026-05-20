@@ -1,10 +1,6 @@
 import { useState } from "react";
 import { useThemeStore, type Theme } from "../store/theme-store";
-import {
-  useUiStore,
-  type Density,
-  type FontSize,
-} from "../store/ui-store";
+import { useUiStore, type Density, type FontSize } from "../store/ui-store";
 import {
   useColorsStore,
   COLOR_VARS,
