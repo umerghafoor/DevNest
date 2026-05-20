@@ -8,6 +8,12 @@ more — all from one local-first desktop app built with Tauri 2.
 
 **Phase 0 — Foundation.** See [docs/plans/](docs/plans/) for the roadmap.
 
+## Demo
+
+<video controls muted playsinline src="docs/devnest_demo.webm" width="100%">
+  Your browser does not support embedded video. Watch the demo video: [docs/devnest_demo.webm](docs/devnest_demo.webm)
+</video>
+
 ## Stack
 
 - **Desktop shell:** Tauri 2 (Rust + WebView)
