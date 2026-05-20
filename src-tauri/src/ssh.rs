@@ -67,6 +67,18 @@ impl SshSession {
             return Err(AppError::Ssh("authentication failed".into()));
         }
 
+        // Apply SSH-layer keepalive when the device asked for it. libssh2
+        // sends a SSH_MSG_IGNORE every `interval` seconds, which keeps
+        // NAT/firewall state warm and satisfies the server's
+        // `ClientAliveInterval`. We pass `want_reply=true` so a dead
+        // connection surfaces as a read error rather than silently linger.
+        if device.keep_alive {
+            // Args are (want_reply, interval_secs). want_reply=true asks the
+            // server to ACK, which means a dead link surfaces as an error on
+            // the next read instead of lingering silently.
+            session.set_keepalive(true, 30);
+        }
+
         Ok(Self { session })
     }
 
@@ -180,6 +192,24 @@ impl SessionPool {
     pub fn get(&self, id: &str) -> Option<Arc<Mutex<SshSession>>> {
         self.inner.lock().get(id).cloned()
     }
+
+    /// Actively probe the session by opening a channel and running `:`.
+    /// Returns true if the probe succeeds; on any failure the session is
+    /// dropped from the pool so the next status call reflects reality.
+    pub fn probe(&self, id: &str) -> bool {
+        let sess = match self.get(id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let ok = {
+            let mut guard = sess.lock();
+            guard.run_with_stdin(":", None).is_ok()
+        };
+        if !ok {
+            self.disconnect(id);
+        }
+        ok
+    }
 }
 
 /// Run a shell command on a device. For localhost devices this shells out
@@ -189,6 +219,30 @@ impl SessionPool {
 /// `sudo -S -p '' sh -c '<cmd>'` and the sudo password is read from the
 /// keychain and piped to stdin. If no sudo password is stored, this returns
 /// `AppError::SudoPasswordRequired` so the frontend can prompt and retry.
+/// Like [`run_command`], but ignores `device.use_sudo`. Used by read-only
+/// commands that read /proc or other public paths and never need sudo, so
+/// turning on the device's sudo flag doesn't break them.
+pub fn run_command_no_sudo(
+    pool: &SessionPool,
+    device: &Device,
+    cmd: &str,
+) -> AppResult<CommandOutput> {
+    let raw = if let Some(prefix) = device.sudo_prefix.as_deref() {
+        format!("{prefix} {cmd}")
+    } else {
+        cmd.to_string()
+    };
+    if device.is_localhost {
+        run_local(&raw, None)
+    } else {
+        let sess = pool
+            .get(&device.id)
+            .ok_or_else(|| AppError::Ssh("device not connected".into()))?;
+        let mut guard = sess.lock();
+        guard.run_with_stdin(&raw, None)
+    }
+}
+
 pub fn run_command(pool: &SessionPool, device: &Device, cmd: &str) -> AppResult<CommandOutput> {
     let raw = if let Some(prefix) = device.sudo_prefix.as_deref() {
         format!("{prefix} {cmd}")

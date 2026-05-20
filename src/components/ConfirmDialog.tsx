@@ -11,7 +11,10 @@ interface ConfirmRequest {
 
 interface ConfirmStore {
   queue: ConfirmRequest[];
-  confirm: (message: string, opts?: { title?: string; destructive?: boolean }) => Promise<boolean>;
+  confirm: (
+    message: string,
+    opts?: { title?: string; destructive?: boolean },
+  ) => Promise<boolean>;
   respond: (id: number, ok: boolean) => void;
 }
 
@@ -110,9 +113,10 @@ export function ConfirmDialogHost() {
             autoFocus
             onClick={() => handleRespond(true)}
             className={`rounded px-3 py-1.5 text-xs font-medium transition-colors
-              ${current.destructive
-                ? "bg-(--color-error) text-white hover:opacity-90"
-                : "bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
+              ${
+                current.destructive
+                  ? "bg-(--color-error) text-white hover:opacity-90"
+                  : "bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
               }`}
           >
             Confirm

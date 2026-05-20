@@ -105,8 +105,8 @@ function EntryForm({ initial, onSave, onCancel }: EntryFormProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="w-[480px] rounded-xl border border-(--color-border) bg-(--color-bg) p-5 shadow-2xl">
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="modal-content w-[480px] rounded-xl border border-(--color-border) bg-(--color-bg) p-5 shadow-2xl">
         <h3 className="mb-4 text-sm font-semibold">
           {initial ? "Edit cron job" : "New cron job"}
         </h3>
@@ -346,7 +346,7 @@ export function CronPanel({ deviceId }: Props) {
                       </button>
                       <button
                         onClick={() => remove(entry)}
-                        className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:border-(--color-error) hover:text-(--color-error)"
+                        className="rounded bg-(--color-surface-2) px-1.5 py-0.5 text-[10px] hover:bg-(--color-error)/15 hover:text-(--color-error)"
                       >
                         ×
                       </button>

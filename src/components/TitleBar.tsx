@@ -1,22 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
-import { PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const ALL_PANELS: PanelKind[] = [
-  "terminal",
-  "docker",
-  "metrics",
-  "files",
-  "logs",
-  "tailscale",
-  "processes",
-  "ports",
-  "cron",
-];
+import { useRecentsStore } from "../store/recents-store";
+import { usePaletteStore } from "../store/palette-store";
+import { useShortcutsStore, formatBinding } from "../store/shortcuts-store";
+import {
+  PANEL_ICONS,
+  PANEL_LABELS,
+  PANEL_DESCRIPTIONS,
+  CATEGORY_LABELS,
+  CATEGORY_ORDER,
+  PANEL_ORDER_IN_CATEGORY,
+} from "./PaneTile";
 
 // DevNest Cradle mark — matches the brand guidelines SVG
 function CradleMark({
@@ -189,70 +185,144 @@ function WorkspaceTab({
   return (
     // Intentionally no data-tauri-drag-region — tabs must be clickable
     <div
-      className={`group relative flex h-full items-center gap-1 border-r border-(--color-border) px-3 text-xs cursor-pointer select-none transition-colors shrink-0 ${
-        active
-          ? "bg-(--color-bg) text-(--color-fg)"
-          : "text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-      }`}
+      className="group flex shrink-0 items-center px-0.5 select-none"
       onClick={() => !editing && setActiveWorkspace(id)}
     >
-      {active && (
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-(--color-accent)" />
-      )}
-      {editing ? (
-        <input
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") {
-              setDraft(name);
-              setEditing(false);
-            }
-            e.stopPropagation();
-          }}
-          className="w-20 bg-transparent outline-none text-xs"
-          autoFocus
-          onClick={(e) => e.stopPropagation()}
-        />
-      ) : (
-        <span
-          className="max-w-[100px] truncate"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setEditing(true);
-            setTimeout(() => inputRef.current?.select(), 0);
-          }}
-        >
-          {name}
-        </span>
-      )}
-      {workspaceCount > 1 && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            removeWorkspace(id);
-          }}
-          aria-label="Close workspace"
-          className="ml-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 hover:bg-(--color-surface-2) group-hover:opacity-100 transition-opacity"
-        >
-          ×
-        </button>
-      )}
+      <div
+        className={`flex h-6 items-center gap-1 rounded-md px-2.5 text-xs cursor-pointer transition-colors ${
+          active
+            ? "bg-(--color-accent)/15 text-(--color-fg) ring-1 ring-(--color-accent)/40"
+            : "text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        }`}
+      >
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") {
+                setDraft(name);
+                setEditing(false);
+              }
+              e.stopPropagation();
+            }}
+            className="w-20 border-0 bg-transparent p-0 text-xs text-(--color-fg) outline-none focus:outline-none focus:ring-0"
+            autoFocus
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span
+            className="max-w-[100px] truncate"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditing(true);
+              setTimeout(() => inputRef.current?.select(), 0);
+            }}
+          >
+            {name}
+          </span>
+        )}
+        {workspaceCount > 1 && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              removeWorkspace(id);
+            }}
+            aria-label="Close workspace"
+            className="ml-0.5 flex h-4 w-4 items-center justify-center rounded opacity-0 hover:bg-(--color-bg) group-hover:opacity-100 transition-opacity"
+          >
+            ×
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─── New-panel dropdown ───────────────────────────────────────────────────────
 
+interface MenuItem {
+  kind: PanelKind;
+  /** "Recents" / category label / null for "all (filter result)" */
+  sectionLabel: string | null;
+  /** First item of a section gets a header rendered above it. */
+  isSectionStart: boolean;
+}
+
 function NewPanelMenu() {
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
   const openPane = useAppStore((s) => s.openPane);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const recents = useRecentsStore((s) => s.recents);
+  const pushRecent = useRecentsStore((s) => s.push);
 
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [activeIdx, setActiveIdx] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Build the flat list of menu items with section headers attached.
+  const items = useMemo<MenuItem[]>(() => {
+    const q = query.trim().toLowerCase();
+
+    if (q) {
+      // Search mode: flat list across all panels, no recents, no categories.
+      const all: PanelKind[] = CATEGORY_ORDER.flatMap(
+        (c) => PANEL_ORDER_IN_CATEGORY[c],
+      );
+      const matches = all.filter(
+        (k) =>
+          PANEL_LABELS[k].toLowerCase().includes(q) ||
+          PANEL_DESCRIPTIONS[k].toLowerCase().includes(q),
+      );
+      return matches.map((kind, i) => ({
+        kind,
+        sectionLabel: i === 0 ? "Results" : null,
+        isSectionStart: i === 0,
+      }));
+    }
+
+    const result: MenuItem[] = [];
+    const used = new Set<PanelKind>();
+
+    // Recents first
+    if (recents.length > 0) {
+      recents.forEach((kind, i) => {
+        used.add(kind);
+        result.push({
+          kind,
+          sectionLabel: i === 0 ? "Recent" : null,
+          isSectionStart: i === 0,
+        });
+      });
+    }
+
+    // Then categories — but skip items already shown in Recents, and only emit
+    // the section header on the first *remaining* item of the category.
+    for (const cat of CATEGORY_ORDER) {
+      const kinds = PANEL_ORDER_IN_CATEGORY[cat].filter((k) => !used.has(k));
+      kinds.forEach((kind, i) => {
+        used.add(kind);
+        result.push({
+          kind,
+          sectionLabel: i === 0 ? CATEGORY_LABELS[cat] : null,
+          isSectionStart: i === 0,
+        });
+      });
+    }
+    return result;
+  }, [query, recents]);
+
+  // Reset cursor whenever the list changes.
+  useEffect(() => {
+    setActiveIdx(0);
+  }, [items.length]);
+
+  // Outside click / focus management.
   useEffect(() => {
     if (!open) return;
     const h = (e: MouseEvent) => {
@@ -263,14 +333,59 @@ function NewPanelMenu() {
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
+  useEffect(() => {
+    if (open) {
+      // focus the input on next frame so the menu finishes mounting first
+      const f = requestAnimationFrame(() => inputRef.current?.focus());
+      return () => cancelAnimationFrame(f);
+    }
+    setQuery("");
+  }, [open]);
+
+  // Keep active item in view when navigating.
+  useEffect(() => {
+    if (!open) return;
+    const node = listRef.current?.querySelector<HTMLButtonElement>(
+      `[data-idx="${activeIdx}"]`,
+    );
+    node?.scrollIntoView({ block: "nearest" });
+  }, [activeIdx, open]);
+
   if (!activeDeviceId) return null;
+
+  const pick = (kind: PanelKind, keepOpen = false) => {
+    openPane(makePane(activeDeviceId, kind));
+    pushRecent(kind);
+    if (!keepOpen) setOpen(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.min(items.length - 1, i + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => Math.max(0, i - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const item = items[activeIdx];
+      if (item) pick(item.kind, e.shiftKey);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setOpen(false);
+    }
+  };
 
   return (
     <div ref={ref} className="relative flex items-center">
-      <button
+      {/* <button
         onClick={() => setOpen((o) => !o)}
         title="Open panel"
-        className="flex h-full items-center gap-1 px-2.5 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+        className={`flex h-full items-center gap-1 px-2.5 text-xs transition-colors ${
+          open
+            ? "bg-(--color-surface-2) text-(--color-fg)"
+            : "text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        }`}
       >
         <svg
           width="11"
@@ -284,27 +399,147 @@ function NewPanelMenu() {
           <path d="M8 3v10M3 8h10" />
         </svg>
         <span>Panel</span>
-      </button>
+      </button> */}
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-0.5 min-w-[152px] rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-xl">
-          {ALL_PANELS.map((kind) => (
-            <button
-              key={kind}
-              onClick={() => {
-                openPane(makePane(activeDeviceId, kind));
-                setOpen(false);
-              }}
-              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-(--color-fg) hover:bg-(--color-surface-2)"
-            >
-              <span className="text-(--color-fg-muted) w-3 text-center">
-                {PANEL_ICONS[kind]}
-              </span>
-              {PANEL_LABELS[kind]}
-            </button>
-          ))}
+        <div
+          className="modal-content absolute right-0 top-full z-50 mt-1 w-[300px] overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface) shadow-2xl"
+          onKeyDown={onKeyDown}
+        >
+          <div className="border-b border-(--color-border) bg-(--color-bg) px-2 py-1.5">
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search panels…"
+              className="w-full bg-transparent px-2 py-1 text-xs outline-none placeholder:text-(--color-fg-muted)"
+            />
+          </div>
+
+          <div
+            ref={listRef}
+            className="max-h-[60vh] overflow-y-auto py-1"
+            role="listbox"
+          >
+            {items.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs text-(--color-fg-muted)">
+                No matches for &quot;{query}&quot;.
+              </div>
+            ) : (
+              items.map((it, i) => (
+                <MenuRow
+                  key={`${it.kind}-${i}`}
+                  item={it}
+                  idx={i}
+                  active={i === activeIdx}
+                  onHover={() => setActiveIdx(i)}
+                  onPick={(keepOpen) => pick(it.kind, keepOpen)}
+                />
+              ))
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-(--color-border) bg-(--color-bg) px-3 py-1.5 text-[10px] text-(--color-fg-muted)">
+            <span>
+              <kbd className="font-mono">↑↓</kbd> navigate ·{" "}
+              <kbd className="font-mono">↵</kbd> open
+            </span>
+            <span>
+              <kbd className="font-mono">⇧↵</kbd> open + keep
+            </span>
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function MenuRow({
+  item,
+  idx,
+  active,
+  onHover,
+  onPick,
+}: {
+  item: MenuItem;
+  idx: number;
+  active: boolean;
+  onHover: () => void;
+  onPick: (keepOpen: boolean) => void;
+}) {
+  return (
+    <>
+      {item.isSectionStart && item.sectionLabel && (
+        <div className="mt-1.5 px-3 pb-0.5 pt-1 text-[10px] font-semibold uppercase tracking-wider text-(--color-fg-muted) first:mt-0">
+          {item.sectionLabel}
+        </div>
+      )}
+      <button
+        data-idx={idx}
+        onMouseEnter={onHover}
+        onClick={(e) => onPick(e.shiftKey)}
+        role="option"
+        aria-selected={active}
+        className={`group relative flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-xs transition-colors ${
+          active
+            ? "bg-(--color-accent)/15 text-(--color-fg)"
+            : "text-(--color-fg) hover:bg-(--color-surface-2)"
+        }`}
+      >
+        {active && (
+          <span className="absolute left-0 top-1 bottom-1 w-0.5 rounded-r bg-(--color-accent)" />
+        )}
+        <span
+          className={`w-4 shrink-0 text-center text-sm ${
+            active ? "text-(--color-accent)" : "text-(--color-fg-muted)"
+          }`}
+        >
+          {PANEL_ICONS[item.kind]}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-medium">
+            {PANEL_LABELS[item.kind]}
+          </span>
+          <span
+            className={`truncate text-[10px] ${
+              active ? "text-(--color-fg-muted)" : "text-(--color-fg-muted)/80"
+            }`}
+          >
+            {PANEL_DESCRIPTIONS[item.kind]}
+          </span>
+        </span>
+      </button>
+    </>
+  );
+}
+
+// ─── Command palette trigger ──────────────────────────────────────────────────
+
+function PaletteButton() {
+  const open = usePaletteStore((s) => s.show);
+  const binding = useShortcutsStore((s) => s.getBinding("openCommandPalette"));
+  return (
+    <button
+      onClick={open}
+      title={`Command palette (${formatBinding(binding)})`}
+      className="flex h-full items-center gap-1.5 px-2.5 text-xs text-(--color-fg-muted) transition-colors hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+    >
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        aria-hidden
+      >
+        <circle cx="7" cy="7" r="5" />
+        <path d="M11 11l3 3" />
+      </svg>
+      <kbd className="hidden font-mono text-[10px] opacity-70 sm:inline">
+        {formatBinding(binding)}
+      </kbd>
+    </button>
   );
 }
 
@@ -405,7 +640,7 @@ export function TitleBar() {
           </span>
         </div>
 
-        <div className="flex items-stretch overflow-x-auto">
+        <div className="flex items-center overflow-x-auto overflow-y-hidden py-1">
           {workspaces.map((ws) => (
             <WorkspaceTab
               key={ws.id}
@@ -417,7 +652,7 @@ export function TitleBar() {
           <button
             onClick={addWorkspace}
             title="New workspace"
-            className="flex h-full w-8 shrink-0 items-center justify-center text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+            className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
           >
             <svg
               width="11"
@@ -439,6 +674,7 @@ export function TitleBar() {
 
       {/* Right-side actions */}
       <div className="flex items-stretch border-l border-(--color-border)">
+        <PaletteButton />
         <NewPanelMenu />
         <PaneActions />
       </div>

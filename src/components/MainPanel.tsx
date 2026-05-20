@@ -1,4 +1,5 @@
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
+import { DashboardPanel } from "../panels/DashboardPanel";
 import { PaneTile } from "./PaneTile";
 
 export function MainPanel() {
@@ -12,15 +13,17 @@ export function MainPanel() {
       <div className="min-h-0 flex-1 overflow-hidden">
         {ws.paneRoot ? (
           <PaneTile node={ws.paneRoot} />
+        ) : activeDevice ? (
+          <DashboardPanel deviceId={activeDevice.id} />
         ) : (
-          <EmptyState hasDevice={Boolean(activeDevice)} />
+          <NoDeviceState />
         )}
       </div>
     </main>
   );
 }
 
-function EmptyState({ hasDevice }: { hasDevice: boolean }) {
+function NoDeviceState() {
   return (
     <div className="flex h-full items-center justify-center">
       <div className="flex flex-col items-center gap-4 text-center">
@@ -47,12 +50,10 @@ function EmptyState({ hasDevice }: { hasDevice: boolean }) {
         </svg>
         <div>
           <h2 className="text-sm font-semibold tracking-tight">
-            {hasDevice ? "Open a panel" : "Welcome to DevNest"}
+            Welcome to DevNest
           </h2>
           <p className="mt-1 max-w-xs text-xs text-(--color-fg-muted)">
-            {hasDevice
-              ? 'Click "Panel" in the title bar to open Terminal, Docker, Files, and more.'
-              : "Add a device from the sidebar to get started."}
+            Add a device from the sidebar to get started.
           </p>
         </div>
       </div>

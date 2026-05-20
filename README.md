@@ -3,10 +3,11 @@
 A unified desktop control panel for developers and self-hosters. Manage Docker
 containers, Tailscale nodes, SSH connections, system services, logs, files, and
 more — all from one local-first desktop app built with Tauri 2.
+dation. See [docs/plans/](docs/plans/) for the roadmap.
 
-## Status
-
-**Phase 0 — Foundation.** See [docs/plans/](docs/plans/) for the roadmap.
+## Demo
+Watch the demo on YouTube: https://youtu.be/DW1sxw4geec
+[![DevNest Demo](https://img.youtube.com/vi/DW1sxw4geec/maxresdefault.jpg)](https://youtu.be/DW1sxw4geec)
 
 ## Stack
 

@@ -18,6 +18,7 @@ pub fn open(app_data_dir: &std::path::Path) -> AppResult<Db> {
     conn.pragma_update(None, "foreign_keys", "ON")
         .map_err(|e| AppError::Db(e.to_string()))?;
     add_column_if_missing(&conn, "devices", "use_sudo", "INTEGER NOT NULL DEFAULT 0")?;
+    add_column_if_missing(&conn, "devices", "keep_alive", "INTEGER NOT NULL DEFAULT 0")?;
     Ok(Arc::new(Mutex::new(conn)))
 }
 

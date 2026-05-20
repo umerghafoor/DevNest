@@ -1,13 +1,15 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { api } from "../lib/api";
-import type { AuthType } from "../lib/api";
+import type { AuthType, Device } from "../lib/api";
 import { useAppStore } from "../store/app-store";
 import { Modal } from "./Modal";
 
 interface Props {
   open: boolean;
   onClose: () => void;
+  /** If set, the dialog opens in "edit" mode with this device's values. */
+  editing?: Device | null;
 }
 
 const schema = z.object({
@@ -24,6 +26,7 @@ const schema = z.object({
   secret: z.string().optional(),
   sudoPrefix: z.string().optional(),
   useSudo: z.boolean(),
+  keepAlive: z.boolean(),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -38,9 +41,10 @@ const initial: FormValues = {
   secret: "",
   sudoPrefix: "",
   useSudo: false,
+  keepAlive: false,
 };
 
-export function AddDeviceDialog({ open, onClose }: Props) {
+export function AddDeviceDialog({ open, onClose, editing }: Props) {
   const [values, setValues] = useState<FormValues>(initial);
   const [errors, setErrors] = useState<
     Partial<Record<keyof FormValues, string>>
@@ -49,6 +53,31 @@ export function AddDeviceDialog({ open, onClose }: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const upsertDevice = useAppStore((s) => s.upsertDevice);
   const setActiveDevice = useAppStore((s) => s.setActiveDevice);
+
+  // Prefill from `editing` each time the dialog re-opens for a different
+  // device, or reset to blanks when re-opened for a fresh add.
+  useEffect(() => {
+    if (!open) return;
+    if (editing && editing.authType !== "localhost") {
+      setValues({
+        name: editing.name,
+        host: editing.host,
+        port: editing.port,
+        username: editing.username,
+        authType: editing.authType,
+        keyPath: editing.keyPath ?? "",
+        secret: "",
+        sudoPrefix: editing.sudoPrefix ?? "",
+        useSudo: editing.useSudo,
+        keepAlive: editing.keepAlive,
+      });
+    } else {
+      setValues(initial);
+    }
+    setErrors({});
+    setSubmitError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, editing?.id]);
 
   const set = <K extends keyof FormValues>(key: K, val: FormValues[K]) =>
     setValues((v) => ({ ...v, [key]: val }));
@@ -81,7 +110,13 @@ export function AddDeviceDialog({ open, onClose }: Props) {
       setErrors({ keyPath: "Key path is required for key auth" });
       return;
     }
-    if (parsed.data.authType === "password" && !parsed.data.secret) {
+    // In edit mode, an empty password means "keep the stored one". In add
+    // mode, password auth requires a value (we have nothing to fall back to).
+    if (
+      !editing &&
+      parsed.data.authType === "password" &&
+      !parsed.data.secret
+    ) {
       setErrors({ secret: "Password is required for password auth" });
       return;
     }
@@ -90,21 +125,26 @@ export function AddDeviceDialog({ open, onClose }: Props) {
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const device = await api.createDevice(
-        {
-          name: parsed.data.name,
-          host: parsed.data.host,
-          port: parsed.data.port,
-          username: parsed.data.username,
-          authType: parsed.data.authType as AuthType,
-          keyPath: parsed.data.keyPath || null,
-          sudoPrefix: parsed.data.sudoPrefix || null,
-          useSudo: parsed.data.useSudo,
-        },
-        parsed.data.secret || null,
-      );
+      const payload = {
+        name: parsed.data.name,
+        host: parsed.data.host,
+        port: parsed.data.port,
+        username: parsed.data.username,
+        authType: parsed.data.authType as AuthType,
+        keyPath: parsed.data.keyPath || null,
+        sudoPrefix: parsed.data.sudoPrefix || null,
+        useSudo: parsed.data.useSudo,
+        keepAlive: parsed.data.keepAlive,
+      };
+      const device = editing
+        ? await api.updateDevice(
+            editing.id,
+            payload,
+            parsed.data.secret ? parsed.data.secret : null,
+          )
+        : await api.createDevice(payload, parsed.data.secret || null);
       upsertDevice(device);
-      setActiveDevice(device.id);
+      if (!editing) setActiveDevice(device.id);
       reset();
       onClose();
     } catch (e) {
@@ -118,7 +158,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
     <Modal
       open={open}
       onClose={close}
-      title="Add device"
+      title={editing ? `Edit ${editing.name}` : "Add device"}
       footer={
         <>
           <button
@@ -133,7 +173,7 @@ export function AddDeviceDialog({ open, onClose }: Props) {
             disabled={submitting}
             className="rounded bg-(--color-accent) px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-50"
           >
-            {submitting ? "Saving…" : "Add device"}
+            {submitting ? "Saving…" : editing ? "Save changes" : "Add device"}
           </button>
         </>
       }
@@ -217,15 +257,26 @@ export function AddDeviceDialog({ open, onClose }: Props) {
         ) : null}
         <Field
           label={
-            values.authType === "key" ? "Key passphrase (optional)" : "Password"
+            values.authType === "key"
+              ? editing
+                ? "Key passphrase (leave empty to keep stored)"
+                : "Key passphrase (optional)"
+              : editing
+                ? "Password (leave empty to keep stored)"
+                : "Password"
           }
           error={errors.secret}
-          hint="Stored in your OS keychain — never written to the database."
+          hint={
+            editing
+              ? "Stored in your OS keychain. Type a new value to replace it; leave empty to keep what's already saved."
+              : "Stored in your OS keychain — never written to the database."
+          }
         >
           <input
             type="password"
             value={values.secret}
             onChange={(e) => set("secret", e.target.value)}
+            placeholder={editing ? "•••••••• (unchanged)" : ""}
             className="input"
           />
         </Field>
@@ -244,6 +295,25 @@ export function AddDeviceDialog({ open, onClose }: Props) {
               When enabled, DevNest wraps each command with{" "}
               <code className="font-mono">sudo -S</code> and prompts for your
               sudo password the first time it&apos;s needed.
+            </span>
+          </span>
+        </label>
+        <label className="flex items-start gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={values.keepAlive}
+            onChange={(e) => set("keepAlive", e.target.checked)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="block text-(--color-fg)">
+              Keep connection alive
+            </span>
+            <span className="mt-0.5 block text-(--color-fg-muted)">
+              Send SSH keepalive packets every 30 s so NAT/firewall timeouts and
+              the server&apos;s{" "}
+              <code className="font-mono">ClientAliveInterval</code> don&apos;t
+              drop the idle connection.
             </span>
           </span>
         </label>

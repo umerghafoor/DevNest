@@ -36,11 +36,12 @@ export const toast = {
   warn: (msg: string) => useToastStore.getState().add(msg, "warn"),
 };
 
+// Borderless: state is carried by the tinted background + the icon color.
 const kindStyles: Record<ToastKind, string> = {
-  info: "border-(--color-border) bg-(--color-surface) text-(--color-fg)",
-  success: "border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-400",
-  error: "border-(--color-error)/30 bg-(--color-error)/10 text-(--color-error)",
-  warn: "border-(--color-warn)/30 bg-(--color-warn)/10 text-(--color-warn)",
+  info: "bg-(--color-surface) text-(--color-fg)",
+  success: "bg-green-500/15 text-green-700 dark:text-green-400",
+  error: "bg-(--color-error)/15 text-(--color-error)",
+  warn: "bg-(--color-warn)/15 text-(--color-warn)",
 };
 
 const kindIcon: Record<ToastKind, string> = {
@@ -50,7 +51,13 @@ const kindIcon: Record<ToastKind, string> = {
   warn: "⚠",
 };
 
-function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void }) {
+function ToastItem({
+  toast: t,
+  onRemove,
+}: {
+  toast: Toast;
+  onRemove: () => void;
+}) {
   const [visible, setVisible] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -72,9 +79,9 @@ function ToastItem({ toast: t, onRemove }: { toast: Toast; onRemove: () => void 
 
   return (
     <div
-      className={`flex items-start gap-2 rounded-lg border px-3 py-2.5 shadow-lg text-xs max-w-sm
-        transition-all duration-300 ease-out
-        ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-2"}
+      className={`flex items-start gap-2 rounded-lg px-3 py-2.5 shadow-lg text-xs max-w-sm
+        transition-all duration-[180ms] ease-[cubic-bezier(0.16,1,0.3,1)]
+        ${visible ? "opacity-100 translate-x-0 scale-100" : "opacity-0 translate-x-4 scale-95"}
         ${kindStyles[t.kind]}`}
     >
       <span className="mt-px shrink-0 font-semibold">{kindIcon[t.kind]}</span>
