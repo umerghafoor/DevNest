@@ -5,7 +5,7 @@ use crate::docker::{self, ContainerSummary};
 use crate::error::{AppError, AppResult};
 use crate::metrics::{self, CpuInfo, DimmModule, MetricsSnapshot};
 use crate::secrets;
-use crate::sql::{QueryResult, SqlEngine};
+use crate::sql::{ConnectConfig, QueryResult, SqlEngine};
 use crate::ssh::{self, CommandOutput};
 use crate::state::AppState;
 
@@ -289,7 +289,15 @@ pub async fn sql_connect(
     let password = secrets::get_sql(&id)?;
     state
         .sql
-        .connect(id, engine, host, port, username, password, database)
+        .connect(ConnectConfig {
+            id,
+            engine,
+            host,
+            port,
+            username,
+            password,
+            database,
+        })
         .await
 }
 

@@ -21,6 +21,17 @@ pub enum SqlEngine {
     Sqlite,
 }
 
+#[derive(Debug, Clone)]
+pub struct ConnectConfig {
+    pub id: String,
+    pub engine: SqlEngine,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: Option<String>,
+    pub database: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ColumnInfo {
@@ -57,16 +68,16 @@ impl SqlPool {
         }
     }
 
-    pub async fn connect(
-        &self,
-        id: String,
-        engine: SqlEngine,
-        host: String,
-        port: u16,
-        username: String,
-        password: Option<String>,
-        database: Option<String>,
-    ) -> AppResult<()> {
+    pub async fn connect(&self, config: ConnectConfig) -> AppResult<()> {
+        let ConnectConfig {
+            id,
+            engine,
+            host,
+            port,
+            username,
+            password,
+            database,
+        } = config;
         let pool = match engine {
             SqlEngine::Postgres => {
                 let mut opts = PgConnectOptions::new()
