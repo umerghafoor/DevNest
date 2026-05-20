@@ -70,7 +70,10 @@ pub async fn github_device_start(client_id: String) -> AppResult<DeviceCodeRespo
     let res = client()
         .post("https://github.com/login/device/code")
         .header("Accept", "application/json")
-        .form(&[("client_id", client_id.as_str()), ("scope", "repo read:user")])
+        .form(&[
+            ("client_id", client_id.as_str()),
+            ("scope", "repo read:user"),
+        ])
         .send()
         .await
         .map_err(|e| AppError::Ssh(format!("github device start: {e}")))?;
@@ -109,10 +112,7 @@ pub async fn github_device_poll(
         .form(&[
             ("client_id", client_id.as_str()),
             ("device_code", device_code.as_str()),
-            (
-                "grant_type",
-                "urn:ietf:params:oauth:grant-type:device_code",
-            ),
+            ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
         ])
         .send()
         .await
@@ -205,4 +205,3 @@ pub async fn github_list_repos() -> AppResult<Vec<GhRepo>> {
     }
     Ok(all)
 }
-

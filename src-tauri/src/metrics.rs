@@ -44,7 +44,14 @@ pub struct CpuCoreTicks {
 
 impl CpuCoreTicks {
     fn total(&self) -> u64 {
-        self.user + self.nice + self.system + self.idle + self.iowait + self.irq + self.softirq + self.steal
+        self.user
+            + self.nice
+            + self.system
+            + self.idle
+            + self.iowait
+            + self.irq
+            + self.softirq
+            + self.steal
     }
 }
 
@@ -281,10 +288,7 @@ fn split_named_sections<'a>(
             .map(|(p, _)| *p)
             .unwrap_or(s.len());
         if body_start <= body_end {
-            map.insert(
-                name.clone(),
-                s[body_start..body_end].trim_matches('\n'),
-            );
+            map.insert(name.clone(), s[body_start..body_end].trim_matches('\n'));
         }
     }
     map
@@ -476,7 +480,9 @@ fn parse_thermal(s: &str) -> Vec<ThermalZone> {
         let mut it = line.rsplitn(2, char::is_whitespace);
         let m = it.next().unwrap_or("");
         let kind = it.next().unwrap_or("").trim();
-        let Ok(milli) = m.parse::<i32>() else { continue };
+        let Ok(milli) = m.parse::<i32>() else {
+            continue;
+        };
         if kind.is_empty() {
             continue;
         }

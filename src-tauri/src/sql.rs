@@ -269,11 +269,7 @@ fn pg_rows_to_result(rows: Vec<PgRow>) -> QueryResult {
     };
     let data: Vec<Vec<Value>> = rows
         .iter()
-        .map(|row| {
-            (0..row.len())
-                .map(|i| pg_value(row, i))
-                .collect::<Vec<_>>()
-        })
+        .map(|row| (0..row.len()).map(|i| pg_value(row, i)).collect::<Vec<_>>())
         .collect();
     QueryResult {
         columns,
@@ -295,7 +291,10 @@ fn pg_value(row: &PgRow, i: usize) -> Value {
     let ty = raw.type_info();
     let name = ty.name();
     match name {
-        "BOOL" => row.try_get::<bool, _>(i).map(Value::Bool).unwrap_or(Value::Null),
+        "BOOL" => row
+            .try_get::<bool, _>(i)
+            .map(Value::Bool)
+            .unwrap_or(Value::Null),
         "INT2" => row
             .try_get::<i16, _>(i)
             .map(|v| json!(v))
@@ -316,9 +315,7 @@ fn pg_value(row: &PgRow, i: usize) -> Value {
             .try_get::<f64, _>(i)
             .map(|v| json!(v))
             .unwrap_or(Value::Null),
-        "JSON" | "JSONB" => row
-            .try_get::<Value, _>(i)
-            .unwrap_or(Value::Null),
+        "JSON" | "JSONB" => row.try_get::<Value, _>(i).unwrap_or(Value::Null),
         "TIMESTAMP" | "TIMESTAMPTZ" => row
             .try_get::<chrono::DateTime<chrono::Utc>, _>(i)
             .map(|v| json!(v.to_rfc3339()))

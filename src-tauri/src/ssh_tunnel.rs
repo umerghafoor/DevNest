@@ -76,9 +76,7 @@ impl TunnelPool {
                         let stop = stop_for_thread.clone();
                         let remote_host = remote_host.clone();
                         thread::spawn(move || {
-                            if let Err(e) =
-                                bridge(sess, sock, &remote_host, remote_port, stop)
-                            {
+                            if let Err(e) = bridge(sess, sock, &remote_host, remote_port, stop) {
                                 tracing::warn!("tunnel bridge ended: {e}");
                             }
                         });
@@ -95,10 +93,9 @@ impl TunnelPool {
             tracing::info!("tunnel {id_str} listener stopped");
         });
 
-        self.inner.lock().insert(
-            id.to_string(),
-            Tunnel { stop: stop.clone() },
-        );
+        self.inner
+            .lock()
+            .insert(id.to_string(), Tunnel { stop: stop.clone() });
         Ok(local_port)
     }
 
@@ -218,9 +215,7 @@ fn bridge(
                             written += w;
                             did_work = true;
                         }
-                        Err(e)
-                            if e.kind() == std::io::ErrorKind::WouldBlock =>
-                        {
+                        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                             thread::sleep(Duration::from_millis(5));
                         }
                         Err(e) => return Err(AppError::Ssh(format!("ch write: {e}"))),

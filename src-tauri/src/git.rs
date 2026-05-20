@@ -84,11 +84,7 @@ fn single_quote(s: &str) -> String {
 
 /// Check whether the path on `device` is a git repo.
 #[tauri::command]
-pub fn git_is_repo(
-    state: State<'_, AppState>,
-    device_id: String,
-    path: String,
-) -> AppResult<bool> {
+pub fn git_is_repo(state: State<'_, AppState>, device_id: String, path: String) -> AppResult<bool> {
     let device = require_device(&state, &device_id)?;
     if device.is_localhost {
         let p = Path::new(&path);
@@ -123,11 +119,7 @@ pub fn git_branch(
 /// Returns the absolute path of the cloned directory.
 /// Currently localhost-only; cloning to a remote device is not yet supported.
 #[tauri::command]
-pub fn git_clone(
-    url: String,
-    parent_dir: String,
-    repo_name: String,
-) -> AppResult<String> {
+pub fn git_clone(url: String, parent_dir: String, repo_name: String) -> AppResult<String> {
     let parent = Path::new(&parent_dir);
     if !parent.is_dir() {
         return Err(AppError::Invalid(format!(
@@ -135,9 +127,7 @@ pub fn git_clone(
         )));
     }
     if repo_name.is_empty() || repo_name.contains('/') || repo_name.contains('\\') {
-        return Err(AppError::Invalid(format!(
-            "invalid repo name: {repo_name}"
-        )));
+        return Err(AppError::Invalid(format!("invalid repo name: {repo_name}")));
     }
     let target = parent.join(&repo_name);
     if target.exists() {
@@ -308,7 +298,10 @@ pub fn git_tags(
     path: String,
 ) -> AppResult<Vec<GitTag>> {
     let device = require_device(&state, &device_id)?;
-    let format = format!("--format=%(refname:short){F}%(objectname:short)", F = FIELD_SEP);
+    let format = format!(
+        "--format=%(refname:short){F}%(objectname:short)",
+        F = FIELD_SEP
+    );
     let out = run_git_for(&state, &device, &["tag", "--list", &format], Some(&path))?;
     let mut tags = Vec::new();
     for line in out.lines() {

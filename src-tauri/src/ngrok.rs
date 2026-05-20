@@ -53,11 +53,7 @@ impl NgrokPool {
     }
 
     pub fn list(&self) -> Vec<Tunnel> {
-        self.inner
-            .lock()
-            .values()
-            .map(|e| e.info.clone())
-            .collect()
+        self.inner.lock().values().map(|e| e.info.clone()).collect()
     }
 
     pub fn start(&self, port: u16, proto: String, app: AppHandle) -> AppResult<Tunnel> {
@@ -251,10 +247,7 @@ pub fn ngrok_start(
 }
 
 #[tauri::command]
-pub fn ngrok_stop(
-    state: tauri::State<'_, crate::state::AppState>,
-    id: String,
-) -> AppResult<()> {
+pub fn ngrok_stop(state: tauri::State<'_, crate::state::AppState>, id: String) -> AppResult<()> {
     state.ngrok.stop(&id)
 }
 

@@ -233,7 +233,11 @@ pub fn dimm_info(state: State<'_, AppState>, device_id: String) -> AppResult<Vec
 // ── SQL ────────────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn sql_set_password(_state: State<'_, AppState>, id: String, password: String) -> AppResult<()> {
+pub fn sql_set_password(
+    _state: State<'_, AppState>,
+    id: String,
+    password: String,
+) -> AppResult<()> {
     secrets::set_sql(&id, &password)
 }
 
@@ -310,9 +314,6 @@ pub async fn sql_query(
 }
 
 #[tauri::command]
-pub async fn sql_list_tables(
-    state: State<'_, AppState>,
-    id: String,
-) -> AppResult<Vec<String>> {
+pub async fn sql_list_tables(state: State<'_, AppState>, id: String) -> AppResult<Vec<String>> {
     state.sql.list_tables(&id).await
 }

@@ -177,10 +177,7 @@ pub fn unit_action(
         _ => return Err(AppError::Invalid(format!("unknown action: {action}"))),
     };
     let unit = sanitize_unit_name(name)?;
-    let cmd = format!(
-        "systemctl {action} {}",
-        shq(&unit)
-    );
+    let cmd = format!("systemctl {action} {}", shq(&unit));
     let out = ssh::run_command(pool, device, &cmd)?;
     if out.exit_code != 0 {
         return Err(AppError::Invalid(format!(
@@ -270,9 +267,7 @@ fn sanitize_unit_name(name: &str) -> AppResult<String> {
             || c == '\\'
     });
     if !ok {
-        return Err(AppError::Invalid(format!(
-            "invalid unit name: {trimmed}"
-        )));
+        return Err(AppError::Invalid(format!("invalid unit name: {trimmed}")));
     }
     Ok(trimmed.to_string())
 }
@@ -284,8 +279,8 @@ pub fn systemd_list(
     state: tauri::State<'_, crate::state::AppState>,
     device_id: String,
 ) -> AppResult<Vec<SystemdUnit>> {
-    let device = crate::devices::get(&state.db, &device_id)?
-        .ok_or(AppError::NotFound(device_id))?;
+    let device =
+        crate::devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     list_units(&state.pool, &device)
 }
 
@@ -295,8 +290,8 @@ pub fn systemd_status(
     device_id: String,
     name: String,
 ) -> AppResult<UnitStatus> {
-    let device = crate::devices::get(&state.db, &device_id)?
-        .ok_or(AppError::NotFound(device_id))?;
+    let device =
+        crate::devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     unit_status(&state.pool, &device, &name)
 }
 
@@ -306,8 +301,8 @@ pub fn systemd_cat(
     device_id: String,
     name: String,
 ) -> AppResult<String> {
-    let device = crate::devices::get(&state.db, &device_id)?
-        .ok_or(AppError::NotFound(device_id))?;
+    let device =
+        crate::devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     unit_cat(&state.pool, &device, &name)
 }
 
@@ -318,8 +313,8 @@ pub fn systemd_action(
     name: String,
     action: String,
 ) -> AppResult<String> {
-    let device = crate::devices::get(&state.db, &device_id)?
-        .ok_or(AppError::NotFound(device_id))?;
+    let device =
+        crate::devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     unit_action(&state.pool, &device, &name, &action)
 }
 
@@ -330,8 +325,8 @@ pub fn systemd_write_unit(
     name: String,
     content: String,
 ) -> AppResult<()> {
-    let device = crate::devices::get(&state.db, &device_id)?
-        .ok_or(AppError::NotFound(device_id))?;
+    let device =
+        crate::devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     write_unit_file(&state.pool, &device, &name, &content)
 }
 
@@ -341,7 +336,7 @@ pub fn systemd_delete_unit(
     device_id: String,
     name: String,
 ) -> AppResult<()> {
-    let device = crate::devices::get(&state.db, &device_id)?
-        .ok_or(AppError::NotFound(device_id))?;
+    let device =
+        crate::devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     delete_unit_file(&state.pool, &device, &name)
 }

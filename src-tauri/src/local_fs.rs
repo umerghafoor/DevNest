@@ -10,8 +10,7 @@ const MAX_READ_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
 #[tauri::command]
 pub fn fs_read_text(path: String) -> AppResult<String> {
     let p = Path::new(&path);
-    let meta = fs::metadata(p)
-        .map_err(|e| AppError::Invalid(format!("stat {path}: {e}")))?;
+    let meta = fs::metadata(p).map_err(|e| AppError::Invalid(format!("stat {path}: {e}")))?;
     if !meta.is_file() {
         return Err(AppError::Invalid(format!("not a file: {path}")));
     }
@@ -43,15 +42,11 @@ pub fn fs_write_text(path: String, content: String) -> AppResult<()> {
 
 pub fn list_dir(path: &str) -> AppResult<Vec<FileEntry>> {
     let p = Path::new(path);
-    let read = fs::read_dir(p)
-        .map_err(|e| AppError::Invalid(format!("readdir {path}: {e}")))?;
+    let read = fs::read_dir(p).map_err(|e| AppError::Invalid(format!("readdir {path}: {e}")))?;
     let mut out: Vec<FileEntry> = Vec::new();
     for entry in read.flatten() {
         let entry_path = entry.path();
-        let name = entry
-            .file_name()
-            .to_string_lossy()
-            .into_owned();
+        let name = entry.file_name().to_string_lossy().into_owned();
         // Use symlink_metadata so symlinks themselves are reported (matches SFTP).
         let meta = match fs::symlink_metadata(&entry_path) {
             Ok(m) => m,
@@ -93,8 +88,7 @@ pub fn list_dir(path: &str) -> AppResult<Vec<FileEntry>> {
 
 pub fn read_file(path: &str) -> AppResult<String> {
     let p = Path::new(path);
-    let meta = fs::metadata(p)
-        .map_err(|e| AppError::Invalid(format!("stat {path}: {e}")))?;
+    let meta = fs::metadata(p).map_err(|e| AppError::Invalid(format!("stat {path}: {e}")))?;
     if !meta.is_file() {
         return Err(AppError::Invalid(format!("not a file: {path}")));
     }
@@ -120,10 +114,8 @@ pub fn rename(from: &str, to: &str) -> AppResult<()> {
 
 pub fn delete(path: &str, is_dir: bool) -> AppResult<()> {
     if is_dir {
-        fs::remove_dir_all(path)
-            .map_err(|e| AppError::Invalid(format!("rmdir {path}: {e}")))
+        fs::remove_dir_all(path).map_err(|e| AppError::Invalid(format!("rmdir {path}: {e}")))
     } else {
-        fs::remove_file(path)
-            .map_err(|e| AppError::Invalid(format!("unlink {path}: {e}")))
+        fs::remove_file(path).map_err(|e| AppError::Invalid(format!("unlink {path}: {e}")))
     }
 }
