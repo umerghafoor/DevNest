@@ -10,9 +10,7 @@ more — all from one local-first desktop app built with Tauri 2.
 
 ## Demo
 
-<video controls muted playsinline src="docs/devnest_demo.webm" width="100%">
-  Your browser does not support embedded video. Watch the demo video: [docs/devnest_demo.webm](docs/devnest_demo.webm)
-</video>
+[![DevNest Demo](https://img.youtube.com/vi/DW1sxw4geec/maxresdefault.jpg)](https://youtu.be/DW1sxw4geec)
 
 ## Stack
 
