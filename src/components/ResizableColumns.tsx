@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { usePaneSettings } from "../store/pane-settings-store";
 
 export interface ColumnSpec {
@@ -39,7 +39,10 @@ export function useResizableColumns(
     paneId,
     { colWidths: {} },
   );
-  const persisted = paneSettings.colWidths ?? {};
+  const persisted = useMemo(
+    () => paneSettings.colWidths ?? {},
+    [paneSettings.colWidths],
+  );
 
   // In-memory widths during a drag, applied immediately for smooth UI.
   // Persist debounced once the drag ends so we don't write on every mousemove.
