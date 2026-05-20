@@ -20,6 +20,7 @@ mod systemd;
 mod tailscale;
 mod terminal;
 mod terminal_commands;
+mod ws_proxy;
 
 use tauri::Manager;
 
@@ -161,6 +162,7 @@ pub fn run() {
                 ngrok: ngrok::NgrokPool::new(),
                 tunnels: ssh_tunnel::TunnelPool::new(),
                 sql: sql::SqlPool::new(),
+                ws_proxy: ws_proxy::WsProxyPool::new(),
             });
             Ok(())
         })
@@ -204,6 +206,11 @@ pub fn run() {
             commands::sql_is_connected,
             commands::sql_query,
             commands::sql_list_tables,
+            commands::vnc_set_password,
+            commands::vnc_clear_password,
+            commands::vnc_has_password,
+            commands::vnc_open,
+            commands::vnc_close,
             terminal_commands::terminal_open,
             terminal_commands::terminal_write,
             terminal_commands::terminal_resize,

@@ -71,15 +71,21 @@ impl TunnelPool {
                     break;
                 }
                 match listener.accept() {
-                    Ok((sock, _)) => {
+                    Ok((sock, peer)) => {
+                        tracing::info!(
+                            "tunnel {id_str}: accepted from {peer}, bridging to {remote_host}:{remote_port}"
+                        );
                         let sess = session.clone();
                         let stop = stop_for_thread.clone();
                         let remote_host = remote_host.clone();
+                        let id_for_bridge = id_str.clone();
                         thread::spawn(move || {
                             if let Err(e) =
                                 bridge(sess, sock, &remote_host, remote_port, stop)
                             {
-                                tracing::warn!("tunnel bridge ended: {e}");
+                                tracing::warn!("tunnel {id_for_bridge} bridge ended: {e}");
+                            } else {
+                                tracing::info!("tunnel {id_for_bridge} bridge closed cleanly");
                             }
                         });
                     }

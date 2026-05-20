@@ -27,6 +27,10 @@ import type { PanelKind } from "../store/app-store";
 const SqlPanel = lazy(() =>
   import("../panels/SqlPanel").then((m) => ({ default: m.SqlPanel })),
 );
+// VncPanel pulls in noVNC (~400 KB). Same deal.
+const VncPanel = lazy(() =>
+  import("../panels/VncPanel").then((m) => ({ default: m.VncPanel })),
+);
 
 export const PANEL_ICONS: Record<PanelKind, string> = {
   docker: "▣",
@@ -49,6 +53,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   systemd: "⚙",
   http: "⇨",
   sql: "◰",
+  vnc: "▥",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -72,6 +77,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   systemd: "systemd",
   http: "HTTP Client",
   sql: "SQL Client",
+  vnc: "VNC Viewer",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
@@ -95,6 +101,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   settings: "Theme, shortcuts, integrations",
   http: "Send HTTP requests, save collections",
   sql: "Connect to Postgres / MySQL / SQLite",
+  vnc: "VNC remote desktop, optionally over SSH",
 };
 
 export type PanelCategory =
@@ -128,6 +135,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   settings: "app",
   http: "network",
   sql: "code",
+  vnc: "remote",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -155,7 +163,7 @@ export const CATEGORY_ORDER: PanelCategory[] = [
 
 export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   overview: ["dashboard", "sysinfo"],
-  remote: ["terminal", "files", "processes", "ports"],
+  remote: ["terminal", "files", "processes", "ports", "vnc"],
   containers: ["docker"],
   observability: ["metrics", "logs"],
   services: ["systemd", "services", "cron"],
@@ -222,6 +230,18 @@ function PanelContent({ pane }: { pane: Pane }) {
           }
         >
           <SqlPanel paneId={pane.id} />
+        </Suspense>
+      );
+    case "vnc":
+      return (
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
+              Loading VNC client…
+            </div>
+          }
+        >
+          <VncPanel />
         </Suspense>
       );
   }

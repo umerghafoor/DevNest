@@ -300,6 +300,23 @@ export const api = {
   sqlQuery: (id: string, sql: string) =>
     call<SqlQueryResult>("sql_query", { id, sql }),
   sqlListTables: (id: string) => call<string[]>("sql_list_tables", { id }),
+
+  vncSetPassword: (id: string, password: string) =>
+    call<void>("vnc_set_password", { id, password }),
+  vncClearPassword: (id: string) => call<void>("vnc_clear_password", { id }),
+  vncHasPassword: (id: string) => call<boolean>("vnc_has_password", { id }),
+  /**
+   * Open a VNC session. Returns a `ws://127.0.0.1:<port>/` URL the
+   * frontend should hand to noVNC's `RFB` constructor. When `deviceId`
+   * is set, the connection tunnels through that SSH device first.
+   */
+  vncOpen: (params: {
+    id: string;
+    host: string;
+    port: number;
+    deviceId?: string | null;
+  }) => call<string>("vnc_open", params),
+  vncClose: (id: string) => call<void>("vnc_close", { id }),
   runRemoteCommand: (deviceId: string, cmd: string) =>
     call<CommandOutput>("run_remote_command", { deviceId, cmd }),
 

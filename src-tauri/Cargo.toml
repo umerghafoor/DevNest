@@ -35,6 +35,8 @@ portable-pty = "0.8"
 base64 = "0.22"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "mysql", "sqlite", "chrono", "uuid", "json"] }
 chrono = { version = "0.4", features = ["serde"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
 
 [profile.dev]
 incremental = true

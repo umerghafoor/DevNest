@@ -309,6 +309,76 @@ pub async fn sql_query(
     state.sql.query(&id, sql).await
 }
 
+// ── VNC ────────────────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn vnc_set_password(
+    _state: State<'_, AppState>,
+    id: String,
+    password: String,
+) -> AppResult<()> {
+    secrets::set_vnc(&id, &password)
+}
+
+#[tauri::command]
+pub fn vnc_clear_password(_state: State<'_, AppState>, id: String) -> AppResult<()> {
+    secrets::delete_vnc(&id)
+}
+
+#[tauri::command]
+pub fn vnc_has_password(_state: State<'_, AppState>, id: String) -> AppResult<bool> {
+    Ok(secrets::get_vnc(&id)?.is_some())
+}
+
+/// Open a VNC proxy session.
+///
+/// If `device_id` is provided, an SSH local-port forward is opened first
+/// through that device to `host:port`, and the WebSocket proxy targets
+/// the forwarded port. Otherwise the proxy connects directly to `host:port`.
+///
+/// Returns the local WebSocket URL the frontend should hand to noVNC's
+/// `RFB` constructor: `ws://127.0.0.1:<port>/`.
+#[tauri::command]
+pub async fn vnc_open(
+    state: State<'_, AppState>,
+    id: String,
+    host: String,
+    port: u16,
+    device_id: Option<String>,
+) -> AppResult<String> {
+    // Compose: close any prior ws proxy and any prior tunnel under this id.
+    state.ws_proxy.close(&id);
+    let tunnel_id = format!("vnc-tunnel:{id}");
+    state.tunnels.close(&tunnel_id);
+
+    let (target_host, target_port) = match device_id {
+        Some(did) => {
+            let device = require_device(&state, &did)?;
+            if device.is_localhost {
+                return Err(AppError::Invalid(
+                    "cannot tunnel through localhost device".into(),
+                ));
+            }
+            let local_port = state.tunnels.open(&tunnel_id, &device, host, port)?;
+            ("127.0.0.1".to_string(), local_port)
+        }
+        None => (host, port),
+    };
+
+    let proxy_port = state
+        .ws_proxy
+        .open(format!("vnc:{id}"), target_host, target_port)
+        .await?;
+    Ok(format!("ws://127.0.0.1:{proxy_port}/"))
+}
+
+#[tauri::command]
+pub fn vnc_close(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.ws_proxy.close(&format!("vnc:{id}"));
+    state.tunnels.close(&format!("vnc-tunnel:{id}"));
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn sql_list_tables(
     state: State<'_, AppState>,

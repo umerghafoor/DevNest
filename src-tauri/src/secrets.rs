@@ -5,6 +5,7 @@ const SUDO_SERVICE: &str = "devnest-sudo";
 const GITHUB_SERVICE: &str = "devnest-github";
 const GITHUB_TOKEN_ID: &str = "oauth-token";
 const SQL_SERVICE: &str = "devnest-sql";
+const VNC_SERVICE: &str = "devnest-vnc";
 
 fn entry(service: &str, id: &str) -> AppResult<keyring::Entry> {
     keyring::Entry::new(service, id).map_err(|e| AppError::Ssh(format!("keyring: {e}")))
@@ -78,6 +79,24 @@ pub fn get_sql(id: &str) -> AppResult<Option<String>> {
 
 pub fn delete_sql(id: &str) -> AppResult<()> {
     delete_from(SQL_SERVICE, id)
+}
+
+pub fn set_vnc(id: &str, secret: &str) -> AppResult<()> {
+    entry(VNC_SERVICE, id)?
+        .set_password(secret)
+        .map_err(|e| AppError::Ssh(format!("keyring set vnc: {e}")))
+}
+
+pub fn get_vnc(id: &str) -> AppResult<Option<String>> {
+    match entry(VNC_SERVICE, id)?.get_password() {
+        Ok(p) => Ok(Some(p)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(AppError::Ssh(format!("keyring get vnc: {e}"))),
+    }
+}
+
+pub fn delete_vnc(id: &str) -> AppResult<()> {
+    delete_from(VNC_SERVICE, id)
 }
 
 fn delete_from(service: &str, id: &str) -> AppResult<()> {

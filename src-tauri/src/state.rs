@@ -5,6 +5,7 @@ use crate::sql::SqlPool;
 use crate::ssh::SessionPool;
 use crate::ssh_tunnel::TunnelPool;
 use crate::terminal::TerminalPool;
+use crate::ws_proxy::WsProxyPool;
 
 pub struct AppState {
     pub db: Db,
@@ -14,4 +15,5 @@ pub struct AppState {
     pub ngrok: NgrokPool,
     pub tunnels: TunnelPool,
     pub sql: SqlPool,
+    pub ws_proxy: WsProxyPool,
 }
