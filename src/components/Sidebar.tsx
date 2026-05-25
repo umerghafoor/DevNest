@@ -237,14 +237,17 @@ export function Sidebar() {
                         onClick={() => void onSelect(d.id)}
                         className="flex flex-1 items-center gap-2 text-left min-w-0"
                       >
-                        {(() => { const Icon = iconForDeviceId(d.id); return (
-                          <Icon
-                            size={14}
-                            strokeWidth={1.75}
-                            className={`shrink-0 transition-colors ${statusIconColor[status]}`}
-                            aria-label={status}
-                          />
-                        ); })()}
+                        {(() => {
+                          const Icon = iconForDeviceId(d.id);
+                          return (
+                            <Icon
+                              size={14}
+                              strokeWidth={1.75}
+                              className={`shrink-0 transition-colors ${statusIconColor[status]}`}
+                              aria-label={status}
+                            />
+                          );
+                        })()}
                         <span className="truncate font-medium whitespace-nowrap">
                           {d.name}
                         </span>

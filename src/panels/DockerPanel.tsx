@@ -37,7 +37,10 @@ export function DockerPanel({ deviceId }: Props) {
       setError(null);
       // Resume polling after a sudo-triggered pause.
       if (!intervalRef.current) {
-        intervalRef.current = setInterval(() => void refreshRef.current?.(), 5000);
+        intervalRef.current = setInterval(
+          () => void refreshRef.current?.(),
+          5000,
+        );
       }
     } catch (e) {
       setError(errorMessage(e));

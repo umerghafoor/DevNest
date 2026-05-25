@@ -86,7 +86,10 @@ export function EditorPanel({ deviceId }: Props) {
   const openRemoteFile = async (path: string) => {
     setShowRemotePicker(false);
     try {
-      const content = await invoke<string>("sftp_read_file", { deviceId, path });
+      const content = await invoke<string>("sftp_read_file", {
+        deviceId,
+        path,
+      });
       setFile({ path, name: fileNameFromPath(path), content, dirty: false });
       toast.success(`Opened ${fileNameFromPath(path)}`);
     } catch (e) {
@@ -108,7 +111,11 @@ export function EditorPanel({ deviceId }: Props) {
     if (file.path) {
       try {
         if (isRemote) {
-          await invoke("sftp_write_file", { deviceId, path: file.path, content: file.content });
+          await invoke("sftp_write_file", {
+            deviceId,
+            path: file.path,
+            content: file.content,
+          });
         } else {
           await api.fsWriteText(file.path, file.content);
         }

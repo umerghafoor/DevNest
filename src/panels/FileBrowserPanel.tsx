@@ -33,10 +33,18 @@ function fmtDate(ts: number): string {
 const CWD_PREFIX = "devnest.files.cwd.";
 
 function loadCwd(deviceId: string): string {
-  try { return localStorage.getItem(CWD_PREFIX + deviceId) ?? "/"; } catch { return "/"; }
+  try {
+    return localStorage.getItem(CWD_PREFIX + deviceId) ?? "/";
+  } catch {
+    return "/";
+  }
 }
 function saveCwd(deviceId: string, path: string) {
-  try { localStorage.setItem(CWD_PREFIX + deviceId, path); } catch { /* ignore */ }
+  try {
+    localStorage.setItem(CWD_PREFIX + deviceId, path);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function FileBrowserPanel({ deviceId }: Props) {

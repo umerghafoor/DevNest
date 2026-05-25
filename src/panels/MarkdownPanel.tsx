@@ -65,7 +65,10 @@ export function MarkdownPanel({ deviceId }: Props) {
   const device = useAppStore((s) => s.devices.find((d) => d.id === deviceId));
   const isRemote = device ? !device.isLocalhost : false;
 
-  const html = useMemo(() => marked.parse(doc.content) as string, [doc.content]);
+  const html = useMemo(
+    () => marked.parse(doc.content) as string,
+    [doc.content],
+  );
 
   const onChange = (value: string) => {
     setDoc((d) => ({ ...d, content: value, dirty: true }));
@@ -92,7 +95,12 @@ export function MarkdownPanel({ deviceId }: Props) {
       if (typeof picked !== "string") return;
       try {
         const content = await api.fsReadText(picked);
-        setDoc({ path: picked, name: fileNameFromPath(picked), content, dirty: false });
+        setDoc({
+          path: picked,
+          name: fileNameFromPath(picked),
+          content,
+          dirty: false,
+        });
         toast.success(`Opened ${fileNameFromPath(picked)}`);
       } catch (e) {
         toast.error(`Open failed: ${errorMessage(e)}`);
@@ -103,7 +111,10 @@ export function MarkdownPanel({ deviceId }: Props) {
   const openRemoteFile = async (path: string) => {
     setShowRemotePicker(false);
     try {
-      const content = await invoke<string>("sftp_read_file", { deviceId, path });
+      const content = await invoke<string>("sftp_read_file", {
+        deviceId,
+        path,
+      });
       setDoc({ path, name: fileNameFromPath(path), content, dirty: false });
       toast.success(`Opened ${fileNameFromPath(path)}`);
     } catch (e) {
@@ -120,7 +131,11 @@ export function MarkdownPanel({ deviceId }: Props) {
     if (doc.path) {
       try {
         if (isRemote) {
-          await invoke("sftp_write_file", { deviceId, path: doc.path, content: doc.content });
+          await invoke("sftp_write_file", {
+            deviceId,
+            path: doc.path,
+            content: doc.content,
+          });
         } else {
           await api.fsWriteText(doc.path, doc.content);
         }
@@ -145,7 +160,12 @@ export function MarkdownPanel({ deviceId }: Props) {
     if (typeof picked !== "string") return;
     try {
       await api.fsWriteText(picked, doc.content);
-      setDoc({ path: picked, name: fileNameFromPath(picked), content: doc.content, dirty: false });
+      setDoc({
+        path: picked,
+        name: fileNameFromPath(picked),
+        content: doc.content,
+        dirty: false,
+      });
       toast.success(`Saved ${fileNameFromPath(picked)}`);
     } catch (e) {
       toast.error(`Save failed: ${errorMessage(e)}`);
@@ -170,7 +190,9 @@ export function MarkdownPanel({ deviceId }: Props) {
         <span className="text-sm font-medium" title={doc.path ?? "Scratchpad"}>
           {doc.name}
           {doc.dirty && (
-            <span className="ml-1.5 text-(--color-warn)" title="Unsaved">•</span>
+            <span className="ml-1.5 text-(--color-warn)" title="Unsaved">
+              •
+            </span>
           )}
         </span>
         {doc.path && (
@@ -248,7 +270,9 @@ export function MarkdownPanel({ deviceId }: Props) {
         )}
 
         {(mode === "preview" || mode === "split") && (
-          <div className={`overflow-y-auto p-6 ${mode === "split" ? "w-1/2" : "w-full"}`}>
+          <div
+            className={`overflow-y-auto p-6 ${mode === "split" ? "w-1/2" : "w-full"}`}
+          >
             <div
               className="markdown-preview prose max-w-none"
               dangerouslySetInnerHTML={{ __html: html }}

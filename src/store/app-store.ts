@@ -431,7 +431,11 @@ export const useAppStore = create<AppState>((set, get) => ({
         // so it reinitialises against the new device rather than carrying over
         // stale connections or cached data from the previous one.
         return {
-          paneRoot: replaceLeaf(w.paneRoot, paneId, makeLeaf({ ...pane, deviceId, instanceId: uid() })),
+          paneRoot: replaceLeaf(
+            w.paneRoot,
+            paneId,
+            makeLeaf({ ...pane, deviceId, instanceId: uid() }),
+          ),
         };
       }),
     ),

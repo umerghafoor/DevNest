@@ -88,7 +88,11 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       searchAddonRef.current = existing.search;
       setConnectState("connected");
       // Sync banner: only show if a command actually completed in this session.
-      setBannerVisible(existing.hasCompletedCommand && !existing.running && !!loadLastCmd(sessionKey));
+      setBannerVisible(
+        existing.hasCompletedCommand &&
+          !existing.running &&
+          !!loadLastCmd(sessionKey),
+      );
 
       const ro = new ResizeObserver(() => existing.fit.fit());
       ro.observe(container);
@@ -170,7 +174,9 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           // Detect shell prompt in output → shell is idle again.
           const entry = terminalRegistry.get(sessionKey);
           if (entry?.running) {
-            entry.outputTail = (entry.outputTail + new TextDecoder().decode(bytes)).slice(-120);
+            entry.outputTail = (
+              entry.outputTail + new TextDecoder().decode(bytes)
+            ).slice(-120);
             const clean = entry.outputTail.replace(/\[[0-9;]*[A-Za-z]/g, "");
             if (/[$#%>]\s*$/.test(clean)) {
               entry.running = false;
@@ -202,7 +208,10 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
               setLastCmd(line);
               // Command submitted — hide banner until next prompt arrives.
               const e2 = terminalRegistry.get(sessionKey);
-              if (e2) { e2.running = true; e2.outputTail = ""; }
+              if (e2) {
+                e2.running = true;
+                e2.outputTail = "";
+              }
               setBannerVisible(false);
             }
             inputLineRef.current = "";

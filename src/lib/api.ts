@@ -29,10 +29,20 @@ async function call<T>(
     // Case 1: backend explicitly requires sudo password.
     if (isSudoRequired(e)) {
       const deviceId = resolveDeviceId(e);
-      console.error("[call] sudoRequired, deviceId=", deviceId, "argsDeviceId=", argsDeviceId);
+      console.error(
+        "[call] sudoRequired, deviceId=",
+        deviceId,
+        "argsDeviceId=",
+        argsDeviceId,
+      );
       if (!deviceId) throw e;
-      const saved = await useSudoStore.getState().request(deviceId,
-        useAppStore.getState().devices.find((d) => d.id === deviceId)?.name ?? deviceId);
+      const saved = await useSudoStore
+        .getState()
+        .request(
+          deviceId,
+          useAppStore.getState().devices.find((d) => d.id === deviceId)?.name ??
+            deviceId,
+        );
       console.error("[call] dialog resolved, saved=", saved);
       if (!saved) throw e;
       try {
@@ -47,7 +57,9 @@ async function call<T>(
 
     // Case 2: permission denied — offer to enable sudo, then prompt + retry.
     if (isPermissionDeniedError(e) && argsDeviceId) {
-      const device = useAppStore.getState().devices.find((d) => d.id === argsDeviceId);
+      const device = useAppStore
+        .getState()
+        .devices.find((d) => d.id === argsDeviceId);
       if (!device || device.isLocalhost) throw e;
       if (!device.useSudo) {
         const ok = window.confirm(
@@ -55,11 +67,19 @@ async function call<T>(
             `Enable sudo for this device? You'll be asked for your sudo password next.`,
         );
         if (!ok) throw e;
-        const updated = await invoke<Device>("set_use_sudo", { id: argsDeviceId, value: true });
+        const updated = await invoke<Device>("set_use_sudo", {
+          id: argsDeviceId,
+          value: true,
+        });
         useAppStore.getState().upsertDevice(updated as Device);
       }
-      const saved2 = await useSudoStore.getState().request(argsDeviceId,
-        useAppStore.getState().devices.find((d) => d.id === argsDeviceId)?.name ?? argsDeviceId);
+      const saved2 = await useSudoStore
+        .getState()
+        .request(
+          argsDeviceId,
+          useAppStore.getState().devices.find((d) => d.id === argsDeviceId)
+            ?.name ?? argsDeviceId,
+        );
       if (!saved2) throw e;
       return await invoke<T>(cmd, args);
     }

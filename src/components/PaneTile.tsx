@@ -238,7 +238,13 @@ function PanelContent({ pane }: { pane: Pane }) {
 
 // Panels that don't operate on a specific device — no switcher for these.
 const DEVICE_AGNOSTIC: Set<PanelKind> = new Set([
-  "settings", "services", "sysinfo", "editor", "git", "http", "sql",
+  "settings",
+  "services",
+  "sysinfo",
+  "editor",
+  "git",
+  "http",
+  "sql",
 ]);
 
 const statusIconColor: Record<string, string> = {
@@ -256,22 +262,27 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
   const ref = useRef<HTMLDivElement>(null);
 
   const current = devices.find((d) => d.id === pane.deviceId);
-  const status = current?.isLocalhost ? "connected" : (statuses[current?.id ?? ""] ?? "offline");
+  const status = current?.isLocalhost
+    ? "connected"
+    : (statuses[current?.id ?? ""] ?? "offline");
 
   // Close on outside click.
   const onDocMouseDown = useCallback((e: MouseEvent) => {
     if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
   }, []);
 
-  const toggleOpen = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    setOpen((o) => {
-      const next = !o;
-      if (next) document.addEventListener("mousedown", onDocMouseDown);
-      else document.removeEventListener("mousedown", onDocMouseDown);
-      return next;
-    });
-  }, [onDocMouseDown]);
+  const toggleOpen = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setOpen((o) => {
+        const next = !o;
+        if (next) document.addEventListener("mousedown", onDocMouseDown);
+        else document.removeEventListener("mousedown", onDocMouseDown);
+        return next;
+      });
+    },
+    [onDocMouseDown],
+  );
 
   return (
     <div ref={ref} className="relative flex items-center">
@@ -280,9 +291,16 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
         title="Switch device"
       >
-        {(() => { const Icon = iconForDeviceId(current?.id ?? ""); return (
-          <Icon size={12} strokeWidth={1.75} className={`shrink-0 ${statusIconColor[status] ?? statusIconColor.offline}`} />
-        ); })()}
+        {(() => {
+          const Icon = iconForDeviceId(current?.id ?? "");
+          return (
+            <Icon
+              size={12}
+              strokeWidth={1.75}
+              className={`shrink-0 ${statusIconColor[status] ?? statusIconColor.offline}`}
+            />
+          );
+        })()}
         <span>{current?.name ?? "unknown"}</span>
         <span className="opacity-40">▾</span>
       </button>
@@ -290,7 +308,9 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
       {open && (
         <div className="absolute top-full left-0 z-50 mt-0.5 min-w-[140px] rounded border border-(--color-border) bg-(--color-surface) py-1 shadow-lg">
           {devices.map((d) => {
-            const s = d.isLocalhost ? "connected" : (statuses[d.id] ?? "offline");
+            const s = d.isLocalhost
+              ? "connected"
+              : (statuses[d.id] ?? "offline");
             const active = d.id === pane.deviceId;
             const Icon = iconForDeviceId(d.id);
             return (
@@ -302,10 +322,16 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
                   setOpen(false);
                 }}
                 className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-(--color-surface-2) ${
-                  active ? "text-(--color-fg) font-medium" : "text-(--color-fg-muted)"
+                  active
+                    ? "text-(--color-fg) font-medium"
+                    : "text-(--color-fg-muted)"
                 }`}
               >
-                <Icon size={13} strokeWidth={1.75} className={`shrink-0 ${statusIconColor[s] ?? statusIconColor.offline}`} />
+                <Icon
+                  size={13}
+                  strokeWidth={1.75}
+                  className={`shrink-0 ${statusIconColor[s] ?? statusIconColor.offline}`}
+                />
                 {d.name}
                 {active && <span className="ml-auto opacity-40">✓</span>}
               </button>

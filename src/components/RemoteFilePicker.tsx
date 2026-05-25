@@ -16,7 +16,12 @@ interface Props {
   onClose: () => void;
 }
 
-export function RemoteFilePicker({ deviceId, dirOnly = false, onPick, onClose }: Props) {
+export function RemoteFilePicker({
+  deviceId,
+  dirOnly = false,
+  onPick,
+  onClose,
+}: Props) {
   const [cwd, setCwd] = useState("/");
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +33,10 @@ export function RemoteFilePicker({ deviceId, dirOnly = false, onPick, onClose }:
       setLoading(true);
       setError(null);
       try {
-        const list = await invoke<FileEntry[]>("sftp_list_dir", { deviceId, path });
+        const list = await invoke<FileEntry[]>("sftp_list_dir", {
+          deviceId,
+          path,
+        });
         setEntries(list);
         setCwd(path);
         setInputPath(path);
@@ -41,20 +49,28 @@ export function RemoteFilePicker({ deviceId, dirOnly = false, onPick, onClose }:
     [deviceId],
   );
 
-  useEffect(() => { void load("/"); }, [load]);
+  useEffect(() => {
+    void load("/");
+  }, [load]);
 
   const goUp = () => {
     const parent = cwd.split("/").slice(0, -1).join("/") || "/";
     void load(parent);
   };
 
-  const dirs = entries.filter((e) => e.isDir).sort((a, b) => a.name.localeCompare(b.name));
-  const files = entries.filter((e) => !e.isDir).sort((a, b) => a.name.localeCompare(b.name));
+  const dirs = entries
+    .filter((e) => e.isDir)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const files = entries
+    .filter((e) => !e.isDir)
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 modal-backdrop"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div className="modal-content flex h-[520px] w-[520px] flex-col rounded-lg border border-(--color-border) bg-(--color-surface) shadow-xl">
         {/* Header */}
@@ -90,7 +106,10 @@ export function RemoteFilePicker({ deviceId, dirOnly = false, onPick, onClose }:
           </button>
           <form
             className="flex flex-1 gap-1"
-            onSubmit={(e) => { e.preventDefault(); void load(inputPath); }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              void load(inputPath);
+            }}
           >
             <input
               value={inputPath}
@@ -129,7 +148,10 @@ export function RemoteFilePicker({ deviceId, dirOnly = false, onPick, onClose }:
                     <span className="font-medium">{e.name}</span>
                     {dirOnly && (
                       <button
-                        onClick={(ev) => { ev.stopPropagation(); onPick(e.path); }}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          onPick(e.path);
+                        }}
                         className="ml-auto rounded border border-(--color-border) px-2 py-0.5 text-[10px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
                       >
                         Select
@@ -138,17 +160,18 @@ export function RemoteFilePicker({ deviceId, dirOnly = false, onPick, onClose }:
                   </button>
                 </li>
               ))}
-              {!dirOnly && files.map((e) => (
-                <li key={e.path}>
-                  <button
-                    onClick={() => onPick(e.path)}
-                    className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs hover:bg-(--color-surface-2)"
-                  >
-                    <span className="text-(--color-fg-muted)">📄</span>
-                    <span>{e.name}</span>
-                  </button>
-                </li>
-              ))}
+              {!dirOnly &&
+                files.map((e) => (
+                  <li key={e.path}>
+                    <button
+                      onClick={() => onPick(e.path)}
+                      className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs hover:bg-(--color-surface-2)"
+                    >
+                      <span className="text-(--color-fg-muted)">📄</span>
+                      <span>{e.name}</span>
+                    </button>
+                  </li>
+                ))}
               {dirs.length === 0 && files.length === 0 && (
                 <li className="px-4 py-8 text-center text-xs text-(--color-fg-muted)">
                   Empty directory

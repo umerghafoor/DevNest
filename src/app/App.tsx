@@ -105,7 +105,9 @@ export function App() {
       if (matches("closePane")) {
         if (inEditable || !activePaneId) return;
         e.preventDefault();
-        const closingPane = paneRoot ? findPaneInTree(paneRoot, activePaneId) : undefined;
+        const closingPane = paneRoot
+          ? findPaneInTree(paneRoot, activePaneId)
+          : undefined;
         if (closingPane?.panel === "terminal") {
           terminalRegistry.destroy(closingPane.instanceId);
         }

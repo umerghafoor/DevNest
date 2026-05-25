@@ -379,12 +379,24 @@ button.press:active:not(:disabled),
   color: var(--color-fg);
 }
 
-.markdown-preview h1 { font-size: 1.6rem; }
-.markdown-preview h2 { font-size: 1.3rem; border-bottom: 1px solid var(--color-border); padding-bottom: 0.25em; }
-.markdown-preview h3 { font-size: 1.1rem; }
-.markdown-preview h4 { font-size: 1rem; }
+.markdown-preview h1 {
+  font-size: 1.6rem;
+}
+.markdown-preview h2 {
+  font-size: 1.3rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.25em;
+}
+.markdown-preview h3 {
+  font-size: 1.1rem;
+}
+.markdown-preview h4 {
+  font-size: 1rem;
+}
 
-.markdown-preview p { margin: 0.75em 0; }
+.markdown-preview p {
+  margin: 0.75em 0;
+}
 
 .markdown-preview a {
   color: var(--color-accent);
@@ -428,7 +440,9 @@ button.press:active:not(:disabled),
   margin: 0.75em 0;
 }
 
-.markdown-preview li { margin: 0.25em 0; }
+.markdown-preview li {
+  margin: 0.25em 0;
+}
 
 .markdown-preview table {
   width: 100%;
@@ -455,7 +469,10 @@ button.press:active:not(:disabled),
   margin: 1.5em 0;
 }
 
-.markdown-preview img { max-width: 100%; border-radius: 4px; }
+.markdown-preview img {
+  max-width: 100%;
+  border-radius: 4px;
+}
 
 /* ── Reduced motion: turn everything off ──────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
