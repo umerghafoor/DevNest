@@ -18,6 +18,7 @@ import { ServicesPanel } from "../panels/ServicesPanel";
 import { NgrokPanel } from "../panels/NgrokPanel";
 import { SysInfoPanel } from "../panels/SysInfoPanel";
 import { EditorPanel } from "../panels/EditorPanel";
+import { MarkdownPanel } from "../panels/MarkdownPanel";
 import { GitPanel } from "../panels/GitPanel";
 import { GitGraphPanel } from "../panels/GitGraphPanel";
 import { SystemdPanel } from "../panels/SystemdPanel";
@@ -51,6 +52,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   systemd: "⚙",
   http: "⇨",
   sql: "◰",
+  markdown: "◧",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -74,6 +76,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   systemd: "systemd",
   http: "HTTP Client",
   sql: "SQL Client",
+  markdown: "Markdown",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
@@ -97,6 +100,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   settings: "Theme, shortcuts, integrations",
   http: "Send HTTP requests, save collections",
   sql: "Connect to Postgres / MySQL / SQLite",
+  markdown: "Write and preview Markdown with live rendering",
 };
 
 export type PanelCategory =
@@ -130,6 +134,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   settings: "app",
   http: "network",
   sql: "code",
+  markdown: "code",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -162,7 +167,7 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   observability: ["metrics", "logs"],
   services: ["systemd", "services", "cron"],
   network: ["http", "tailscale", "ngrok"],
-  code: ["git", "gitGraph", "editor", "sql"],
+  code: ["git", "gitGraph", "editor", "markdown", "sql"],
   app: ["settings"],
 };
 
@@ -200,6 +205,8 @@ function PanelContent({ pane }: { pane: Pane }) {
       return <SysInfoPanel />;
     case "editor":
       return <EditorPanel />;
+    case "markdown":
+      return <MarkdownPanel deviceId={pane.deviceId} />;
     case "git":
       return <GitPanel />;
     case "gitGraph":
