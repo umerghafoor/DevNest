@@ -82,4 +82,12 @@ jobs:
               --notes "Automated release from main (${GITHUB_SHA})."
           fi
 
-          find release-assets -type f -exec gh release upload "$TAG" {} --clobber \;
+          find release-assets -type f \( \
+            -name "*.AppImage" \
+            -o -name "*.deb" \
+            -o -name "*.rpm" \
+            -o -name "*.dmg" \
+            -o -name "*.app.tar.gz" \
+            -o -name "*.msi" \
+            -o -name "*.exe" \
+          \) -exec gh release upload "$TAG" {} --clobber \;
