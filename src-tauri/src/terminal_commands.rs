@@ -14,6 +14,7 @@ pub fn terminal_open(
     device_id: String,
     cols: u32,
     rows: u32,
+    session_id: Option<String>,
 ) -> AppResult<String> {
     let term_id = Uuid::new_v4().to_string();
     let tid_out = term_id.clone();
@@ -31,7 +32,7 @@ pub fn terminal_open(
     };
 
     let handle = if device.is_localhost {
-        terminal::spawn_local(cols, rows, on_output, on_exit)?
+        terminal::spawn_local(cols, rows, session_id.as_deref(), on_output, on_exit)?
     } else {
         terminal::spawn_remote(&device, cols, rows, on_output, on_exit)?
     };

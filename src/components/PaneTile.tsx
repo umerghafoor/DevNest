@@ -1,6 +1,7 @@
 import { useRef, useCallback, lazy, Suspense } from "react";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PaneNode, SplitDirection, Pane } from "../store/app-store";
+import { terminalRegistry } from "../lib/terminal-registry";
 import { DockerPanel } from "../panels/DockerPanel";
 import { MetricsPanel } from "../panels/MetricsPanel";
 import { TerminalPanel } from "../panels/TerminalPanel";
@@ -294,6 +295,9 @@ function PaneHeader({ pane }: { pane: Pane }) {
           title="Close pane"
           onClick={(e) => {
             e.stopPropagation();
+            if (pane.panel === "terminal") {
+              terminalRegistry.destroy(pane.instanceId);
+            }
             closePane(pane.id);
           }}
           className="flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-error)/20 hover:text-(--color-error)"

@@ -16,6 +16,7 @@ import {
   collectPanes,
 } from "../store/app-store";
 import { usePaneSettingsStore } from "../store/pane-settings-store";
+import { terminalRegistry } from "../lib/terminal-registry";
 import { useThemeStore } from "../store/theme-store";
 import { useUiStore } from "../store/ui-store";
 import { useColorsStore } from "../store/colors-store";
@@ -104,6 +105,10 @@ export function App() {
       if (matches("closePane")) {
         if (inEditable || !activePaneId) return;
         e.preventDefault();
+        const closingPane = paneRoot ? findPaneInTree(paneRoot, activePaneId) : undefined;
+        if (closingPane?.panel === "terminal") {
+          terminalRegistry.destroy(closingPane.instanceId);
+        }
         closePane(activePaneId);
       } else if (matches("splitHorizontal")) {
         if (splitWith("horizontal")) e.preventDefault();

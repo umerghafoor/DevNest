@@ -41,7 +41,18 @@ impl TermHandle {
 /// that reads output and calls `on_output` for each chunk. `on_exit` is
 /// called once when the PTY closes (shell `exit`, process death, broken
 /// channel) — used to surface a "terminal closed" notification.
-pub fn spawn_local<F, G>(cols: u32, rows: u32, on_output: F, on_exit: G) -> AppResult<TermHandle>
+///
+/// When `session_id` is provided and `tmux` is available, the shell is
+/// launched as `tmux new-session -A -s <id>` so the session persists across
+/// panel switches and app restarts. Falls back to a plain shell if tmux is
+/// not installed.
+pub fn spawn_local<F, G>(
+    cols: u32,
+    rows: u32,
+    session_id: Option<&str>,
+    on_output: F,
+    on_exit: G,
+) -> AppResult<TermHandle>
 where
     F: Fn(Vec<u8>) + Send + 'static,
     G: FnOnce() + Send + 'static,
@@ -59,7 +70,25 @@ where
         .map_err(|e| AppError::Ssh(format!("openpty: {e}")))?;
 
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
-    let mut cmd = portable_pty::CommandBuilder::new(&shell);
+
+    // Use tmux for a persistent session when available and a session_id is given.
+    let use_tmux = session_id.is_some()
+        && std::process::Command::new("which")
+            .arg("tmux")
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+
+    let mut cmd = if use_tmux {
+        let sid = session_id.unwrap();
+        // Sanitise: tmux session names must not contain dots or colons.
+        let safe_id: String = sid.chars().map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' }).collect();
+        let mut c = portable_pty::CommandBuilder::new("tmux");
+        c.args(["new-session", "-A", "-s", &safe_id]);
+        c
+    } else {
+        portable_pty::CommandBuilder::new(&shell)
+    };
     cmd.env("TERM", "xterm-256color");
     pair.slave
         .spawn_command(cmd)
