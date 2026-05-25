@@ -17,6 +17,8 @@ export interface TerminalEntry {
   running: boolean;
   /** Accumulates recent output bytes for prompt detection */
   outputTail: string;
+  /** True once at least one command has completed in this session */
+  hasCompletedCommand: boolean;
   /**
    * Called by the output listener when running state changes.
    * Swapped by the currently-mounted TerminalPanel so the stale first-mount

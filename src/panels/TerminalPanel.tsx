@@ -56,18 +56,19 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     setErrorMsg(null);
 
     const saved = loadLastCmd(sessionKey);
-    if (saved) {
-      setLastCmd(saved);
-      setBannerVisible(true);
-    } else {
-      setLastCmd(null);
-      setBannerVisible(false);
-    }
+    setLastCmd(saved ?? null);
+    setBannerVisible(false);
 
     const container = containerRef.current;
     if (!container) return;
 
     const existing = terminalRegistry.get(sessionKey);
+
+    // No existing entry = fresh start (first open or after terminal closed).
+    // Show the banner immediately so the user can rerun their last command.
+    if (!existing && saved) {
+      setBannerVisible(true);
+    }
 
     if (existing) {
       // Point the output listener at this component's setBannerVisible.
@@ -86,8 +87,8 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       fitAddonRef.current = existing.fit;
       searchAddonRef.current = existing.search;
       setConnectState("connected");
-      // Sync banner to whatever the PTY thinks right now.
-      setBannerVisible(!existing.running && !!loadLastCmd(sessionKey));
+      // Sync banner: only show if a command actually completed in this session.
+      setBannerVisible(existing.hasCompletedCommand && !existing.running && !!loadLastCmd(sessionKey));
 
       const ro = new ResizeObserver(() => existing.fit.fit());
       ro.observe(container);
@@ -174,6 +175,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
             if (/[$#%>]\s*$/.test(clean)) {
               entry.running = false;
               entry.outputTail = "";
+              entry.hasCompletedCommand = true;
               entry.onBannerChange?.(true);
             }
           }
@@ -230,6 +232,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           container,
           running: false,
           outputTail: "",
+          hasCompletedCommand: false,
           onBannerChange: setBannerVisible,
         });
 
