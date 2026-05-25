@@ -204,7 +204,7 @@ function PanelContent({ pane }: { pane: Pane }) {
     case "sysinfo":
       return <SysInfoPanel />;
     case "editor":
-      return <EditorPanel />;
+      return <EditorPanel deviceId={pane.deviceId} />;
     case "markdown":
       return <MarkdownPanel deviceId={pane.deviceId} />;
     case "git":

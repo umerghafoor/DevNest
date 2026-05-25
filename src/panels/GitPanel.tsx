@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { RemoteFilePicker } from "../components/RemoteFilePicker";
 import { api, errorMessage, type GhRepo, type GhUser } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
@@ -287,16 +288,16 @@ function FoldersSection({
   onRefresh: () => void;
 }) {
   const [deviceId, setDeviceId] = useState<string>(defaultDeviceId);
-  const [pathInput, setPathInput] = useState("");
   const [adding, setAdding] = useState(false);
+  const [showRemotePicker, setShowRemotePicker] = useState(false);
   const selectedDevice = devices.find((d) => d.id === deviceId);
   const isLocal = !!selectedDevice?.isLocalhost;
 
-  const submit = async () => {
+  const pickRemoteFolder = async (path: string) => {
+    setShowRemotePicker(false);
     setAdding(true);
     try {
-      await onAddRemote(deviceId, pathInput);
-      setPathInput("");
+      await onAddRemote(deviceId, path);
     } finally {
       setAdding(false);
     }
@@ -343,34 +344,23 @@ function FoldersSection({
             })}
           </div>
         </div>
-        {isLocal ? (
-          <button
-            onClick={onPickLocal}
-            className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
-          >
-            Pick folder…
-          </button>
-        ) : (
-          <div className="flex items-center gap-2">
-            <input
-              value={pathInput}
-              onChange={(e) => setPathInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !adding) void submit();
-              }}
-              placeholder="/absolute/path/to/repo"
-              className="input h-7 flex-1 text-xs font-mono"
-            />
-            <button
-              onClick={() => void submit()}
-              disabled={adding || !pathInput.trim()}
-              className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
-            >
-              {adding ? "Checking…" : "Add"}
-            </button>
-          </div>
-        )}
+        <button
+          onClick={isLocal ? onPickLocal : () => setShowRemotePicker(true)}
+          disabled={adding}
+          className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
+        >
+          {adding ? "Checking…" : "Pick folder…"}
+        </button>
       </div>
+
+      {showRemotePicker && (
+        <RemoteFilePicker
+          deviceId={deviceId}
+          dirOnly
+          onPick={(path) => void pickRemoteFolder(path)}
+          onClose={() => setShowRemotePicker(false)}
+        />
+      )}
 
       {folders.length === 0 ? (
         <div className="rounded-lg bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">

@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { marked } from "marked";
 import {
@@ -9,12 +9,7 @@ import { api, errorMessage } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { useAppStore } from "../store/app-store";
-
-interface FileEntry {
-  name: string;
-  path: string;
-  isDir: boolean;
-}
+import { RemoteFilePicker } from "../components/RemoteFilePicker";
 
 interface DocState {
   path: string | null;
@@ -61,156 +56,6 @@ function fileNameFromPath(p: string): string {
   const parts = p.split(/[/\\]/).filter(Boolean);
   return parts[parts.length - 1] ?? p;
 }
-
-// ── Remote file picker ────────────────────────────────────────────────────────
-
-function RemoteFilePicker({
-  deviceId,
-  onPick,
-  onClose,
-}: {
-  deviceId: string;
-  onPick: (path: string) => void;
-  onClose: () => void;
-}) {
-  const [cwd, setCwd] = useState("/");
-  const [entries, setEntries] = useState<FileEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [inputPath, setInputPath] = useState("/");
-
-  const load = useCallback(
-    async (path: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const list = await invoke<FileEntry[]>("sftp_list_dir", {
-          deviceId,
-          path,
-        });
-        setEntries(list);
-        setCwd(path);
-        setInputPath(path);
-      } catch (e) {
-        setError(errorMessage(e));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [deviceId],
-  );
-
-  useEffect(() => {
-    void load("/");
-  }, [load]);
-
-  const goUp = () => {
-    const parent = cwd.split("/").slice(0, -1).join("/") || "/";
-    void load(parent);
-  };
-
-  const dirs = entries.filter((e) => e.isDir).sort((a, b) => a.name.localeCompare(b.name));
-  const files = entries
-    .filter((e) => !e.isDir)
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 modal-backdrop"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="modal-content flex h-[520px] w-[520px] flex-col rounded-lg border border-(--color-border) bg-(--color-surface) shadow-xl">
-        {/* Header */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-(--color-border) px-4 py-3">
-          <span className="text-sm font-semibold">Open remote file</span>
-          <button
-            onClick={onClose}
-            className="ml-auto rounded px-1.5 py-0.5 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-          >
-            ×
-          </button>
-        </div>
-
-        {/* Path bar */}
-        <div className="flex shrink-0 items-center gap-2 border-b border-(--color-border) px-3 py-2">
-          <button
-            onClick={goUp}
-            disabled={cwd === "/"}
-            className="rounded px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) disabled:opacity-30"
-            title="Go up"
-          >
-            ↑
-          </button>
-          <form
-            className="flex flex-1 gap-1"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void load(inputPath);
-            }}
-          >
-            <input
-              value={inputPath}
-              onChange={(e) => setInputPath(e.target.value)}
-              className="input flex-1 py-0.5 text-xs font-mono"
-              spellCheck={false}
-            />
-            <button
-              type="submit"
-              className="rounded border border-(--color-border) px-2 py-0.5 text-xs hover:bg-(--color-surface-2)"
-            >
-              Go
-            </button>
-          </form>
-        </div>
-
-        {/* File list */}
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
-              Loading…
-            </div>
-          ) : error ? (
-            <div className="flex h-full items-center justify-center text-xs text-(--color-error)">
-              {error}
-            </div>
-          ) : (
-            <ul className="py-1">
-              {dirs.map((e) => (
-                <li key={e.path}>
-                  <button
-                    onClick={() => void load(e.path)}
-                    className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs hover:bg-(--color-surface-2)"
-                  >
-                    <span className="text-(--color-fg-muted)">📁</span>
-                    <span className="font-medium">{e.name}</span>
-                  </button>
-                </li>
-              ))}
-              {files.map((e) => (
-                <li key={e.path}>
-                  <button
-                    onClick={() => onPick(e.path)}
-                    className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs hover:bg-(--color-surface-2)"
-                  >
-                    <span className="text-(--color-fg-muted)">📄</span>
-                    <span>{e.name}</span>
-                  </button>
-                </li>
-              ))}
-              {dirs.length === 0 && files.length === 0 && (
-                <li className="px-4 py-8 text-center text-xs text-(--color-fg-muted)">
-                  Empty directory
-                </li>
-              )}
-            </ul>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Main panel ────────────────────────────────────────────────────────────────
 
 export function MarkdownPanel({ deviceId }: Props) {
   const [doc, setDoc] = useState<DocState>(loadScratch);
