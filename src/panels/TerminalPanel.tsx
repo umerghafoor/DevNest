@@ -177,8 +177,12 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
             entry.outputTail = (
               entry.outputTail + new TextDecoder().decode(bytes)
             ).slice(-120);
-            // eslint-disable-next-line no-control-regex
-            const clean = entry.outputTail.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+            /* eslint-disable no-control-regex */
+            const clean = entry.outputTail.replace(
+              /\x1b\[[0-9;]*[A-Za-z]/g,
+              "",
+            );
+            /* eslint-enable no-control-regex */
             if (/[$#%>]\s*$/.test(clean)) {
               entry.running = false;
               entry.outputTail = "";
