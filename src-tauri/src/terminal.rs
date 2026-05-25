@@ -82,7 +82,16 @@ where
     let mut cmd = if use_tmux {
         let sid = session_id.unwrap();
         // Sanitise: tmux session names must not contain dots or colons.
-        let safe_id: String = sid.chars().map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' }).collect();
+        let safe_id: String = sid
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '_'
+                }
+            })
+            .collect();
         let mut c = portable_pty::CommandBuilder::new("tmux");
         c.args(["new-session", "-A", "-s", &safe_id]);
         c
