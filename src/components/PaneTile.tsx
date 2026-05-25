@@ -1,4 +1,5 @@
 import { useRef, useCallback, lazy, Suspense, useState } from "react";
+import { iconForDeviceId } from "../lib/device-icon";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PaneNode, SplitDirection, Pane } from "../store/app-store";
 import { terminalRegistry } from "../lib/terminal-registry";
@@ -233,11 +234,11 @@ const DEVICE_AGNOSTIC: Set<PanelKind> = new Set([
   "settings", "services", "ngrok", "sysinfo", "editor", "git", "http", "sql",
 ]);
 
-const statusDotClass: Record<string, string> = {
-  connected: "bg-(--color-online)",
-  connecting: "bg-(--color-warn) animate-pulse",
-  offline: "bg-(--color-offline)",
-  error: "bg-(--color-error)",
+const statusIconColor: Record<string, string> = {
+  connected: "text-(--color-online)",
+  connecting: "text-(--color-warn) animate-pulse",
+  offline: "text-(--color-fg-muted)",
+  error: "text-(--color-error)",
 };
 
 function DeviceSwitcher({ pane }: { pane: Pane }) {
@@ -272,7 +273,9 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
         className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
         title="Switch device"
       >
-        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass[status] ?? statusDotClass.offline}`} />
+        {(() => { const Icon = iconForDeviceId(current?.id ?? ""); return (
+          <Icon size={12} strokeWidth={1.75} className={`shrink-0 ${statusIconColor[status] ?? statusIconColor.offline}`} />
+        ); })()}
         <span>{current?.name ?? "unknown"}</span>
         <span className="opacity-40">▾</span>
       </button>
@@ -282,6 +285,7 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
           {devices.map((d) => {
             const s = d.isLocalhost ? "connected" : (statuses[d.id] ?? "offline");
             const active = d.id === pane.deviceId;
+            const Icon = iconForDeviceId(d.id);
             return (
               <button
                 key={d.id}
@@ -294,7 +298,7 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
                   active ? "text-(--color-fg) font-medium" : "text-(--color-fg-muted)"
                 }`}
               >
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass[s] ?? statusDotClass.offline}`} />
+                <Icon size={13} strokeWidth={1.75} className={`shrink-0 ${statusIconColor[s] ?? statusIconColor.offline}`} />
                 {d.name}
                 {active && <span className="ml-auto opacity-40">✓</span>}
               </button>
