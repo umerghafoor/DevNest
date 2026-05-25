@@ -195,7 +195,7 @@ function PanelContent({ pane }: { pane: Pane }) {
     case "services":
       return <ServicesPanel />;
     case "ngrok":
-      return <NgrokPanel />;
+      return <NgrokPanel deviceId={pane.deviceId} />;
     case "sysinfo":
       return <SysInfoPanel />;
     case "editor":
@@ -231,7 +231,7 @@ function PanelContent({ pane }: { pane: Pane }) {
 
 // Panels that don't operate on a specific device — no switcher for these.
 const DEVICE_AGNOSTIC: Set<PanelKind> = new Set([
-  "settings", "services", "ngrok", "sysinfo", "editor", "git", "http", "sql",
+  "settings", "services", "sysinfo", "editor", "git", "http", "sql",
 ]);
 
 const statusIconColor: Record<string, string> = {

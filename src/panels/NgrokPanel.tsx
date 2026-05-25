@@ -5,7 +5,7 @@ import { api, errorMessage, type NgrokTunnel } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 
-export function NgrokPanel() {
+export function NgrokPanel({ deviceId: _deviceId }: { deviceId: string }) {
   const [tunnels, setTunnels] = useState<NgrokTunnel[]>([]);
   const [available, setAvailable] = useState<boolean | null>(null);
   const [port, setPort] = useState("");
