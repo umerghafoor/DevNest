@@ -70,14 +70,15 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     const existing = terminalRegistry.get(sessionKey);
 
     if (existing) {
+      // Point the output listener at this component's setBannerVisible.
+      existing.onBannerChange = setBannerVisible;
+
       // xterm's open() can only be called once. On re-attach we move the
       // xterm-owned DOM node into the new container instead of re-opening.
       const xtermEl = existing.container?.querySelector(".xterm");
       if (xtermEl) {
         container.appendChild(xtermEl);
       } else {
-        // First time after registry entry existed but open() wasn't called yet
-        // (e.g. strict-mode double-invoke) — open normally.
         existing.term.open(container);
       }
       existing.container = container;
@@ -85,10 +86,13 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       fitAddonRef.current = existing.fit;
       searchAddonRef.current = existing.search;
       setConnectState("connected");
+      // Sync banner to whatever the PTY thinks right now.
+      setBannerVisible(!existing.running && !!loadLastCmd(sessionKey));
 
       const ro = new ResizeObserver(() => existing.fit.fit());
       ro.observe(container);
       return () => {
+        existing.onBannerChange = null;
         ro.disconnect();
       };
     }
@@ -161,6 +165,18 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           for (let i = 0; i < binary.length; i++)
             bytes[i] = binary.charCodeAt(i);
           term.write(bytes);
+
+          // Detect shell prompt in output → shell is idle again.
+          const entry = terminalRegistry.get(sessionKey);
+          if (entry?.running) {
+            entry.outputTail = (entry.outputTail + new TextDecoder().decode(bytes)).slice(-120);
+            const clean = entry.outputTail.replace(/\[[0-9;]*[A-Za-z]/g, "");
+            if (/[$#%>]\s*$/.test(clean)) {
+              entry.running = false;
+              entry.outputTail = "";
+              entry.onBannerChange?.(true);
+            }
+          }
         });
 
         const unlistenExit = await listen(`terminal-exit:${termId}`, () => {
@@ -182,6 +198,10 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
             if (line) {
               saveLastCmd(sessionKey, line);
               setLastCmd(line);
+              // Command submitted — hide banner until next prompt arrives.
+              const e2 = terminalRegistry.get(sessionKey);
+              if (e2) { e2.running = true; e2.outputTail = ""; }
+              setBannerVisible(false);
             }
             inputLineRef.current = "";
           } else if (data === "\x7f") {
@@ -208,6 +228,9 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           unlisten,
           unlistenExit,
           container,
+          running: false,
+          outputTail: "",
+          onBannerChange: setBannerVisible,
         });
 
         setConnectState("connected");

@@ -13,6 +13,16 @@ export interface TerminalEntry {
   unlistenExit: (() => void) | null;
   /** The DOM container the terminal is currently open() into */
   container: HTMLDivElement | null;
+  /** True while a command is running (Enter sent, waiting for next prompt) */
+  running: boolean;
+  /** Accumulates recent output bytes for prompt detection */
+  outputTail: string;
+  /**
+   * Called by the output listener when running state changes.
+   * Swapped by the currently-mounted TerminalPanel so the stale first-mount
+   * closure always reaches the live component.
+   */
+  onBannerChange: ((visible: boolean) => void) | null;
 }
 
 /**
