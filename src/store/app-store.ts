@@ -187,6 +187,7 @@ interface AppState {
   closePane: (paneId: string) => void;
   setActivePane: (paneId: string | null) => void;
   updateSplitRatio: (splitId: string, ratio: number) => void;
+  updatePaneDevice: (paneId: string, deviceId: string) => void;
 }
 
 const PERSIST_KEY = "devnest.workspaces";
@@ -417,6 +418,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       patchActiveWorkspace(s, (w) => ({
         paneRoot: w.paneRoot ? updateRatio(w.paneRoot, splitId, ratio) : null,
       })),
+    ),
+
+  updatePaneDevice: (paneId, deviceId) =>
+    set((s) =>
+      patchActiveWorkspace(s, (w) => {
+        if (!w.paneRoot) return {};
+        const pane = findPaneInTree(w.paneRoot, paneId);
+        if (!pane) return {};
+        // Fresh instanceId forces a full unmount+remount of the panel content
+        // so it reinitialises against the new device rather than carrying over
+        // stale connections or cached data from the previous one.
+        return {
+          paneRoot: replaceLeaf(w.paneRoot, paneId, makeLeaf({ ...pane, deviceId, instanceId: uid() })),
+        };
+      }),
     ),
 }));
 

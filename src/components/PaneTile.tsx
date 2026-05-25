@@ -1,4 +1,4 @@
-import { useRef, useCallback, lazy, Suspense } from "react";
+import { useRef, useCallback, lazy, Suspense, useState } from "react";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PaneNode, SplitDirection, Pane } from "../store/app-store";
 import { terminalRegistry } from "../lib/terminal-registry";
@@ -228,16 +228,92 @@ function PanelContent({ pane }: { pane: Pane }) {
   }
 }
 
+// Panels that don't operate on a specific device — no switcher for these.
+const DEVICE_AGNOSTIC: Set<PanelKind> = new Set([
+  "settings", "services", "ngrok", "sysinfo", "editor", "git", "http", "sql",
+]);
+
+const statusDotClass: Record<string, string> = {
+  connected: "bg-(--color-online)",
+  connecting: "bg-(--color-warn) animate-pulse",
+  offline: "bg-(--color-offline)",
+  error: "bg-(--color-error)",
+};
+
+function DeviceSwitcher({ pane }: { pane: Pane }) {
+  const devices = useAppStore((s) => s.devices);
+  const statuses = useAppStore((s) => s.statuses);
+  const updatePaneDevice = useAppStore((s) => s.updatePaneDevice);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const current = devices.find((d) => d.id === pane.deviceId);
+  const status = current?.isLocalhost ? "connected" : (statuses[current?.id ?? ""] ?? "offline");
+
+  // Close on outside click.
+  const onDocMouseDown = useCallback((e: MouseEvent) => {
+    if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+  }, []);
+
+  const toggleOpen = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen((o) => {
+      const next = !o;
+      if (next) document.addEventListener("mousedown", onDocMouseDown);
+      else document.removeEventListener("mousedown", onDocMouseDown);
+      return next;
+    });
+  }, [onDocMouseDown]);
+
+  return (
+    <div ref={ref} className="relative flex items-center">
+      <button
+        onMouseDown={toggleOpen}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+        title="Switch device"
+      >
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass[status] ?? statusDotClass.offline}`} />
+        <span>{current?.name ?? "unknown"}</span>
+        <span className="opacity-40">▾</span>
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 z-50 mt-0.5 min-w-[140px] rounded border border-(--color-border) bg-(--color-surface) py-1 shadow-lg">
+          {devices.map((d) => {
+            const s = d.isLocalhost ? "connected" : (statuses[d.id] ?? "offline");
+            const active = d.id === pane.deviceId;
+            return (
+              <button
+                key={d.id}
+                onMouseDown={(e) => {
+                  e.stopPropagation();
+                  updatePaneDevice(pane.id, d.id);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-(--color-surface-2) ${
+                  active ? "text-(--color-fg) font-medium" : "text-(--color-fg-muted)"
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${statusDotClass[s] ?? statusDotClass.offline}`} />
+                {d.name}
+                {active && <span className="ml-auto opacity-40">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PaneHeader({ pane }: { pane: Pane }) {
   const ws = useAppStore(selectActiveWorkspace);
   const setActivePane = useAppStore((s) => s.setActivePane);
   const closePane = useAppStore((s) => s.closePane);
   const splitPane = useAppStore((s) => s.splitPane);
-  const devices = useAppStore((s) => s.devices);
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
 
   const isActive = pane.id === ws.activePaneId;
-  const device = devices.find((d) => d.id === pane.deviceId);
 
   const makeNewPane = (panel: PanelKind): Pane => {
     const uid = Math.random().toString(36).slice(2, 10);
@@ -264,10 +340,11 @@ function PaneHeader({ pane }: { pane: Pane }) {
       >
         {PANEL_LABELS[pane.panel]}
       </span>
-      {device && (
-        <span className="text-(--color-fg-muted) text-[11px]">
-          · {device.name}
-        </span>
+      {!DEVICE_AGNOSTIC.has(pane.panel) && (
+        <>
+          <span className="text-(--color-fg-muted) opacity-40">·</span>
+          <DeviceSwitcher pane={pane} />
+        </>
       )}
 
       <div className="ml-auto flex items-center gap-0.5">
@@ -323,7 +400,7 @@ function LeafPane({ pane }: { pane: Pane }) {
       onMouseDown={() => setActivePane(pane.id)}
     >
       <PaneHeader pane={pane} />
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-hidden" key={pane.instanceId}>
         <PanelContent pane={pane} />
       </div>
     </div>
