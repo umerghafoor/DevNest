@@ -6,6 +6,7 @@ import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { getGithubClientId } from "./SettingsPanel";
 import { useAppStore } from "../store/app-store";
+import { iconForDeviceId } from "../lib/device-icon";
 
 interface FolderBookmark {
   id: string;
@@ -316,20 +317,32 @@ function FoldersSection({
       </div>
 
       {/* Add-bookmark form */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) p-2">
-        <select
-          value={deviceId}
-          onChange={(e) => setDeviceId(e.target.value)}
-          className="input h-7 text-xs"
-          title="Device"
-        >
-          {devices.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-              {d.isLocalhost ? " (local)" : ""}
-            </option>
-          ))}
-        </select>
+      <div className="mb-3 flex flex-col gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) p-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-(--color-fg-muted)">Device</span>
+          <div className="flex flex-wrap gap-1.5">
+            {devices.map((d) => {
+              const Icon = iconForDeviceId(d.id);
+              const active = d.id === deviceId;
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => setDeviceId(d.id)}
+                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                    active
+                      ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
+                      : "border-(--color-border) text-(--color-fg-muted) hover:border-(--color-accent)/50 hover:text-(--color-fg)"
+                  }`}
+                >
+                  <Icon size={12} strokeWidth={1.75} />
+                  {d.name}
+                  {d.isLocalhost ? " (local)" : ""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         {isLocal ? (
           <button
             onClick={onPickLocal}
@@ -338,7 +351,7 @@ function FoldersSection({
             Pick folder…
           </button>
         ) : (
-          <>
+          <div className="flex items-center gap-2">
             <input
               value={pathInput}
               onChange={(e) => setPathInput(e.target.value)}
@@ -355,7 +368,7 @@ function FoldersSection({
             >
               {adding ? "Checking…" : "Add"}
             </button>
-          </>
+          </div>
         )}
       </div>
 
