@@ -30,8 +30,25 @@ function fmtDate(ts: number): string {
   return new Date(ts * 1000).toLocaleDateString();
 }
 
+const CWD_PREFIX = "devnest.files.cwd.";
+
+function loadCwd(deviceId: string): string {
+  try {
+    return localStorage.getItem(CWD_PREFIX + deviceId) ?? "/";
+  } catch {
+    return "/";
+  }
+}
+function saveCwd(deviceId: string, path: string) {
+  try {
+    localStorage.setItem(CWD_PREFIX + deviceId, path);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function FileBrowserPanel({ deviceId }: Props) {
-  const [cwd, setCwd] = useState("/");
+  const [cwd, setCwd] = useState(() => loadCwd(deviceId));
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +73,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
         });
         setEntries(list);
         setCwd(path);
+        saveCwd(deviceId, path);
       } catch (e) {
         setError(errorMessage(e));
       } finally {
@@ -66,8 +84,8 @@ export function FileBrowserPanel({ deviceId }: Props) {
   );
 
   useEffect(() => {
-    void load("/");
-  }, [load]);
+    void load(loadCwd(deviceId));
+  }, [load, deviceId]);
 
   const navigate = (entry: FileEntry) => {
     if (entry.isDir) void load(entry.path);

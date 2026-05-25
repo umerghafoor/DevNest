@@ -30,6 +30,23 @@ export function useDeviceHeartbeat() {
   const setStatus = useAppStore((s) => s.setStatus);
   const stateRef = useRef<Map<string, DeviceState>>(new Map());
 
+  // On mount, immediately connect all keepAlive devices.
+  useEffect(() => {
+    const snapshot = useAppStore.getState();
+    for (const d of snapshot.devices) {
+      if (d.isLocalhost || !d.keepAlive) continue;
+      const status = snapshot.statuses[d.id] ?? "offline";
+      if (status === "connected" || status === "connecting") continue;
+      setStatus(d.id, "connecting");
+      api
+        .connectDevice(d.id)
+        .then(() => setStatus(d.id, "connected"))
+        .catch(() => setStatus(d.id, "offline"));
+    }
+    // Run once on mount — devices list from initial load is stable here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     const tick = async () => {
       const now = Date.now();
@@ -46,7 +63,8 @@ export function useDeviceHeartbeat() {
             attempts: 0,
             nextRetryAt: 0,
             inFlight: false,
-            hasConnected: false,
+            // keepAlive devices connect automatically on startup
+            hasConnected: d.keepAlive,
           };
           stateRef.current.set(d.id, entry);
         }

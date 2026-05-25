@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
+import { RemoteFilePicker } from "../components/RemoteFilePicker";
 import { api, errorMessage, type GhRepo, type GhUser } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { getGithubClientId } from "./SettingsPanel";
 import { useAppStore } from "../store/app-store";
+import { iconForDeviceId } from "../lib/device-icon";
 
 interface FolderBookmark {
   id: string;
@@ -286,16 +288,16 @@ function FoldersSection({
   onRefresh: () => void;
 }) {
   const [deviceId, setDeviceId] = useState<string>(defaultDeviceId);
-  const [pathInput, setPathInput] = useState("");
   const [adding, setAdding] = useState(false);
+  const [showRemotePicker, setShowRemotePicker] = useState(false);
   const selectedDevice = devices.find((d) => d.id === deviceId);
   const isLocal = !!selectedDevice?.isLocalhost;
 
-  const submit = async () => {
+  const pickRemoteFolder = async (path: string) => {
+    setShowRemotePicker(false);
     setAdding(true);
     try {
-      await onAddRemote(deviceId, pathInput);
-      setPathInput("");
+      await onAddRemote(deviceId, path);
     } finally {
       setAdding(false);
     }
@@ -316,48 +318,49 @@ function FoldersSection({
       </div>
 
       {/* Add-bookmark form */}
-      <div className="mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) p-2">
-        <select
-          value={deviceId}
-          onChange={(e) => setDeviceId(e.target.value)}
-          className="input h-7 text-xs"
-          title="Device"
+      <div className="mb-3 flex flex-col gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) p-2">
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-(--color-fg-muted)">Device</span>
+          <div className="flex flex-wrap gap-1.5">
+            {devices.map((d) => {
+              const Icon = iconForDeviceId(d.id);
+              const active = d.id === deviceId;
+              return (
+                <button
+                  key={d.id}
+                  type="button"
+                  onClick={() => setDeviceId(d.id)}
+                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
+                    active
+                      ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
+                      : "border-(--color-border) text-(--color-fg-muted) hover:border-(--color-accent)/50 hover:text-(--color-fg)"
+                  }`}
+                >
+                  <Icon size={12} strokeWidth={1.75} />
+                  {d.name}
+                  {d.isLocalhost ? " (local)" : ""}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <button
+          onClick={isLocal ? onPickLocal : () => setShowRemotePicker(true)}
+          disabled={adding}
+          className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
         >
-          {devices.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.name}
-              {d.isLocalhost ? " (local)" : ""}
-            </option>
-          ))}
-        </select>
-        {isLocal ? (
-          <button
-            onClick={onPickLocal}
-            className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
-          >
-            Pick folder…
-          </button>
-        ) : (
-          <>
-            <input
-              value={pathInput}
-              onChange={(e) => setPathInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !adding) void submit();
-              }}
-              placeholder="/absolute/path/to/repo"
-              className="input h-7 flex-1 text-xs font-mono"
-            />
-            <button
-              onClick={() => void submit()}
-              disabled={adding || !pathInput.trim()}
-              className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
-            >
-              {adding ? "Checking…" : "Add"}
-            </button>
-          </>
-        )}
+          {adding ? "Checking…" : "Pick folder…"}
+        </button>
       </div>
+
+      {showRemotePicker && (
+        <RemoteFilePicker
+          deviceId={deviceId}
+          dirOnly
+          onPick={(path) => void pickRemoteFolder(path)}
+          onClose={() => setShowRemotePicker(false)}
+        />
+      )}
 
       {folders.length === 0 ? (
         <div className="rounded-lg bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">

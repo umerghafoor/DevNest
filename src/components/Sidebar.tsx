@@ -10,16 +10,9 @@ import { iconForDeviceId } from "../lib/device-icon";
 
 type Status = ConnectionStatus | "connecting" | "error";
 
-const statusDot: Record<Status, string> = {
-  connected: "bg-(--color-online)",
-  connecting: "bg-(--color-warn) animate-pulse",
-  offline: "bg-(--color-offline)",
-  error: "bg-(--color-error)",
-};
-
 const statusIconColor: Record<Status, string> = {
   connected: "text-(--color-online)",
-  connecting: "text-(--color-warn)",
+  connecting: "text-(--color-warn) animate-pulse",
   offline: "text-(--color-fg-muted)",
   error: "text-(--color-error)",
 };
@@ -244,10 +237,17 @@ export function Sidebar() {
                         onClick={() => void onSelect(d.id)}
                         className="flex flex-1 items-center gap-2 text-left min-w-0"
                       >
-                        <span
-                          className={`h-2 w-2 shrink-0 rounded-full transition-colors ${statusDot[status]}`}
-                          aria-label={status}
-                        />
+                        {(() => {
+                          const Icon = iconForDeviceId(d.id);
+                          return (
+                            <Icon
+                              size={14}
+                              strokeWidth={1.75}
+                              className={`shrink-0 transition-colors ${statusIconColor[status]}`}
+                              aria-label={status}
+                            />
+                          );
+                        })()}
                         <span className="truncate font-medium whitespace-nowrap">
                           {d.name}
                         </span>

@@ -7,7 +7,7 @@ use crate::sftp::FileEntry;
 
 const MAX_READ_BYTES: u64 = 16 * 1024 * 1024; // 16 MiB
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fs_read_text(path: String) -> AppResult<String> {
     let p = Path::new(&path);
     let meta = fs::metadata(p).map_err(|e| AppError::Invalid(format!("stat {path}: {e}")))?;
@@ -24,7 +24,7 @@ pub fn fs_read_text(path: String) -> AppResult<String> {
     fs::read_to_string(p).map_err(|e| AppError::Invalid(format!("read {path}: {e}")))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn fs_write_text(path: String, content: String) -> AppResult<()> {
     let p = Path::new(&path);
     if let Some(parent) = p.parent() {

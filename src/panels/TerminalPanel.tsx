@@ -8,6 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 import "@xterm/xterm/css/xterm.css";
 import { useAppStore } from "../store/app-store";
 import { notifyCompleted } from "../lib/notify";
+import { terminalRegistry } from "../lib/terminal-registry";
 
 interface Props {
   deviceId: string;
@@ -16,18 +17,37 @@ interface Props {
 
 type ConnectState = "connecting" | "connected" | "error";
 
+const LAST_CMD_PREFIX = "devnest.lastcmd.";
+
+function loadLastCmd(sessionKey: string): string | null {
+  try {
+    return localStorage.getItem(LAST_CMD_PREFIX + sessionKey);
+  } catch {
+    return null;
+  }
+}
+
+function saveLastCmd(sessionKey: string, cmd: string) {
+  try {
+    localStorage.setItem(LAST_CMD_PREFIX + sessionKey, cmd);
+  } catch {
+    // ignore
+  }
+}
+
 export function TerminalPanel({ deviceId, instanceId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const termRef = useRef<Terminal | null>(null);
-  const termIdRef = useRef<string | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const inputLineRef = useRef<string>("");
 
   const [connectState, setConnectState] = useState<ConnectState>("connecting");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [lastCmd, setLastCmd] = useState<string | null>(null);
+  const [bannerVisible, setBannerVisible] = useState(false);
 
   const sessionKey = instanceId ?? deviceId;
 
@@ -35,9 +55,54 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     setConnectState("connecting");
     setErrorMsg(null);
 
+    const saved = loadLastCmd(sessionKey);
+    setLastCmd(saved ?? null);
+    setBannerVisible(false);
+
     const container = containerRef.current;
     if (!container) return;
 
+    const existing = terminalRegistry.get(sessionKey);
+
+    // No existing entry = fresh start (first open or after terminal closed).
+    // Show the banner immediately so the user can rerun their last command.
+    if (!existing && saved) {
+      setBannerVisible(true);
+    }
+
+    if (existing) {
+      // Point the output listener at this component's setBannerVisible.
+      existing.onBannerChange = setBannerVisible;
+
+      // xterm's open() can only be called once. On re-attach we move the
+      // xterm-owned DOM node into the new container instead of re-opening.
+      const xtermEl = existing.container?.querySelector(".xterm");
+      if (xtermEl) {
+        container.appendChild(xtermEl);
+      } else {
+        existing.term.open(container);
+      }
+      existing.container = container;
+      existing.fit.fit();
+      fitAddonRef.current = existing.fit;
+      searchAddonRef.current = existing.search;
+      setConnectState("connected");
+      // Sync banner: only show if a command actually completed in this session.
+      setBannerVisible(
+        existing.hasCompletedCommand &&
+          !existing.running &&
+          !!loadLastCmd(sessionKey),
+      );
+
+      const ro = new ResizeObserver(() => existing.fit.fit());
+      ro.observe(container);
+      return () => {
+        existing.onBannerChange = null;
+        ro.disconnect();
+      };
+    }
+
+    // First mount: create xterm + PTY.
     const term = new Terminal({
       theme: {
         background:
@@ -65,7 +130,6 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     term.loadAddon(searchAddon);
     term.open(container);
     fit.fit();
-    termRef.current = term;
     fitAddonRef.current = fit;
     searchAddonRef.current = searchAddon;
 
@@ -83,34 +147,52 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       return true;
     });
 
-    let termId: string | null = null;
-    let unlisten: (() => void) | null = null;
-    let unlistenExit: (() => void) | null = null;
     let cancelled = false;
 
     const start = async () => {
       try {
         const { cols, rows } = term;
-        termId = await invoke<string>("terminal_open", {
+        const termId = await invoke<string>("terminal_open", {
           deviceId,
           cols,
           rows,
+          sessionId: sessionKey,
         });
+
         if (cancelled) {
           void invoke("terminal_close", { termId });
           return;
         }
-        termIdRef.current = termId;
 
-        unlisten = await listen<string>(`terminal:${termId}`, (evt) => {
+        const unlisten = await listen<string>(`terminal:${termId}`, (evt) => {
           const binary = atob(evt.payload);
           const bytes = new Uint8Array(binary.length);
           for (let i = 0; i < binary.length; i++)
             bytes[i] = binary.charCodeAt(i);
           term.write(bytes);
+
+          // Detect shell prompt in output → shell is idle again.
+          const entry = terminalRegistry.get(sessionKey);
+          if (entry?.running) {
+            entry.outputTail = (
+              entry.outputTail + new TextDecoder().decode(bytes)
+            ).slice(-120);
+            /* eslint-disable no-control-regex */
+            const clean = entry.outputTail.replace(
+              /\x1b\[[0-9;]*[A-Za-z]/g,
+              "",
+            );
+            /* eslint-enable no-control-regex */
+            if (/[$#%>]\s*$/.test(clean)) {
+              entry.running = false;
+              entry.outputTail = "";
+              entry.hasCompletedCommand = true;
+              entry.onBannerChange?.(true);
+            }
+          }
         });
 
-        unlistenExit = await listen(`terminal-exit:${termId}`, () => {
+        const unlistenExit = await listen(`terminal-exit:${termId}`, () => {
           const device = useAppStore
             .getState()
             .devices.find((d) => d.id === deviceId);
@@ -118,10 +200,32 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
             `Terminal closed on ${device?.name ?? deviceId}`,
             "The remote shell exited.",
           );
+          // Remove from registry so the next open starts fresh.
+          terminalRegistry.destroy(sessionKey);
         });
 
         term.onData((data) => {
-          if (!termId) return;
+          // Track typed line to persist as last command.
+          if (data === "\r" || data === "\n") {
+            const line = inputLineRef.current.trim();
+            if (line) {
+              saveLastCmd(sessionKey, line);
+              setLastCmd(line);
+              // Command submitted — hide banner until next prompt arrives.
+              const e2 = terminalRegistry.get(sessionKey);
+              if (e2) {
+                e2.running = true;
+                e2.outputTail = "";
+              }
+              setBannerVisible(false);
+            }
+            inputLineRef.current = "";
+          } else if (data === "\x7f") {
+            inputLineRef.current = inputLineRef.current.slice(0, -1);
+          } else if (data.length === 1 && data >= " ") {
+            inputLineRef.current += data;
+          }
+
           const encoded = btoa(
             String.fromCharCode(...new TextEncoder().encode(data)),
           );
@@ -129,8 +233,21 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         });
 
         term.onResize(({ cols: c, rows: r }) => {
-          if (!termId) return;
           void invoke("terminal_resize", { termId, cols: c, rows: r });
+        });
+
+        terminalRegistry.set(sessionKey, {
+          term,
+          fit,
+          search: searchAddon,
+          termId,
+          unlisten,
+          unlistenExit,
+          container,
+          running: false,
+          outputTail: "",
+          hasCompletedCommand: false,
+          onBannerChange: setBannerVisible,
         });
 
         setConnectState("connected");
@@ -142,23 +259,33 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       }
     };
 
-    // Start in background — the rest of the app is NOT blocked
     void start();
 
-    const ro = new ResizeObserver(() => {
-      fit.fit();
-    });
+    const ro = new ResizeObserver(() => fit.fit());
     ro.observe(container);
 
     return () => {
       cancelled = true;
       ro.disconnect();
-      unlisten?.();
-      unlistenExit?.();
-      if (termId) void invoke("terminal_close", { termId });
-      term.dispose();
+      // Only dispose if this terminal never made it into the registry
+      // (i.e. start() was cancelled before completing — e.g. strict-mode).
+      // If it's in the registry the registry owns its lifetime.
+      if (!terminalRegistry.has(sessionKey)) {
+        term.dispose();
+      }
     };
   }, [sessionKey, deviceId]);
+
+  const termIdForRerun = terminalRegistry.get(sessionKey)?.termId ?? null;
+
+  const rerunLastCmd = useCallback(() => {
+    if (!lastCmd || !termIdForRerun) return;
+    setBannerVisible(false);
+    const encoded = btoa(
+      String.fromCharCode(...new TextEncoder().encode(lastCmd + "\r")),
+    );
+    void invoke("terminal_write", { termId: termIdForRerun, data: encoded });
+  }, [lastCmd, termIdForRerun]);
 
   const findNext = useCallback(() => {
     if (!search) return;
@@ -173,7 +300,6 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
   const closeSearch = useCallback(() => {
     setSearchOpen(false);
     searchAddonRef.current?.clearDecorations();
-    termRef.current?.focus();
   }, []);
 
   return (
@@ -230,20 +356,39 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           </button>
         </div>
       )}
+
+      {bannerVisible && lastCmd && connectState === "connected" && (
+        <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs">
+          <span className="text-(--color-fg-muted)">Last command:</span>
+          <code className="flex-1 truncate font-mono text-(--color-fg)">
+            {lastCmd}
+          </code>
+          <button
+            onClick={rerunLastCmd}
+            className="rounded border border-(--color-accent) px-2 py-0.5 text-(--color-accent) hover:bg-(--color-accent) hover:text-white"
+          >
+            Re-run
+          </button>
+          <button
+            onClick={() => setBannerVisible(false)}
+            className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <div className="relative flex-1">
-        {/* xterm container — always mounted so the terminal is ready as soon as the PTY opens */}
         <div
           ref={containerRef}
           className="h-full w-full p-2"
           style={{
             fontVariantLigatures: "none",
-            // Hide (but keep alive) until connected so the user sees the overlay
             opacity: connectState === "connected" ? 1 : 0,
             transition: "opacity 0.25s ease",
           }}
         />
 
-        {/* Connecting overlay — rendered on top, doesn't block xterm setup */}
         {connectState === "connecting" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-bg)">
             <span className="h-5 w-5 rounded-full border-2 border-(--color-accent) border-t-transparent animate-spin" />

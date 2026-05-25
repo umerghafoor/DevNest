@@ -83,7 +83,7 @@ fn single_quote(s: &str) -> String {
 }
 
 /// Check whether the path on `device` is a git repo.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_is_repo(state: State<'_, AppState>, device_id: String, path: String) -> AppResult<bool> {
     let device = require_device(&state, &device_id)?;
     if device.is_localhost {
@@ -101,7 +101,7 @@ pub fn git_is_repo(state: State<'_, AppState>, device_id: String, path: String) 
     Ok(matches!(result, Ok(s) if s == "true"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_branch(
     state: State<'_, AppState>,
     device_id: String,
@@ -118,7 +118,7 @@ pub fn git_branch(
 /// Clone `url` into a subdirectory of `parent_dir` named `repo_name`.
 /// Returns the absolute path of the cloned directory.
 /// Currently localhost-only; cloning to a remote device is not yet supported.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_clone(url: String, parent_dir: String, repo_name: String) -> AppResult<String> {
     let parent = Path::new(&parent_dir);
     if !parent.is_dir() {
@@ -167,7 +167,7 @@ pub struct GitCommit {
 const COMMIT_SEP: &str = "\x1e";
 const FIELD_SEP: &str = "\x1f";
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_log(
     state: State<'_, AppState>,
     device_id: String,
@@ -237,7 +237,7 @@ pub struct GitBranch {
     pub last_commit: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_branches(
     state: State<'_, AppState>,
     device_id: String,
@@ -291,7 +291,7 @@ pub struct GitTag {
     pub commit: Option<String>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_tags(
     state: State<'_, AppState>,
     device_id: String,
@@ -335,7 +335,7 @@ pub struct GitCommitDetail {
     pub files: Vec<GitChangedFile>,
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_show(
     state: State<'_, AppState>,
     device_id: String,
@@ -397,7 +397,7 @@ pub fn git_show(
 
 /// Get a unified diff for a single file in a single commit.
 /// If the commit has no parents (root commit), uses the empty tree as base.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn git_diff(
     state: State<'_, AppState>,
     device_id: String,

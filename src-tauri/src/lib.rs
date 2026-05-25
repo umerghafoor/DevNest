@@ -25,7 +25,7 @@ use tauri::Manager;
 
 use crate::state::AppState;
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sftp_list_dir(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -39,7 +39,7 @@ fn sftp_list_dir(
     sftp::list_dir(&device, &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sftp_read_file(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -53,7 +53,7 @@ fn sftp_read_file(
     sftp::read_file(&device, &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sftp_write_file(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -68,7 +68,7 @@ fn sftp_write_file(
     sftp::write_file(&device, &path, &content)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sftp_mkdir(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -82,7 +82,7 @@ fn sftp_mkdir(
     sftp::mkdir(&device, &path)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sftp_rename(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -97,7 +97,7 @@ fn sftp_rename(
     sftp::rename(&device, &from, &to)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn sftp_delete(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -112,7 +112,7 @@ fn sftp_delete(
     sftp::delete(&device, &path, is_dir)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tailscale_status(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -122,7 +122,7 @@ fn tailscale_status(
     tailscale::status(&state.pool, &device)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn tailscale_set_exit_node(
     state: tauri::State<'_, AppState>,
     device_id: String,

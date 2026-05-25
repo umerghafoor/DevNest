@@ -274,7 +274,7 @@ fn sanitize_unit_name(name: &str) -> AppResult<String> {
 
 // ─── Tauri commands ───────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn systemd_list(
     state: tauri::State<'_, crate::state::AppState>,
     device_id: String,
@@ -284,7 +284,7 @@ pub fn systemd_list(
     list_units(&state.pool, &device)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn systemd_status(
     state: tauri::State<'_, crate::state::AppState>,
     device_id: String,
@@ -295,7 +295,7 @@ pub fn systemd_status(
     unit_status(&state.pool, &device, &name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn systemd_cat(
     state: tauri::State<'_, crate::state::AppState>,
     device_id: String,
@@ -306,7 +306,7 @@ pub fn systemd_cat(
     unit_cat(&state.pool, &device, &name)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn systemd_action(
     state: tauri::State<'_, crate::state::AppState>,
     device_id: String,
@@ -318,7 +318,7 @@ pub fn systemd_action(
     unit_action(&state.pool, &device, &name, &action)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn systemd_write_unit(
     state: tauri::State<'_, crate::state::AppState>,
     device_id: String,
@@ -330,7 +330,7 @@ pub fn systemd_write_unit(
     write_unit_file(&state.pool, &device, &name, &content)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn systemd_delete_unit(
     state: tauri::State<'_, crate::state::AppState>,
     device_id: String,

@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { marked } from "marked";
 import {
   open as openDialog,
   save as saveDialog,
@@ -7,14 +8,11 @@ import {
 import { api, errorMessage } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
-import { CodeEditor, languageFromFilename } from "../components/CodeEditor";
 import { useAppStore } from "../store/app-store";
 import { RemoteFilePicker } from "../components/RemoteFilePicker";
 
-interface EditorState {
-  /** Absolute path if a real file is open, null for the scratchpad. */
+interface DocState {
   path: string | null;
-  /** Display name in the title bar. */
   name: string;
   content: string;
   dirty: boolean;
@@ -24,15 +22,32 @@ interface Props {
   deviceId: string;
 }
 
-const SCRATCH_KEY = "devnest.editor.scratch";
+const SCRATCH_KEY = "devnest.markdown.scratch";
 
-function loadScratch(): EditorState {
+const DEFAULT_CONTENT = `# Markdown Preview
+
+Write **Markdown** here and see it rendered live.
+
+## Features
+
+- _Italic_ and **bold** text
+- \`inline code\` and fenced blocks
+- [Links](https://example.com)
+- Tables, blockquotes, and more
+
+\`\`\`js
+console.log("Hello, world!");
+\`\`\`
+
+> Tip: use the **Split** button to place the editor and preview side-by-side.
+`;
+
+function loadScratch(): DocState {
   const stored = localStorage.getItem(SCRATCH_KEY);
   return {
     path: null,
-    name: "scratch.txt",
-    content:
-      stored ?? "# Scratchpad\n\nType anything here. It saves locally.\n",
+    name: "scratch.md",
+    content: stored ?? DEFAULT_CONTENT,
     dirty: false,
   };
 }
@@ -42,20 +57,26 @@ function fileNameFromPath(p: string): string {
   return parts[parts.length - 1] ?? p;
 }
 
-export function EditorPanel({ deviceId }: Props) {
-  const [file, setFile] = useState<EditorState>(loadScratch);
+export function MarkdownPanel({ deviceId }: Props) {
+  const [doc, setDoc] = useState<DocState>(loadScratch);
+  const [mode, setMode] = useState<"edit" | "preview" | "split">("split");
   const [showRemotePicker, setShowRemotePicker] = useState(false);
 
   const device = useAppStore((s) => s.devices.find((d) => d.id === deviceId));
   const isRemote = device ? !device.isLocalhost : false;
 
+  const html = useMemo(
+    () => marked.parse(doc.content) as string,
+    [doc.content],
+  );
+
   const onChange = (value: string) => {
-    setFile((f) => ({ ...f, content: value, dirty: true }));
+    setDoc((d) => ({ ...d, content: value, dirty: true }));
   };
 
   const promptDiscardIfDirty = async (action: string) => {
-    if (!file.dirty) return true;
-    return confirm(`Discard unsaved changes to ${file.name}? (${action})`, {
+    if (!doc.dirty) return true;
+    return confirm(`Discard unsaved changes to ${doc.name}? (${action})`, {
       title: "Unsaved changes",
       destructive: true,
     });
@@ -66,11 +87,15 @@ export function EditorPanel({ deviceId }: Props) {
     if (isRemote) {
       setShowRemotePicker(true);
     } else {
-      const picked = await openDialog({ multiple: false, directory: false });
+      const picked = await openDialog({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Markdown", extensions: ["md", "markdown", "txt"] }],
+      });
       if (typeof picked !== "string") return;
       try {
         const content = await api.fsReadText(picked);
-        setFile({
+        setDoc({
           path: picked,
           name: fileNameFromPath(picked),
           content,
@@ -90,7 +115,7 @@ export function EditorPanel({ deviceId }: Props) {
         deviceId,
         path,
       });
-      setFile({ path, name: fileNameFromPath(path), content, dirty: false });
+      setDoc({ path, name: fileNameFromPath(path), content, dirty: false });
       toast.success(`Opened ${fileNameFromPath(path)}`);
     } catch (e) {
       toast.error(`Open failed: ${errorMessage(e)}`);
@@ -98,37 +123,31 @@ export function EditorPanel({ deviceId }: Props) {
   };
 
   const newScratch = async () => {
-    if (!(await promptDiscardIfDirty("New scratchpad"))) return;
-    setFile({
-      path: null,
-      name: "scratch.txt",
-      content: "",
-      dirty: true,
-    });
+    if (!(await promptDiscardIfDirty("New document"))) return;
+    setDoc({ path: null, name: "scratch.md", content: "", dirty: true });
   };
 
   const save = async () => {
-    if (file.path) {
+    if (doc.path) {
       try {
         if (isRemote) {
           await invoke("sftp_write_file", {
             deviceId,
-            path: file.path,
-            content: file.content,
+            path: doc.path,
+            content: doc.content,
           });
         } else {
-          await api.fsWriteText(file.path, file.content);
+          await api.fsWriteText(doc.path, doc.content);
         }
-        setFile((f) => ({ ...f, dirty: false }));
-        toast.success(`Saved ${file.name}`);
+        setDoc((d) => ({ ...d, dirty: false }));
+        toast.success(`Saved ${doc.name}`);
       } catch (e) {
         toast.error(`Save failed: ${errorMessage(e)}`);
       }
       return;
     }
-    // Scratchpad — persist to localStorage.
-    localStorage.setItem(SCRATCH_KEY, file.content);
-    setFile((f) => ({ ...f, dirty: false }));
+    localStorage.setItem(SCRATCH_KEY, doc.content);
+    setDoc((d) => ({ ...d, dirty: false }));
     toast.success("Scratchpad saved");
   };
 
@@ -137,16 +156,14 @@ export function EditorPanel({ deviceId }: Props) {
       toast.info("Use Save after opening a remote file to save in place.");
       return;
     }
-    const picked = await saveDialog({
-      defaultPath: file.path ?? file.name,
-    });
+    const picked = await saveDialog({ defaultPath: doc.path ?? doc.name });
     if (typeof picked !== "string") return;
     try {
-      await api.fsWriteText(picked, file.content);
-      setFile({
+      await api.fsWriteText(picked, doc.content);
+      setDoc({
         path: picked,
         name: fileNameFromPath(picked),
-        content: file.content,
+        content: doc.content,
         dirty: false,
       });
       toast.success(`Saved ${fileNameFromPath(picked)}`);
@@ -166,45 +183,60 @@ export function EditorPanel({ deviceId }: Props) {
     return () => window.removeEventListener("keydown", handler);
   });
 
-  const language = useMemo(() => languageFromFilename(file.name), [file.name]);
-
   return (
     <div className="fade-up flex h-full flex-col">
+      {/* Toolbar */}
       <div className="flex shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-2">
-        <span className="text-sm font-medium" title={file.path ?? "Scratchpad"}>
-          {file.name}
-          {file.dirty && (
+        <span className="text-sm font-medium" title={doc.path ?? "Scratchpad"}>
+          {doc.name}
+          {doc.dirty && (
             <span className="ml-1.5 text-(--color-warn)" title="Unsaved">
               •
             </span>
           )}
         </span>
-        {file.path && (
+        {doc.path && (
           <span
             className="hidden truncate font-mono text-[10px] text-(--color-fg-muted) sm:inline"
-            title={file.path}
+            title={doc.path}
           >
-            {file.path}
+            {doc.path}
           </span>
         )}
-        <div className="ml-auto flex items-center gap-1.5">
+
+        {/* Mode toggle */}
+        <div className="ml-auto flex items-center gap-1 rounded border border-(--color-border) bg-(--color-bg) p-0.5">
+          {(["edit", "split", "preview"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`rounded px-2 py-0.5 text-xs capitalize transition-colors ${
+                mode === m
+                  ? "bg-(--color-accent) text-(--color-accent-fg) font-medium"
+                  : "text-(--color-fg-muted) hover:text-(--color-fg)"
+              }`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => void openFile()}
             className="rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
-            title="Open file (⌘O)"
           >
             Open…
           </button>
           <button
             onClick={() => void newScratch()}
             className="rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
-            title="New scratchpad"
           >
             New
           </button>
           <button
             onClick={() => void save()}
-            disabled={!file.dirty && Boolean(file.path)}
+            disabled={!doc.dirty && Boolean(doc.path)}
             className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
             title="Save (⌘S)"
           >
@@ -214,26 +246,39 @@ export function EditorPanel({ deviceId }: Props) {
             <button
               onClick={() => void saveAs()}
               className="rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
-              title="Save As… (⇧⌘S)"
             >
               Save as…
             </button>
           )}
         </div>
       </div>
-      <CodeEditor
-        value={file.content}
-        onChange={onChange}
-        language={language}
-        onSave={() => void save()}
-        onSaveAs={() => void saveAs()}
-        onOpen={() => void openFile()}
-        className="min-h-0 flex-1 bg-(--color-bg) text-sm"
-      />
-      <div className="shrink-0 border-t border-(--color-border) bg-(--color-surface) px-4 py-1 text-[11px] text-(--color-fg-muted)">
-        {language === "text"
-          ? "Plain text"
-          : `${language.toUpperCase()} · ⌘S to save · ⌘O to open`}
+
+      {/* Content area */}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        {(mode === "edit" || mode === "split") && (
+          <textarea
+            value={doc.content}
+            onChange={(e) => onChange(e.target.value)}
+            spellCheck={false}
+            className={`resize-none bg-(--color-bg) p-4 font-mono text-sm text-(--color-fg) outline-none ${
+              mode === "split"
+                ? "w-1/2 border-r border-(--color-border)"
+                : "w-full"
+            }`}
+            placeholder="Write Markdown here…"
+          />
+        )}
+
+        {(mode === "preview" || mode === "split") && (
+          <div
+            className={`overflow-y-auto p-6 ${mode === "split" ? "w-1/2" : "w-full"}`}
+          >
+            <div
+              className="markdown-preview prose max-w-none"
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          </div>
+        )}
       </div>
 
       {showRemotePicker && (

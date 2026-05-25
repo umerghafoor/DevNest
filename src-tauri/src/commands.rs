@@ -115,7 +115,7 @@ pub fn clear_sudo_password(_state: State<'_, AppState>, id: String) -> AppResult
     secrets::delete_sudo(&id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn connect_device(state: State<'_, AppState>, id: String) -> AppResult<()> {
     let device = require_device(&state, &id)?;
     if device.is_localhost {
@@ -148,7 +148,7 @@ pub fn device_status(state: State<'_, AppState>, id: String) -> AppResult<&'stat
 /// probe fails (TCP drop, server kicked us, etc.) the pooled session is
 /// dropped so the next status call returns "offline". Returns the
 /// post-probe status.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn device_ping(state: State<'_, AppState>, id: String) -> AppResult<&'static str> {
     let device = require_device(&state, &id)?;
     if device.is_localhost {
@@ -164,7 +164,7 @@ pub fn device_ping(state: State<'_, AppState>, id: String) -> AppResult<&'static
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn run_remote_command(
     state: State<'_, AppState>,
     device_id: String,
@@ -174,7 +174,7 @@ pub fn run_remote_command(
     ssh::run_command(&state.pool, &device, &cmd)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn docker_list_containers(
     state: State<'_, AppState>,
     device_id: String,
@@ -183,7 +183,7 @@ pub fn docker_list_containers(
     docker::list_containers(&state.pool, &device)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn docker_action(
     state: State<'_, AppState>,
     device_id: String,
@@ -194,7 +194,7 @@ pub fn docker_action(
     docker::action(&state.pool, &device, &container_id, &action)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn docker_logs(
     state: State<'_, AppState>,
     device_id: String,
@@ -253,7 +253,7 @@ pub fn sql_has_password(_state: State<'_, AppState>, id: String) -> AppResult<bo
 
 /// Open an SSH local-port forward through `device_id` to `remote_host:remote_port`.
 /// Returns the local port (on 127.0.0.1) that callers should connect to.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn sql_open_tunnel(
     state: State<'_, AppState>,
     id: String,
