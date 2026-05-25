@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, errorMessage } from "../lib/api";
 import type { ContainerSummary } from "../lib/api";
-import { withSudo } from "../lib/with-sudo";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { SkeletonTable } from "../components/Skeleton";
+import { useAppStore } from "../store/app-store";
 
 interface Props {
   deviceId: string;
@@ -18,27 +18,55 @@ export function DockerPanel({ deviceId }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const inFlight = useRef(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const refreshRef = useRef<(() => Promise<void>) | undefined>(undefined);
+
+  const status = useAppStore((s) => {
+    const d = s.devices.find((d) => d.id === deviceId);
+    if (d?.isLocalhost) return "connected";
+    return s.statuses[deviceId] ?? "offline";
+  });
 
   const refresh = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     try {
-      const list = await withSudo(deviceId, () =>
-        api.dockerListContainers(deviceId),
-      );
+      const list = await api.dockerListContainers(deviceId);
       setContainers(list);
       setError(null);
+      // Resume polling after a sudo-triggered pause.
+      if (!intervalRef.current) {
+        intervalRef.current = setInterval(() => void refreshRef.current?.(), 5000);
+      }
     } catch (e) {
       setError(errorMessage(e));
+      // Stop polling on any error so we don't spam sudo dialogs or error toasts.
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
     } finally {
       setLoading(false);
+      inFlight.current = false;
     }
   }, [deviceId]);
 
+  refreshRef.current = refresh;
+
   useEffect(() => {
+    if (status !== "connected") return;
+    inFlight.current = false;
     setLoading(true);
     void refresh();
-    const t = setInterval(refresh, 5000);
-    return () => clearInterval(t);
-  }, [refresh]);
+    intervalRef.current = setInterval(() => void refreshRef.current?.(), 5000);
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+  }, [refresh, status]);
 
   const doAction = async (id: string, action: Action) => {
     if (action === "remove") {
@@ -50,7 +78,7 @@ export function DockerPanel({ deviceId }: Props) {
     }
     setBusyId(id);
     try {
-      await withSudo(deviceId, () => api.dockerAction(deviceId, id, action));
+      await api.dockerAction(deviceId, id, action);
       toast.success(`Container ${action}ed`);
       await refresh();
     } catch (e) {

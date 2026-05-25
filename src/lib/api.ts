@@ -14,18 +14,57 @@ async function call<T>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
+  // Pull deviceId from error payload or from the args for sudo escalation.
+  const argsDeviceId =
+    (typeof args?.deviceId === "string" ? args.deviceId : null) ??
+    (typeof args?.id === "string" ? args.id : null);
+
+  const resolveDeviceId = (e: unknown) =>
+    sudoRequiredDeviceId(e) ?? argsDeviceId;
+
   try {
     return await invoke<T>(cmd, args);
   } catch (e) {
-    if (!isSudoRequired(e)) throw e;
-    const deviceId = sudoRequiredDeviceId(e);
-    if (!deviceId) throw e;
-    const name =
-      useAppStore.getState().devices.find((d) => d.id === deviceId)?.name ??
-      deviceId;
-    const saved = await useSudoStore.getState().request(deviceId, name);
-    if (!saved) throw e;
-    return await invoke<T>(cmd, args);
+    console.error("[call] error from", cmd, JSON.stringify(e), e);
+    // Case 1: backend explicitly requires sudo password.
+    if (isSudoRequired(e)) {
+      const deviceId = resolveDeviceId(e);
+      console.error("[call] sudoRequired, deviceId=", deviceId, "argsDeviceId=", argsDeviceId);
+      if (!deviceId) throw e;
+      const saved = await useSudoStore.getState().request(deviceId,
+        useAppStore.getState().devices.find((d) => d.id === deviceId)?.name ?? deviceId);
+      console.error("[call] dialog resolved, saved=", saved);
+      if (!saved) throw e;
+      try {
+        const result = await invoke<T>(cmd, args);
+        console.error("[call] retry succeeded");
+        return result;
+      } catch (e2) {
+        console.error("[call] retry failed", JSON.stringify(e2), e2);
+        throw e2;
+      }
+    }
+
+    // Case 2: permission denied — offer to enable sudo, then prompt + retry.
+    if (isPermissionDeniedError(e) && argsDeviceId) {
+      const device = useAppStore.getState().devices.find((d) => d.id === argsDeviceId);
+      if (!device || device.isLocalhost) throw e;
+      if (!device.useSudo) {
+        const ok = window.confirm(
+          `This command failed with a permission error on "${device.name}".\n\n` +
+            `Enable sudo for this device? You'll be asked for your sudo password next.`,
+        );
+        if (!ok) throw e;
+        const updated = await invoke<Device>("set_use_sudo", { id: argsDeviceId, value: true });
+        useAppStore.getState().upsertDevice(updated as Device);
+      }
+      const saved2 = await useSudoStore.getState().request(argsDeviceId,
+        useAppStore.getState().devices.find((d) => d.id === argsDeviceId)?.name ?? argsDeviceId);
+      if (!saved2) throw e;
+      return await invoke<T>(cmd, args);
+    }
+
+    throw e;
   }
 }
 
@@ -90,8 +129,12 @@ export function sudoRequiredDeviceId(e: unknown): string | null {
     return typeof e.detail === "string" ? e.detail : null;
   }
   // Try to extract from "sudo password required for device <id>".
-  const msg = typeof e === "string" ? e : isAppError(e) ? e.message : "";
-  const m = /sudo password required for device ([0-9a-fA-F-]+)/.exec(msg);
+  // Tauri v2 may throw a plain string, an AppErrorPayload, or wrap it in an Error.
+  let msg = "";
+  if (typeof e === "string") msg = e;
+  else if (isAppError(e)) msg = e.message;
+  else if (e instanceof Error) msg = e.message;
+  const m = /sudo password required for device\s+([0-9a-fA-F-]{36})/i.exec(msg);
   return m ? m[1] : null;
 }
 
