@@ -152,7 +152,7 @@ fn is_would_block(e: &std::io::Error) -> bool {
 
 // ─── Tauri commands ───────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn log_stream_start(
     state: tauri::State<'_, crate::state::AppState>,
     app: AppHandle,
@@ -164,7 +164,7 @@ pub fn log_stream_start(
     state.log_streams.start(stream_id, device, cmd, app)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn log_stream_stop(
     state: tauri::State<'_, crate::state::AppState>,
     stream_id: String,

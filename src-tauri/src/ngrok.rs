@@ -236,7 +236,7 @@ fn parse_error_from_log(line: &str) -> Option<String> {
 
 // ─── Tauri commands ─────────────────────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ngrok_start(
     state: tauri::State<'_, crate::state::AppState>,
     app: AppHandle,
@@ -246,17 +246,17 @@ pub fn ngrok_start(
     state.ngrok.start(port, proto, app)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ngrok_stop(state: tauri::State<'_, crate::state::AppState>, id: String) -> AppResult<()> {
     state.ngrok.stop(&id)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ngrok_list(state: tauri::State<'_, crate::state::AppState>) -> AppResult<Vec<Tunnel>> {
     Ok(state.ngrok.list())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn ngrok_available() -> bool {
     which_ngrok().is_ok()
 }

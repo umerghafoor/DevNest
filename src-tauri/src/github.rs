@@ -60,7 +60,7 @@ fn client() -> reqwest::Client {
 }
 
 /// Start GitHub device-code flow. Returns the user code and verification URL.
-#[tauri::command]
+#[tauri::command(async)]
 pub async fn github_device_start(client_id: String) -> AppResult<DeviceCodeResponse> {
     if client_id.trim().is_empty() {
         return Err(AppError::Invalid(
@@ -101,7 +101,7 @@ pub async fn github_device_start(client_id: String) -> AppResult<DeviceCodeRespo
 /// - Ok(Some(token)) when authorized (and stores it in keyring).
 /// - Ok(None) when still pending — caller should wait `interval` seconds and retry.
 /// - Err on hard failure.
-#[tauri::command]
+#[tauri::command(async)]
 pub async fn github_device_poll(
     client_id: String,
     device_code: String,
@@ -134,17 +134,17 @@ pub async fn github_device_poll(
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_signed_in() -> AppResult<bool> {
     Ok(secrets::get_github_token().ok().is_some())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn github_sign_out() -> AppResult<()> {
     secrets::delete_github_token()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub async fn github_user() -> AppResult<GhUser> {
     let token = secrets::get_github_token()?;
     let res = client()
@@ -166,7 +166,7 @@ pub async fn github_user() -> AppResult<GhUser> {
         .map_err(|e| AppError::Ssh(format!("github user decode: {e}")))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub async fn github_list_repos() -> AppResult<Vec<GhRepo>> {
     let token = secrets::get_github_token()?;
     let mut all: Vec<GhRepo> = Vec::new();

@@ -7,7 +7,7 @@ use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 use crate::terminal;
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn terminal_open(
     app: AppHandle,
     state: State<'_, AppState>,
