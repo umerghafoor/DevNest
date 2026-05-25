@@ -83,7 +83,7 @@ export function RemoteFilePicker({
               onClick={() => onPick(cwd)}
               className="ml-auto rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
             >
-              Select "{cwd.split("/").filter(Boolean).at(-1) ?? "/"}"
+              Select &quot;{cwd.split("/").filter(Boolean).at(-1) ?? "/"}&quot;
             </button>
           )}
           <button
