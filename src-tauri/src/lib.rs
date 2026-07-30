@@ -20,6 +20,7 @@ mod systemd;
 mod tailscale;
 mod terminal;
 mod terminal_commands;
+mod webrtc_transport;
 
 use tauri::Manager;
 

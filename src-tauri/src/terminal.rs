@@ -162,6 +162,10 @@ struct RemoteParams {
     key_path: Option<String>,
     passphrase: Option<String>,
     keep_alive: bool,
+    transport: crate::devices::Transport,
+    webrtc_config: Option<crate::devices::WebRtcConfig>,
+    /// Used as the WebRTC channel-label suffix so sessions are distinguishable.
+    session_tag: String,
 }
 
 /// Spawn a remote SSH shell. The entire SSH session + channel is created
@@ -185,6 +189,9 @@ where
         key_path: device.key_path.clone(),
         passphrase: secrets::get(&device.id).ok(),
         keep_alive: device.keep_alive,
+        transport: device.transport,
+        webrtc_config: device.webrtc_config.clone(),
+        session_tag: device.id.clone(),
     };
 
     let (tx, rx) = mpsc::sync_channel::<TermInput>(256);
@@ -198,7 +205,9 @@ where
         // don't fire a "terminal closed" notification when the user
         // simply closed the pane.
         let remote_died = (|| {
-            let session = match open_ssh_session(&params, cols, rows) {
+            // `_webrtc_guard` owns the WebRTC runtime when transport=webrtc; it
+            // must outlive the session, so it stays bound for this whole scope.
+            let (session, _webrtc_guard) = match open_ssh_session(&params, cols, rows) {
                 Ok(s) => {
                     let _ = err_tx.send(None);
                     s
@@ -270,28 +279,77 @@ where
     }
 }
 
-fn open_ssh_session(params: &RemoteParams, _cols: u32, _rows: u32) -> AppResult<ssh2::Session> {
-    use std::net::TcpStream;
-    use std::net::ToSocketAddrs;
-    use std::time::Duration;
+/// Open an authenticated SSH session. Returns the session plus an optional
+/// WebRTC keep-alive guard: for webrtc devices the returned guard owns the
+/// WebRTC runtime/peer connection and must outlive the session (dropping it
+/// closes the transport). For tcp devices it is `None`.
+fn open_ssh_session(
+    params: &RemoteParams,
+    _cols: u32,
+    _rows: u32,
+) -> AppResult<(ssh2::Session, Option<crate::webrtc_transport::WebRtcConn>)> {
+    use crate::devices::Transport;
 
-    let addr = format!("{}:{}", params.host, params.port);
-    let sock_addr = addr
-        .to_socket_addrs()
-        .map_err(|e| AppError::Ssh(format!("resolve {addr}: {e}")))?
-        .next()
-        .ok_or_else(|| AppError::Ssh(format!("no address for {addr}")))?;
-
-    let tcp = TcpStream::connect_timeout(&sock_addr, Duration::from_secs(8))
-        .map_err(|e| AppError::Ssh(format!("connect: {e}")))?;
-    tcp.set_read_timeout(Some(Duration::from_secs(3600))).ok();
-
+    // The transport differs only in how the underlying socket is created and
+    // handed to ssh2. Everything after handshake (auth, keepalive) is identical
+    // and lives in `authenticate`.
     let mut session = ssh2::Session::new().map_err(|e| AppError::Ssh(e.to_string()))?;
-    session.set_tcp_stream(tcp);
+    let mut webrtc_guard = None;
+
+    match params.transport {
+        Transport::Tcp => {
+            use std::net::TcpStream;
+            use std::net::ToSocketAddrs;
+            use std::time::Duration;
+
+            let addr = format!("{}:{}", params.host, params.port);
+            let sock_addr = addr
+                .to_socket_addrs()
+                .map_err(|e| AppError::Ssh(format!("resolve {addr}: {e}")))?
+                .next()
+                .ok_or_else(|| AppError::Ssh(format!("no address for {addr}")))?;
+
+            let tcp = TcpStream::connect_timeout(&sock_addr, Duration::from_secs(8))
+                .map_err(|e| AppError::Ssh(format!("connect: {e}")))?;
+            tcp.set_read_timeout(Some(Duration::from_secs(3600))).ok();
+            session.set_tcp_stream(tcp);
+        }
+        Transport::Webrtc => {
+            let cfg = params
+                .webrtc_config
+                .as_ref()
+                .ok_or_else(|| AppError::Invalid("webrtc device missing webrtc_config".into()))?;
+            // Establish the DataChannel; the returned WebRtcConn gives us a real
+            // loopback TcpStream that ssh2 accepts (libssh2 needs a true fd), and
+            // owns the runtime that pumps bytes between it and the channel.
+            let conn = crate::webrtc_transport::connect(cfg, &params.session_tag)?;
+            let stream = conn
+                .stream()
+                .try_clone()
+                .map_err(|e| AppError::Ssh(format!("clone loopback stream: {e}")))?;
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(3600)))
+                .ok();
+            session.set_tcp_stream(stream);
+            webrtc_guard = Some(conn);
+        }
+    }
+
     session
         .handshake()
         .map_err(|e| AppError::Ssh(format!("handshake: {e}")))?;
 
+    authenticate(&session, params)?;
+
+    if params.keep_alive {
+        session.set_keepalive(true, 30);
+    }
+
+    Ok((session, webrtc_guard))
+}
+
+/// Run user auth on a freshly handshaken session. Shared by both transports.
+fn authenticate(session: &ssh2::Session, params: &RemoteParams) -> AppResult<()> {
     match params.auth_type {
         AuthType::Key => {
             let key_path: std::path::PathBuf = params
@@ -325,12 +383,7 @@ fn open_ssh_session(params: &RemoteParams, _cols: u32, _rows: u32) -> AppResult<
     if !session.authenticated() {
         return Err(AppError::Ssh("auth failed".into()));
     }
-
-    if params.keep_alive {
-        session.set_keepalive(true, 30);
-    }
-
-    Ok(session)
+    Ok(())
 }
 
 // ── Pool ─────────────────────────────────────────────────────────────────────

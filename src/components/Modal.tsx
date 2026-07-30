@@ -47,12 +47,12 @@ export function Modal({ open, onClose, title, children, footer }: Props) {
       onClick={onClose}
     >
       <div
-        className={`w-full max-w-md rounded-lg border border-(--color-border) bg-(--color-surface) shadow-xl
+        className={`flex max-h-[calc(100vh-2rem)] w-full max-w-md flex-col rounded-lg border border-(--color-border) bg-(--color-surface) shadow-xl
           transition-all duration-220 ease-out
           ${visible ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-95 translate-y-2"}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-(--color-border) px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-(--color-border) px-4 py-3">
           <h2 className="text-sm font-semibold">{title}</h2>
           <button
             onClick={onClose}
@@ -62,9 +62,13 @@ export function Modal({ open, onClose, title, children, footer }: Props) {
             ×
           </button>
         </div>
-        <div className="px-4 py-4">{children}</div>
+        {/* Only the body scrolls; header and footer stay pinned so the action
+         * buttons remain reachable on tall forms / short viewports. */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          {children}
+        </div>
         {footer && (
-          <div className="flex items-center justify-end gap-2 border-t border-(--color-border) px-4 py-3">
+          <div className="flex shrink-0 items-center justify-end gap-2 border-t border-(--color-border) px-4 py-3">
             {footer}
           </div>
         )}

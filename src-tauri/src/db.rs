@@ -19,6 +19,12 @@ pub fn open(app_data_dir: &std::path::Path) -> AppResult<Db> {
         .map_err(|e| AppError::Db(e.to_string()))?;
     add_column_if_missing(&conn, "devices", "use_sudo", "INTEGER NOT NULL DEFAULT 0")?;
     add_column_if_missing(&conn, "devices", "keep_alive", "INTEGER NOT NULL DEFAULT 0")?;
+    // WebRTC transport (see webrtc_transport.rs). `transport` selects how the
+    // SSH byte stream reaches the device: "tcp" (default) dials host:port
+    // directly; "webrtc" carries it over a DataChannel. `webrtc_config` holds
+    // the JSON STUN/TURN + signaling config and is NULL for tcp devices.
+    add_column_if_missing(&conn, "devices", "transport", "TEXT NOT NULL DEFAULT 'tcp'")?;
+    add_column_if_missing(&conn, "devices", "webrtc_config", "TEXT")?;
     Ok(Arc::new(Mutex::new(conn)))
 }
 

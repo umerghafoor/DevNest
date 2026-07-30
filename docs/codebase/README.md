@@ -38,6 +38,8 @@ the only place `@tauri-apps/api/core.invoke` is used directly.
 2. **"How does the backend work?"** → [backend.md](backend.md)
 3. **"How do the two sides talk?"** → [ipc.md](ipc.md)
 4. **"I want to add my own panel"** → [adding-a-panel.md](adding-a-panel.md)
+5. **"SSH a device that's only reachable over WebRTC"** →
+   [ssh-over-webrtc.md](ssh-over-webrtc.md)
 
 ## Key conventions
 
