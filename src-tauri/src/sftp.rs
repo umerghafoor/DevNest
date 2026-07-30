@@ -17,59 +17,22 @@ pub struct FileEntry {
     pub permissions: String,
 }
 
-/// An open SFTP channel plus the transport guard that must outlive it. For
-/// WebRTC devices `_webrtc` owns the peer connection backing the loopback
-/// socket; dropping it would kill the transport mid-operation. Derefs to
-/// `ssh2::Sftp` so call sites use it exactly like the raw handle.
-pub struct SftpConn {
-    sftp: ssh2::Sftp,
-    _webrtc: Option<crate::webrtc_transport::WebRtcConn>,
-}
-
-impl std::ops::Deref for SftpConn {
-    type Target = ssh2::Sftp;
-    fn deref(&self) -> &ssh2::Sftp {
-        &self.sftp
-    }
-}
-
-fn open_sftp(device: &Device) -> AppResult<SftpConn> {
-    use crate::devices::Transport;
+fn open_sftp(device: &Device) -> AppResult<ssh2::Sftp> {
+    let addr = format!("{}:{}", device.host, device.port);
+    let tcp = TcpStream::connect_timeout(
+        &{
+            use std::net::ToSocketAddrs;
+            addr.to_socket_addrs()
+                .map_err(|e| AppError::Ssh(format!("resolve: {e}")))?
+                .next()
+                .ok_or_else(|| AppError::Ssh(format!("no addr for {addr}")))?
+        },
+        Duration::from_secs(8),
+    )
+    .map_err(|e| AppError::Ssh(format!("connect: {e}")))?;
 
     let mut session = ssh2::Session::new().map_err(|e| AppError::Ssh(e.to_string()))?;
-    let mut webrtc_guard = None;
-
-    match device.transport {
-        Transport::Tcp => {
-            let addr = format!("{}:{}", device.host, device.port);
-            let tcp = TcpStream::connect_timeout(
-                &{
-                    use std::net::ToSocketAddrs;
-                    addr.to_socket_addrs()
-                        .map_err(|e| AppError::Ssh(format!("resolve: {e}")))?
-                        .next()
-                        .ok_or_else(|| AppError::Ssh(format!("no addr for {addr}")))?
-                },
-                Duration::from_secs(8),
-            )
-            .map_err(|e| AppError::Ssh(format!("connect: {e}")))?;
-            session.set_tcp_stream(tcp);
-        }
-        Transport::Webrtc => {
-            let cfg = device
-                .webrtc_config
-                .as_ref()
-                .ok_or_else(|| AppError::Invalid("webrtc device missing webrtc_config".into()))?;
-            let conn = crate::webrtc_transport::connect(cfg, &device.id)?;
-            let stream = conn
-                .stream()
-                .try_clone()
-                .map_err(|e| AppError::Ssh(format!("clone loopback stream: {e}")))?;
-            session.set_tcp_stream(stream);
-            webrtc_guard = Some(conn);
-        }
-    }
-
+    session.set_tcp_stream(tcp);
     session
         .handshake()
         .map_err(|e| AppError::Ssh(format!("handshake: {e}")))?;
@@ -100,13 +63,9 @@ fn open_sftp(device: &Device) -> AppResult<SftpConn> {
         }
     }
 
-    let sftp = session
+    session
         .sftp()
-        .map_err(|e| AppError::Ssh(format!("sftp subsystem: {e}")))?;
-    Ok(SftpConn {
-        sftp,
-        _webrtc: webrtc_guard,
-    })
+        .map_err(|e| AppError::Ssh(format!("sftp subsystem: {e}")))
 }
 
 pub fn list_dir(device: &Device, path: &str) -> AppResult<Vec<FileEntry>> {

@@ -23,52 +23,18 @@ pub struct CommandOutput {
 
 pub struct SshSession {
     session: Session,
-    /// For WebRTC devices, owns the peer connection + runtime that backs the
-    /// loopback socket ssh2 is using. Must outlive `session`; kept here so the
-    /// transport stays up for the session's whole life. `None` for TCP devices.
-    _webrtc: Option<crate::webrtc_transport::WebRtcConn>,
 }
 
 impl SshSession {
     pub fn connect(device: &Device) -> AppResult<Self> {
-        use crate::devices::Transport;
+        let addr = format!("{}:{}", device.host, device.port);
+        let tcp = TcpStream::connect_timeout(&addr.to_socket_addrs_one()?, Duration::from_secs(8))
+            .map_err(|e| AppError::Ssh(format!("connect {addr}: {e}")))?;
+        tcp.set_read_timeout(Some(Duration::from_secs(30))).ok();
+        tcp.set_write_timeout(Some(Duration::from_secs(30))).ok();
 
         let mut session = Session::new().map_err(|e| AppError::Ssh(e.to_string()))?;
-        let mut webrtc_guard = None;
-
-        // The transport only changes how the underlying socket is created and
-        // handed to ssh2; auth + keepalive below are identical for both.
-        match device.transport {
-            Transport::Tcp => {
-                let addr = format!("{}:{}", device.host, device.port);
-                let tcp = TcpStream::connect_timeout(
-                    &addr.to_socket_addrs_one()?,
-                    Duration::from_secs(8),
-                )
-                .map_err(|e| AppError::Ssh(format!("connect {addr}: {e}")))?;
-                tcp.set_read_timeout(Some(Duration::from_secs(30))).ok();
-                tcp.set_write_timeout(Some(Duration::from_secs(30))).ok();
-                session.set_tcp_stream(tcp);
-            }
-            Transport::Webrtc => {
-                let cfg = device.webrtc_config.as_ref().ok_or_else(|| {
-                    AppError::Invalid("webrtc device missing webrtc_config".into())
-                })?;
-                // ssh2 needs a real fd, so connect() returns a loopback TcpStream
-                // bridged to the DataChannel. The WebRtcConn owns the runtime and
-                // must be kept alive for the session — stored in `_webrtc` below.
-                let conn = crate::webrtc_transport::connect(cfg, &device.id)?;
-                let stream = conn
-                    .stream()
-                    .try_clone()
-                    .map_err(|e| AppError::Ssh(format!("clone loopback stream: {e}")))?;
-                stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
-                stream.set_write_timeout(Some(Duration::from_secs(30))).ok();
-                session.set_tcp_stream(stream);
-                webrtc_guard = Some(conn);
-            }
-        }
-
+        session.set_tcp_stream(tcp);
         session
             .handshake()
             .map_err(|e| AppError::Ssh(format!("handshake: {e}")))?;
@@ -113,10 +79,7 @@ impl SshSession {
             session.set_keepalive(true, 30);
         }
 
-        Ok(Self {
-            session,
-            _webrtc: webrtc_guard,
-        })
+        Ok(Self { session })
     }
 
     pub fn run_with_stdin(&mut self, cmd: &str, stdin: Option<&str>) -> AppResult<CommandOutput> {

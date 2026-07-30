@@ -90,30 +90,6 @@ async function call<T>(
 
 export type AuthType = "key" | "password" | "localhost";
 
-/** How the SSH byte stream reaches a device. `webrtc` carries SSH over a
- * DataChannel to the device agent (see docs/codebase/ssh-over-webrtc.md). */
-export type Transport = "tcp" | "webrtc";
-
-export interface IceServer {
-  urls: string[];
-  username?: string | null;
-  credential?: string | null;
-}
-
-/** STUN/TURN + signaling config for a `webrtc` device. */
-export interface WebRtcConfig {
-  signalingUrl: string;
-  /** Target device to reach — the agent's device_id (e.g. "edge-device-2"). */
-  peerId: string;
-  /** Shared secret presented on register (the agent's P2P_DEVICE_SECRET). */
-  secret?: string | null;
-  /** Our own id to register as; blank = random "devdash-<uuid>". */
-  clientId?: string | null;
-  iceServers: IceServer[];
-  /** DataChannel label prefix the agent bridges to local sshd. Default "ssh". */
-  channelLabel?: string;
-}
-
 export interface Device {
   id: string;
   name: string;
@@ -126,8 +102,6 @@ export interface Device {
   sudoPrefix: string | null;
   useSudo: boolean;
   keepAlive: boolean;
-  transport: Transport;
-  webrtcConfig: WebRtcConfig | null;
   createdAt: number;
   updatedAt: number;
 }
@@ -142,10 +116,6 @@ export interface NewDevice {
   sudoPrefix: string | null;
   useSudo: boolean;
   keepAlive: boolean;
-  /** Defaults to "tcp" on the backend if omitted. */
-  transport?: Transport;
-  /** Required when transport is "webrtc". */
-  webrtcConfig?: WebRtcConfig | null;
 }
 
 /** PATCH shape for `updateDevice` — same fields as NewDevice, no id. */

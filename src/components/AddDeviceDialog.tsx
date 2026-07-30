@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 import { api } from "../lib/api";
-import type { AuthType, Device, IceServer, WebRtcConfig } from "../lib/api";
+import type { AuthType, Device } from "../lib/api";
 import { useAppStore } from "../store/app-store";
 import { Modal } from "./Modal";
 
@@ -12,41 +12,22 @@ interface Props {
   editing?: Device | null;
 }
 
-const schema = z
-  .object({
-    name: z.string().min(1, "Name is required").max(64),
-    // Host is only meaningful for TCP. For WebRTC the device is reached via the
-    // signaling server + peer id, so it's optional there (enforced below).
-    host: z.string(),
-    port: z
-      .number()
-      .int()
-      .min(1, "Port must be 1-65535")
-      .max(65535, "Port must be 1-65535"),
-    username: z.string().min(1, "Username is required"),
-    authType: z.enum(["key", "password"]),
-    keyPath: z.string().optional(),
-    secret: z.string().optional(),
-    sudoPrefix: z.string().optional(),
-    useSudo: z.boolean(),
-    keepAlive: z.boolean(),
-    transport: z.enum(["tcp", "webrtc"]),
-    signalingUrl: z.string().optional(),
-    peerId: z.string().optional(),
-    webrtcSecret: z.string().optional(),
-    clientId: z.string().optional(),
-    iceServersText: z.string().optional(),
-    channelLabel: z.string().optional(),
-  })
-  .superRefine((v, ctx) => {
-    if (v.transport === "tcp" && v.host.trim().length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["host"],
-        message: "Host is required",
-      });
-    }
-  });
+const schema = z.object({
+  name: z.string().min(1, "Name is required").max(64),
+  host: z.string().min(1, "Host is required"),
+  port: z
+    .number()
+    .int()
+    .min(1, "Port must be 1-65535")
+    .max(65535, "Port must be 1-65535"),
+  username: z.string().min(1, "Username is required"),
+  authType: z.enum(["key", "password"]),
+  keyPath: z.string().optional(),
+  secret: z.string().optional(),
+  sudoPrefix: z.string().optional(),
+  useSudo: z.boolean(),
+  keepAlive: z.boolean(),
+});
 
 type FormValues = z.infer<typeof schema>;
 
@@ -61,48 +42,7 @@ const initial: FormValues = {
   sudoPrefix: "",
   useSudo: false,
   keepAlive: false,
-  transport: "tcp",
-  signalingUrl: "",
-  peerId: "",
-  webrtcSecret: "",
-  clientId: "",
-  iceServersText: "",
-  channelLabel: "",
 };
-
-/** Render ICE servers as one `urls [username] [credential]` line each, the
- * format the textarea editor uses. TURN entries have all three; STUN just the
- * URL. */
-function iceServersToText(servers: IceServer[]): string {
-  return servers
-    .map((s) => {
-      const url = s.urls.join(" ");
-      if (s.username && s.credential) {
-        return `${url} ${s.username} ${s.credential}`;
-      }
-      return url;
-    })
-    .join("\n");
-}
-
-/** Parse the textarea back into ICE servers. Entries are separated by newlines
- * OR commas (so pasting a comma-separated env value works too). Each entry is
- * `url [username] [credential]`; an entry with 3+ tokens is treated as TURN.
- * Blank entries are dropped so a stray separator can't create an empty URL. */
-function parseIceServers(text: string): IceServer[] {
-  return text
-    .split(/[\n,]/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => {
-      const tokens = line.split(/\s+/).filter(Boolean);
-      if (tokens.length >= 3) {
-        const [url, username, credential] = tokens;
-        return { urls: [url], username, credential };
-      }
-      return { urls: [tokens[0]] };
-    });
-}
 
 export function AddDeviceDialog({ open, onClose, editing }: Props) {
   const [values, setValues] = useState<FormValues>(initial);
@@ -119,7 +59,6 @@ export function AddDeviceDialog({ open, onClose, editing }: Props) {
   useEffect(() => {
     if (!open) return;
     if (editing && editing.authType !== "localhost") {
-      const cfg = editing.webrtcConfig;
       setValues({
         name: editing.name,
         host: editing.host,
@@ -131,13 +70,6 @@ export function AddDeviceDialog({ open, onClose, editing }: Props) {
         sudoPrefix: editing.sudoPrefix ?? "",
         useSudo: editing.useSudo,
         keepAlive: editing.keepAlive,
-        transport: editing.transport ?? "tcp",
-        signalingUrl: cfg?.signalingUrl ?? "",
-        peerId: cfg?.peerId ?? "",
-        webrtcSecret: cfg?.secret ?? "",
-        clientId: cfg?.clientId ?? "",
-        iceServersText: cfg ? iceServersToText(cfg.iceServers) : "",
-        channelLabel: cfg?.channelLabel ?? "",
       });
     } else {
       setValues(initial);
@@ -189,42 +121,13 @@ export function AddDeviceDialog({ open, onClose, editing }: Props) {
       return;
     }
 
-    // WebRTC transport needs a signaling URL and a peer id to reach the agent.
-    if (parsed.data.transport === "webrtc") {
-      if (!parsed.data.signalingUrl) {
-        setErrors({ signalingUrl: "Signaling URL is required for WebRTC" });
-        return;
-      }
-      if (!parsed.data.peerId) {
-        setErrors({ peerId: "Peer ID is required for WebRTC" });
-        return;
-      }
-    }
-
     setErrors({});
     setSubmitError(null);
     setSubmitting(true);
     try {
-      const webrtcConfig: WebRtcConfig | null =
-        parsed.data.transport === "webrtc"
-          ? {
-              signalingUrl: parsed.data.signalingUrl!,
-              peerId: parsed.data.peerId!,
-              secret: parsed.data.webrtcSecret || undefined,
-              clientId: parsed.data.clientId || undefined,
-              iceServers: parseIceServers(parsed.data.iceServersText ?? ""),
-              channelLabel: parsed.data.channelLabel || undefined,
-            }
-          : null;
       const payload = {
         name: parsed.data.name,
-        // The backend ignores host/port for WebRTC (the agent bridges to its
-        // own 127.0.0.1:22), but the column is NOT NULL — send a placeholder
-        // when the user left them blank.
-        host:
-          parsed.data.transport === "webrtc" && !parsed.data.host.trim()
-            ? "webrtc"
-            : parsed.data.host,
+        host: parsed.data.host,
         port: parsed.data.port,
         username: parsed.data.username,
         authType: parsed.data.authType as AuthType,
@@ -232,8 +135,6 @@ export function AddDeviceDialog({ open, onClose, editing }: Props) {
         sudoPrefix: parsed.data.sudoPrefix || null,
         useSudo: parsed.data.useSudo,
         keepAlive: parsed.data.keepAlive,
-        transport: parsed.data.transport,
-        webrtcConfig,
       };
       const device = editing
         ? await api.updateDevice(
@@ -292,55 +193,28 @@ export function AddDeviceDialog({ open, onClose, editing }: Props) {
             className="input"
           />
         </Field>
-        <Field
-          label="Transport"
-          hint={
-            values.transport === "webrtc"
-              ? "SSH is carried over a WebRTC DataChannel to your device agent, which bridges it to its own 127.0.0.1:22. No host/port needed — the device is reached via the signaling server + peer ID below."
-              : "Connect directly to Host:Port over TCP."
-          }
-        >
-          <div className="flex gap-2">
-            {(["tcp", "webrtc"] as const).map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => set("transport", t)}
-                className={`rounded border px-3 py-1 text-xs ${
-                  values.transport === t
-                    ? "border-(--color-accent) bg-(--color-accent) text-white"
-                    : "border-(--color-border) hover:bg-(--color-surface-2)"
-                }`}
-              >
-                {t === "tcp" ? "Direct TCP" : "WebRTC"}
-              </button>
-            ))}
-          </div>
-        </Field>
-        {values.transport === "tcp" ? (
-          <div className="grid grid-cols-3 gap-2">
-            <div className="col-span-2">
-              <Field label="Host" error={errors.host}>
-                <input
-                  value={values.host}
-                  onChange={(e) => set("host", e.target.value)}
-                  placeholder="192.168.1.10 or ts-name"
-                  className="input"
-                />
-              </Field>
-            </div>
-            <Field label="Port" error={errors.port}>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-2">
+            <Field label="Host" error={errors.host}>
               <input
-                type="number"
-                value={values.port}
-                onChange={(e) =>
-                  set("port", Number.parseInt(e.target.value, 10) || 0)
-                }
+                value={values.host}
+                onChange={(e) => set("host", e.target.value)}
+                placeholder="192.168.1.10 or ts-name"
                 className="input"
               />
             </Field>
           </div>
-        ) : null}
+          <Field label="Port" error={errors.port}>
+            <input
+              type="number"
+              value={values.port}
+              onChange={(e) =>
+                set("port", Number.parseInt(e.target.value, 10) || 0)
+              }
+              className="input"
+            />
+          </Field>
+        </div>
         <Field label="Username" error={errors.username}>
           <input
             value={values.username}
@@ -349,83 +223,6 @@ export function AddDeviceDialog({ open, onClose, editing }: Props) {
             className="input"
           />
         </Field>
-        {values.transport === "webrtc" ? (
-          <div className="space-y-3 rounded border border-(--color-border) bg-(--color-surface) p-3">
-            <Field
-              label="Signaling URL"
-              error={errors.signalingUrl}
-              hint="WebSocket URL of your signaling server (the one you use for HTTP/WS)."
-            >
-              <input
-                value={values.signalingUrl}
-                onChange={(e) => set("signalingUrl", e.target.value)}
-                placeholder="wss://signal.example.com/ws"
-                className="input"
-              />
-            </Field>
-            <Field
-              label="Target device ID"
-              error={errors.peerId}
-              hint="The agent's device_id you want to reach (its P2P_DEVICE_ID), e.g. edge-device-2. Sent as the `to` field when connecting."
-            >
-              <input
-                value={values.peerId}
-                onChange={(e) => set("peerId", e.target.value)}
-                placeholder="edge-device-2"
-                className="input"
-              />
-            </Field>
-            <Field
-              label="Shared secret"
-              hint="The device's P2P_DEVICE_SECRET. Presented on register so the signaling server pairs you with the device."
-            >
-              <input
-                type="password"
-                value={values.webrtcSecret}
-                onChange={(e) => set("webrtcSecret", e.target.value)}
-                placeholder="••••••••"
-                className="input"
-              />
-            </Field>
-            <Field
-              label="Client ID (optional)"
-              hint="The id DevDash registers as. Leave blank to auto-generate a random devdash-<uuid>."
-            >
-              <input
-                value={values.clientId}
-                onChange={(e) => set("clientId", e.target.value)}
-                placeholder="devdash-laptop"
-                className="input"
-              />
-            </Field>
-            <Field
-              label="ICE servers"
-              hint="One per line: `url [username] [credential]`. STUN needs only the URL; TURN adds username and credential."
-            >
-              <textarea
-                value={values.iceServersText}
-                onChange={(e) => set("iceServersText", e.target.value)}
-                rows={3}
-                spellCheck={false}
-                placeholder={
-                  "stun:stun.l.google.com:19302\nturn:turn.example.com:3478 user pass"
-                }
-                className="input font-mono"
-              />
-            </Field>
-            <Field
-              label="Channel label prefix (optional)"
-              hint="DataChannel label the agent bridges to local sshd. Defaults to `ssh`."
-            >
-              <input
-                value={values.channelLabel}
-                onChange={(e) => set("channelLabel", e.target.value)}
-                placeholder="ssh"
-                className="input"
-              />
-            </Field>
-          </div>
-        ) : null}
         <Field label="Auth type">
           <div className="flex gap-2">
             {(["key", "password"] as const).map((t) => (

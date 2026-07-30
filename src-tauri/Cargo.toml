@@ -35,15 +35,6 @@ portable-pty = "0.8"
 base64 = "0.22"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio-rustls", "postgres", "mysql", "sqlite", "chrono", "uuid", "json"] }
 chrono = { version = "0.4", features = ["serde"] }
-# WebRTC transport: carries the SSH byte stream over a DataChannel when a
-# device's transport is "webrtc" (see src/webrtc_transport.rs). Heavy build
-# (pulls in DTLS/SCTP/ICE).
-webrtc = "0.11"
-bytes = "1"
-# Signaling transport for the WebRTC handshake (offer/answer/ICE). rustls to
-# match the rest of the app (no native OpenSSL on the signaling path).
-tokio-tungstenite = { version = "0.24", features = ["rustls-tls-webpki-roots"] }
-futures-util = "0.3"
 
 [profile.dev]
 incremental = true
