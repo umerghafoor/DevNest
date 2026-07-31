@@ -16,6 +16,7 @@ use objc::{msg_send, sel, sel_impl};
 /// Enables modern window style with rounded corners and shadow (macOS only).
 /// Uses only public Cocoa APIs (App Store compatible).
 #[tauri::command]
+#[allow(unused_variables)]
 pub fn enable_modern_window_style<R: Runtime>(
     _app: AppHandle<R>,
     window: WebviewWindow<R>,
@@ -73,6 +74,7 @@ pub fn enable_modern_window_style<R: Runtime>(
 
 /// Repositions the traffic light buttons only (e.g. after a fullscreen toggle).
 #[tauri::command]
+#[allow(unused_variables)]
 pub fn reposition_traffic_lights<R: Runtime>(
     _app: AppHandle<R>,
     window: WebviewWindow<R>,
