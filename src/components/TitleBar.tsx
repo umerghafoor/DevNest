@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { enableMacModernWindowStyle } from "../lib/mac-window-style";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
 import { useRecentsStore } from "../store/recents-store";
@@ -606,6 +607,10 @@ export function TitleBar() {
   const addWorkspace = useAppStore((s) => s.addWorkspace);
 
   const isMac = navigator.platform.toUpperCase().includes("MAC");
+
+  useEffect(() => {
+    if (isMac) void enableMacModernWindowStyle({ cornerRadius: 10 });
+  }, [isMac]);
 
   return (
     /*

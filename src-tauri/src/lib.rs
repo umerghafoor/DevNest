@@ -8,6 +8,7 @@ mod github;
 mod http_client;
 mod local_fs;
 mod log_stream;
+mod mac_rounded_corners;
 mod metrics;
 mod ngrok;
 mod secrets;
@@ -245,6 +246,8 @@ pub fn run() {
             systemd::systemd_action,
             systemd::systemd_write_unit,
             systemd::systemd_delete_unit,
+            mac_rounded_corners::enable_modern_window_style,
+            mac_rounded_corners::reposition_traffic_lights,
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");
