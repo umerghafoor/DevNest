@@ -609,7 +609,13 @@ export function TitleBar() {
   const isMac = navigator.platform.toUpperCase().includes("MAC");
 
   useEffect(() => {
-    if (isMac) void enableMacModernWindowStyle({ cornerRadius: 10 });
+    if (isMac) {
+      void enableMacModernWindowStyle({
+        cornerRadius: 10,
+        offsetX: -4,
+        offsetY: -8,
+      });
+    }
   }, [isMac]);
 
   return (
@@ -628,7 +634,7 @@ export function TitleBar() {
         <div
           data-tauri-drag-region
           className="shrink-0"
-          style={{ width: 72 }}
+          style={{ width: 88 }}
         />
       )}
 
