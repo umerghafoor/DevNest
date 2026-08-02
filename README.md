@@ -61,6 +61,14 @@ Pushes to `main` automatically create a GitHub Release with installables for:
 - Windows (bundled desktop artifacts)
 - Android (`.apk` debug build)
 
+macOS builds are **not code-signed or notarized** (that requires a paid Apple
+Developer account). Gatekeeper will refuse to open them with a "damaged" or
+"can't be opened" dialog. After downloading, either:
+
+- Right-click the app in Finder → **Open** → confirm in the dialog (instead
+  of double-clicking), or
+- Run once in Terminal: `xattr -cr /Applications/DevNest.app`
+
 ## Layout
 
 ```text

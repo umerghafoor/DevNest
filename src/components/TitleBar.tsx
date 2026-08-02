@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { enableMacModernWindowStyle } from "../lib/mac-window-style";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
 import { useRecentsStore } from "../store/recents-store";
@@ -607,6 +608,16 @@ export function TitleBar() {
 
   const isMac = navigator.platform.toUpperCase().includes("MAC");
 
+  useEffect(() => {
+    if (isMac) {
+      void enableMacModernWindowStyle({
+        cornerRadius: 10,
+        offsetX: -4,
+        offsetY: -8,
+      });
+    }
+  }, [isMac]);
+
   return (
     /*
      * data-tauri-drag-region on the outer element makes the whole bar
@@ -623,7 +634,7 @@ export function TitleBar() {
         <div
           data-tauri-drag-region
           className="shrink-0"
-          style={{ width: 72 }}
+          style={{ width: 88 }}
         />
       )}
 
