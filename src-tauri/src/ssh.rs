@@ -193,6 +193,19 @@ impl SessionPool {
         self.inner.lock().get(id).cloned()
     }
 
+    /// Like [`get`](Self::get), but connects on demand instead of failing
+    /// when the device has no pooled session yet — e.g. the first panel
+    /// opened for a device (Tailscale, Docker, systemd, ...) shouldn't
+    /// require the user to have opened a Terminal for it first.
+    pub fn get_or_connect(&self, device: &Device) -> AppResult<Arc<Mutex<SshSession>>> {
+        if let Some(sess) = self.get(&device.id) {
+            return Ok(sess);
+        }
+        self.connect(device)?;
+        self.get(&device.id)
+            .ok_or_else(|| AppError::Ssh("device not connected".into()))
+    }
+
     /// Actively probe the session by opening a channel and running `:`.
     /// Returns true if the probe succeeds; on any failure the session is
     /// dropped from the pool so the next status call reflects reality.
@@ -235,9 +248,7 @@ pub fn run_command_no_sudo(
     if device.is_localhost {
         run_local(&raw, None)
     } else {
-        let sess = pool
-            .get(&device.id)
-            .ok_or_else(|| AppError::Ssh("device not connected".into()))?;
+        let sess = pool.get_or_connect(device)?;
         let mut guard = sess.lock();
         guard.run_with_stdin(&raw, None)
     }
@@ -268,9 +279,7 @@ pub fn run_command(pool: &SessionPool, device: &Device, cmd: &str) -> AppResult<
     let out = if device.is_localhost {
         run_local(&final_cmd, stdin.as_deref())?
     } else {
-        let sess = pool
-            .get(&device.id)
-            .ok_or_else(|| AppError::Ssh("device not connected".into()))?;
+        let sess = pool.get_or_connect(device)?;
         let mut guard = sess.lock();
         guard.run_with_stdin(&final_cmd, stdin.as_deref())?
     };
