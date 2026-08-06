@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useRef } from "react";
+import { emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { useAppStore } from "../store/app-store";
+import {
+  collectPanes,
+  findPaneInTree,
+  syncAppStoreFromStorage,
+  useAppStore,
+} from "../store/app-store";
 import { PanelContent, PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
 import {
   getFloatingPaneIdFromLocation,
   getFloatingPaneWorkspaceIdFromLocation,
+  WORKSPACE_SYNC_EVENT,
 } from "../lib/pane-window";
 
 export function FloatingPaneWindow() {
@@ -19,6 +26,44 @@ export function FloatingPaneWindow() {
   );
   const pane = workspace?.floatingPanes.find((p) => p.id === paneId) ?? null;
 
+  const destroyWindow = () => {
+    allowCloseRef.current = true;
+    void windowHandle.destroy();
+  };
+
+  const closeDetachedPane = () => {
+    if (!paneId || !workspaceId) return;
+    const state = useAppStore.getState();
+    state.closeFloatingPane(workspaceId, paneId);
+    void emitTo("main", WORKSPACE_SYNC_EVENT);
+    destroyWindow();
+  };
+
+  const resolveDockTarget = () => {
+    if (!paneId || !workspace) {
+      return { targetPaneId: paneId ?? "", position: "center" as const };
+    }
+    if (!workspace.paneRoot) {
+      return { targetPaneId: paneId, position: "center" as const };
+    }
+    const activeTreePane = workspace.activePaneId
+      ? findPaneInTree(workspace.paneRoot, workspace.activePaneId)
+      : undefined;
+    const fallbackTreePane = collectPanes(workspace.paneRoot)[0];
+    const targetPaneId = activeTreePane?.id ?? fallbackTreePane?.id ?? paneId;
+    return { targetPaneId, position: "right" as const };
+  };
+
+  useEffect(() => {
+    if (pane) return;
+    const id = window.setInterval(() => {
+      syncAppStoreFromStorage();
+    }, 150);
+    return () => {
+      window.clearInterval(id);
+    };
+  }, [pane]);
+
   useEffect(() => {
     if (!paneId || !workspaceId) return;
     let unlisten: (() => void) | null = null;
@@ -26,12 +71,7 @@ export function FloatingPaneWindow() {
       .onCloseRequested((event) => {
         if (allowCloseRef.current) return;
         event.preventDefault();
-        const state = useAppStore.getState();
-        const ws = state.workspaces.find((w) => w.id === workspaceId) ?? null;
-        const targetPaneId = ws?.activePaneId ?? paneId;
-        allowCloseRef.current = true;
-        state.dockPane(workspaceId, paneId, targetPaneId, "center");
-        void windowHandle.close();
+        closeDetachedPane();
       })
       .then((fn) => {
         unlisten = fn;
@@ -48,18 +88,17 @@ export function FloatingPaneWindow() {
       return;
     }
     if (!sawPaneRef.current) return;
-    allowCloseRef.current = true;
-    void windowHandle.close();
+    destroyWindow();
   }, [pane, paneId, workspaceId, windowHandle]);
 
   const dockBack = () => {
     if (!paneId || !workspaceId) return;
     const state = useAppStore.getState();
-    const ws = state.workspaces.find((w) => w.id === workspaceId) ?? null;
-    const targetPaneId = ws?.activePaneId ?? paneId;
+    const { targetPaneId, position } = resolveDockTarget();
     allowCloseRef.current = true;
-    state.dockPane(workspaceId, paneId, targetPaneId, "center");
-    void windowHandle.close();
+    state.dockPane(workspaceId, paneId, targetPaneId, position);
+    void emitTo("main", WORKSPACE_SYNC_EVENT);
+    destroyWindow();
   };
 
   if (!paneId || !workspaceId) {
@@ -80,22 +119,24 @@ export function FloatingPaneWindow() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-(--color-bg) text-(--color-fg)">
-      <div className="flex h-9 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-2 text-xs select-none">
+      <div
+        data-tauri-drag-region
+        className="flex h-9 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-2 text-xs select-none"
+      >
         <span className="opacity-40 text-[10px]">{PANEL_ICONS[pane.panel]}</span>
         <span className="font-medium">{PANEL_LABELS[pane.panel]}</span>
         <span className="ml-2 text-(--color-fg-muted)">{workspace?.name ?? "Floating pane"}</span>
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={dockBack}
+            onMouseDown={(e) => e.stopPropagation()}
             className="rounded border border-(--color-accent) px-2 py-0.5 text-(--color-accent) hover:bg-(--color-accent) hover:text-white"
           >
             Dock
           </button>
           <button
-            onClick={() => {
-              allowCloseRef.current = true;
-              void windowHandle.close();
-            }}
+            onClick={closeDetachedPane}
+            onMouseDown={(e) => e.stopPropagation()}
             className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
           >
             Close

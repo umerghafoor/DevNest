@@ -286,6 +286,7 @@ interface AppState {
   updateSplitRatio: (splitId: string, ratio: number) => void;
   updatePaneDevice: (paneId: string, deviceId: string) => void;
   detachPane: (workspaceId: string, paneId: string) => void;
+  closeFloatingPane: (workspaceId: string, paneId: string) => void;
   dockPane: (
     workspaceId: string,
     paneId: string,
@@ -325,6 +326,16 @@ function normalizePersistedShape(shape: PersistedShape): PersistedShape {
     activeWorkspaceId: shape.activeWorkspaceId,
     workspaces: shape.workspaces.map((workspace) => normalizeWorkspace(workspace)),
   };
+}
+
+export function syncAppStoreFromStorage(): void {
+  const next = loadPersisted();
+  if (!next) return;
+  const normalized = normalizePersistedShape(next);
+  useAppStore.setState({
+    workspaces: normalized.workspaces,
+    activeWorkspaceId: normalized.activeWorkspaceId,
+  });
 }
 
 function persistWorkspaces(s: {
@@ -571,6 +582,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       }),
     ),
 
+  closeFloatingPane: (workspaceId, paneId) =>
+    set((s) =>
+      patchWorkspaceById(s, workspaceId, (w) => {
+        const exists = w.floatingPanes.some((p) => p.id === paneId);
+        if (!exists) return {};
+        return {
+          floatingPanes: w.floatingPanes.filter((p) => p.id !== paneId),
+        };
+      }),
+    ),
+
   dockPane: (workspaceId, paneId, targetPaneId, position) =>
     set((s) =>
       patchWorkspaceById(s, workspaceId, (w) => {
@@ -624,13 +646,7 @@ useAppStore.subscribe((s) => {
 if (typeof window !== "undefined") {
   window.addEventListener("storage", (event) => {
     if (event.key !== PERSIST_KEY) return;
-    const next = loadPersisted();
-    if (!next) return;
-    const normalized = normalizePersistedShape(next);
-    useAppStore.setState({
-      workspaces: normalized.workspaces,
-      activeWorkspaceId: normalized.activeWorkspaceId,
-    });
+    syncAppStoreFromStorage();
   });
 }
 

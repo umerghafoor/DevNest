@@ -2,6 +2,7 @@ import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 
 export const FLOATING_PANE_QUERY = "floatingPane";
 export const FLOATING_WORKSPACE_QUERY = "workspace";
+export const WORKSPACE_SYNC_EVENT = "devnest://workspace-sync";
 
 export function floatingPaneWindowLabel(paneId: string): string {
   return `devnest-floating-${paneId}`;
@@ -29,24 +30,16 @@ export async function openFloatingPaneWindow(
     return true;
   }
 
-  const window = new WebviewWindow(label, {
-    url: `/app.html?${FLOATING_PANE_QUERY}=${encodeURIComponent(paneId)}&${FLOATING_WORKSPACE_QUERY}=${encodeURIComponent(workspaceId)}`,
-    title: "DevNest Pane",
-    width: 1000,
-    height: 720,
-    resizable: true,
-    decorations: false,
-    transparent: false,
-  });
-
-  return await new Promise<boolean>((resolve) => {
-    let settled = false;
-
-    const finish = (value: boolean) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
+  try {
+    const window = new WebviewWindow(label, {
+      url: `/app.html?${FLOATING_PANE_QUERY}=${encodeURIComponent(paneId)}&${FLOATING_WORKSPACE_QUERY}=${encodeURIComponent(workspaceId)}`,
+      title: "DevNest Pane",
+      width: 1000,
+      height: 720,
+      resizable: true,
+      decorations: false,
+      transparent: false,
+    });
 
     void window.once("tauri://created", async () => {
       try {
@@ -54,11 +47,14 @@ export async function openFloatingPaneWindow(
       } catch {
         // Best-effort focus only.
       }
-      finish(true);
     });
 
     void window.once("tauri://error", () => {
-      finish(false);
+      console.error("Failed to create detached pane window", label);
     });
-  });
+
+    return true;
+  } catch {
+    return false;
+  }
 }

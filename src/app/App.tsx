@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "../components/Sidebar";
 import { MainPanel } from "../components/MainPanel";
 import { StatusBar } from "../components/StatusBar";
@@ -15,6 +16,7 @@ import {
   selectActiveWorkspace,
   findPaneInTree,
   collectPanes,
+  syncAppStoreFromStorage,
 } from "../store/app-store";
 import { usePaneSettingsStore } from "../store/pane-settings-store";
 import { terminalRegistry } from "../lib/terminal-registry";
@@ -22,6 +24,7 @@ import { useThemeStore } from "../store/theme-store";
 import { useUiStore } from "../store/ui-store";
 import { useColorsStore } from "../store/colors-store";
 import { getFloatingPaneIdFromLocation } from "../lib/pane-window";
+import { WORKSPACE_SYNC_EVENT } from "../lib/pane-window";
 import {
   useShortcutsStore,
   matchesBinding,
@@ -81,6 +84,18 @@ export function App() {
   useEffect(() => {
     reapplyColors();
   }, [themeValue, reapplyColors]);
+
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void listen(WORKSPACE_SYNC_EVENT, () => {
+      syncAppStoreFromStorage();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   // Global keyboard shortcuts driven by the customizable shortcut registry.
   useEffect(() => {
