@@ -1,7 +1,12 @@
 import { useRef, useCallback, lazy, Suspense, useState } from "react";
 import { iconForDeviceId } from "../lib/device-icon";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
-import type { PaneNode, SplitDirection, Pane, DockPosition } from "../store/app-store";
+import type {
+  PaneNode,
+  SplitDirection,
+  Pane,
+  DockPosition,
+} from "../store/app-store";
 import { terminalRegistry } from "../lib/terminal-registry";
 import { openFloatingPaneWindow } from "../lib/pane-window";
 import { DockerPanel } from "../panels/DockerPanel";
@@ -375,7 +380,13 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
   );
 }
 
-function PaneHeader({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
+function PaneHeader({
+  pane,
+  workspaceId,
+}: {
+  pane: Pane;
+  workspaceId: string;
+}) {
   const ws = useAppStore(selectActiveWorkspace);
   const setActivePane = useAppStore((s) => s.setActivePane);
   const closePane = useAppStore((s) => s.closePane);
@@ -496,7 +507,9 @@ function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
       onDragOver={(e) => {
         if (!e.dataTransfer.types.includes(PANE_DRAG_MIME)) return;
         e.preventDefault();
-        setDropPosition(getDockPosition(e, e.currentTarget.getBoundingClientRect()));
+        setDropPosition(
+          getDockPosition(e, e.currentTarget.getBoundingClientRect()),
+        );
       }}
       onDragLeave={finishDrop}
       onDrop={(e) => {
@@ -507,7 +520,12 @@ function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
         try {
           const payload = JSON.parse(raw) as { paneId?: string };
           if (!payload.paneId) return;
-          dockPane(workspaceId, payload.paneId, pane.id, dropPosition ?? "center");
+          dockPane(
+            workspaceId,
+            payload.paneId,
+            pane.id,
+            dropPosition ?? "center",
+          );
         } catch {
           // ignore malformed drag payloads
         }

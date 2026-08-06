@@ -22,7 +22,9 @@ export function FloatingPaneWindow() {
   const windowHandle = useMemo(() => getCurrentWindow(), []);
 
   const workspace = useAppStore((s) =>
-    workspaceId ? s.workspaces.find((w) => w.id === workspaceId) ?? null : null,
+    workspaceId
+      ? (s.workspaces.find((w) => w.id === workspaceId) ?? null)
+      : null,
   );
   const pane = workspace?.floatingPanes.find((p) => p.id === paneId) ?? null;
 
@@ -123,9 +125,13 @@ export function FloatingPaneWindow() {
         data-tauri-drag-region
         className="flex h-9 shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-2 text-xs select-none"
       >
-        <span className="opacity-40 text-[10px]">{PANEL_ICONS[pane.panel]}</span>
+        <span className="opacity-40 text-[10px]">
+          {PANEL_ICONS[pane.panel]}
+        </span>
         <span className="font-medium">{PANEL_LABELS[pane.panel]}</span>
-        <span className="ml-2 text-(--color-fg-muted)">{workspace?.name ?? "Floating pane"}</span>
+        <span className="ml-2 text-(--color-fg-muted)">
+          {workspace?.name ?? "Floating pane"}
+        </span>
         <div className="ml-auto flex items-center gap-1">
           <button
             onClick={dockBack}

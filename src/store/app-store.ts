@@ -194,7 +194,9 @@ function removeFromWorkspace(
   const floatingIdx = workspace.floatingPanes.findIndex((p) => p.id === paneId);
   if (floatingIdx !== -1) {
     const pane = workspace.floatingPanes[floatingIdx];
-    const floatingPanes = workspace.floatingPanes.filter((p) => p.id !== paneId);
+    const floatingPanes = workspace.floatingPanes.filter(
+      (p) => p.id !== paneId,
+    );
     return {
       workspace: { ...workspace, floatingPanes },
       pane,
@@ -224,7 +226,11 @@ function insertIntoWorkspace(
   if (position === "center") {
     return {
       ...workspace,
-      paneRoot: replaceLeaf(workspace.paneRoot, targetPaneId, makeLeaf(sourcePane)),
+      paneRoot: replaceLeaf(
+        workspace.paneRoot,
+        targetPaneId,
+        makeLeaf(sourcePane),
+      ),
       activePaneId: sourcePane.id,
     };
   }
@@ -324,7 +330,9 @@ function loadPersisted(): PersistedShape | null {
 function normalizePersistedShape(shape: PersistedShape): PersistedShape {
   return {
     activeWorkspaceId: shape.activeWorkspaceId,
-    workspaces: shape.workspaces.map((workspace) => normalizeWorkspace(workspace)),
+    workspaces: shape.workspaces.map((workspace) =>
+      normalizeWorkspace(workspace),
+    ),
   };
 }
 
@@ -356,7 +364,9 @@ function persistWorkspaces(s: {
 }
 
 const persisted = loadPersisted();
-const normalizedPersisted = persisted ? normalizePersistedShape(persisted) : null;
+const normalizedPersisted = persisted
+  ? normalizePersistedShape(persisted)
+  : null;
 const initial = normalizedPersisted ? null : defaultWorkspace();
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -602,7 +612,9 @@ export const useAppStore = create<AppState>((set, get) => ({
           null;
         if (!sourcePane) return {};
         if (paneId === targetPaneId && w.paneRoot) return {};
-        const targetExists = !!(w.paneRoot && findPaneInTree(w.paneRoot, targetPaneId));
+        const targetExists = !!(
+          w.paneRoot && findPaneInTree(w.paneRoot, targetPaneId)
+        );
         if (paneId === targetPaneId && !w.paneRoot) {
           const removed = removeFromWorkspace(w, paneId);
           return {
@@ -623,7 +635,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           };
         }
 
-        return insertIntoWorkspace(nextWorkspace, targetPaneId, sourcePane, position);
+        return insertIntoWorkspace(
+          nextWorkspace,
+          targetPaneId,
+          sourcePane,
+          position,
+        );
       }),
     ),
 }));

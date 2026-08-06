@@ -15,7 +15,9 @@ export function getFloatingPaneIdFromLocation(): string | null {
 
 export function getFloatingPaneWorkspaceIdFromLocation(): string | null {
   if (typeof window === "undefined") return null;
-  return new URLSearchParams(window.location.search).get(FLOATING_WORKSPACE_QUERY);
+  return new URLSearchParams(window.location.search).get(
+    FLOATING_WORKSPACE_QUERY,
+  );
 }
 
 export async function openFloatingPaneWindow(
