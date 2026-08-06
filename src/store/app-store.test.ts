@@ -12,6 +12,7 @@ describe("app-store — panes", () => {
       id: "w1",
       name: "Workspace 1",
       paneRoot: null,
+      floatingPanes: [],
       activePaneId: null,
     };
     useAppStore.setState({
@@ -91,6 +92,7 @@ describe("app-store — workspaces", () => {
       id: "w1",
       name: "Workspace 1",
       paneRoot: null,
+      floatingPanes: [],
       activePaneId: null,
     };
     useAppStore.setState({

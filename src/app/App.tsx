@@ -7,6 +7,7 @@ import { SudoPasswordDialog } from "../components/SudoPasswordDialog";
 import { ToastContainer } from "../components/Toast";
 import { ConfirmDialogHost } from "../components/ConfirmDialog";
 import { CommandPalette } from "../components/CommandPalette";
+import { FloatingPaneWindow } from "../components/FloatingPaneWindow";
 import { usePaletteStore } from "../store/palette-store";
 import { api } from "../lib/api";
 import {
@@ -20,6 +21,7 @@ import { terminalRegistry } from "../lib/terminal-registry";
 import { useThemeStore } from "../store/theme-store";
 import { useUiStore } from "../store/ui-store";
 import { useColorsStore } from "../store/colors-store";
+import { getFloatingPaneIdFromLocation } from "../lib/pane-window";
 import {
   useShortcutsStore,
   matchesBinding,
@@ -28,6 +30,7 @@ import {
 import { useDeviceHeartbeat } from "./use-device-heartbeat";
 
 export function App() {
+  const floatingPaneId = getFloatingPaneIdFromLocation();
   const setDevices = useAppStore((s) => s.setDevices);
   const initTheme = useThemeStore((s) => s.init);
   const initUi = useUiStore((s) => s.init);
@@ -62,6 +65,7 @@ export function App() {
     for (const w of useAppStore.getState().workspaces) {
       if (!w.paneRoot) continue;
       for (const p of collectPanes(w.paneRoot)) live.add(p.id);
+      for (const p of w.floatingPanes) live.add(p.id);
     }
     const stored = usePaneSettingsStore.getState().byPaneId;
     for (const id of Object.keys(stored)) {
@@ -79,6 +83,7 @@ export function App() {
 
   // Global keyboard shortcuts driven by the customizable shortcut registry.
   useEffect(() => {
+    if (floatingPaneId) return;
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       const inEditable =
@@ -155,6 +160,10 @@ export function App() {
     getBinding,
     togglePalette,
   ]);
+
+  if (floatingPaneId) {
+    return <FloatingPaneWindow />;
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col bg-(--color-bg) text-(--color-fg) overflow-hidden">
