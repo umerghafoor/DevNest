@@ -43,7 +43,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
   const inputLineRef = useRef<string>("");
 
   const [connectState, setConnectState] = useState<ConnectState>("connecting");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [retryNonce, setRetryNonce] = useState(0);
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [lastCmd, setLastCmd] = useState<string | null>(null);
@@ -53,7 +53,6 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
 
   useEffect(() => {
     setConnectState("connecting");
-    setErrorMsg(null);
 
     const saved = loadLastCmd(sessionKey);
     setLastCmd(saved ?? null);
@@ -251,10 +250,9 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         });
 
         setConnectState("connected");
-      } catch (e) {
+      } catch {
         if (!cancelled) {
           setConnectState("error");
-          setErrorMsg(e instanceof Error ? e.message : String(e));
         }
       }
     };
@@ -274,7 +272,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         term.dispose();
       }
     };
-  }, [sessionKey, deviceId]);
+  }, [sessionKey, deviceId, retryNonce]);
 
   const termIdForRerun = terminalRegistry.get(sessionKey)?.termId ?? null;
 
@@ -403,14 +401,14 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
 
         {connectState === "error" && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-(--color-bg) px-6 text-center">
-            <span className="text-sm text-(--color-error)">
-              Could not open terminal
-            </span>
-            {errorMsg && (
-              <span className="text-xs text-(--color-fg-muted) font-mono max-w-sm">
-                {errorMsg}
-              </span>
-            )}
+            <button
+              onClick={() => {
+                setRetryNonce((n) => n + 1);
+              }}
+              className="rounded border border-(--color-accent) px-3 py-1.5 text-xs text-(--color-accent) hover:bg-(--color-accent) hover:text-white"
+            >
+              Retry
+            </button>
           </div>
         )}
       </div>
