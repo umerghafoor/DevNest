@@ -564,7 +564,7 @@ function AboutTab() {
         </div>
         <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-(--color-fg-muted)">
           <div>
-            Version <span className="text-(--color-fg) font-mono">1.1.1</span>
+            Version <span className="text-(--color-fg) font-mono">1.2.1</span>
           </div>
           <div>
             Engine <span className="text-(--color-fg) font-mono">Tauri 2</span>
