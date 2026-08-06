@@ -11,6 +11,7 @@ export function FloatingPaneWindow() {
   const paneId = getFloatingPaneIdFromLocation();
   const workspaceId = getFloatingPaneWorkspaceIdFromLocation();
   const allowCloseRef = useRef(false);
+  const sawPaneRef = useRef(false);
   const windowHandle = useMemo(() => getCurrentWindow(), []);
 
   const workspace = useAppStore((s) =>
@@ -42,7 +43,11 @@ export function FloatingPaneWindow() {
 
   useEffect(() => {
     if (!paneId || !workspaceId) return;
-    if (pane) return;
+    if (pane) {
+      sawPaneRef.current = true;
+      return;
+    }
+    if (!sawPaneRef.current) return;
     allowCloseRef.current = true;
     void windowHandle.close();
   }, [pane, paneId, workspaceId, windowHandle]);
@@ -68,7 +73,7 @@ export function FloatingPaneWindow() {
   if (!pane) {
     return (
       <div className="flex h-screen items-center justify-center bg-(--color-bg) text-xs text-(--color-fg-muted)">
-        Returning pane to workspace…
+        Opening detached pane…
       </div>
     );
   }

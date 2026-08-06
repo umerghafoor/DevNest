@@ -63,8 +63,9 @@ export function App() {
     // an unbounded localStorage growth otherwise.
     const live = new Set<string>();
     for (const w of useAppStore.getState().workspaces) {
-      if (!w.paneRoot) continue;
-      for (const p of collectPanes(w.paneRoot)) live.add(p.id);
+      if (w.paneRoot) {
+        for (const p of collectPanes(w.paneRoot)) live.add(p.id);
+      }
       for (const p of w.floatingPanes) live.add(p.id);
     }
     const stored = usePaneSettingsStore.getState().byPaneId;

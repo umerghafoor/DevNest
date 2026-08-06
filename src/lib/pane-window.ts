@@ -20,16 +20,16 @@ export function getFloatingPaneWorkspaceIdFromLocation(): string | null {
 export async function openFloatingPaneWindow(
   paneId: string,
   workspaceId: string,
-): Promise<void> {
+): Promise<boolean> {
   const label = floatingPaneWindowLabel(paneId);
   const existing = await WebviewWindow.getByLabel(label);
   if (existing) {
     await existing.show();
     await existing.setFocus();
-    return;
+    return true;
   }
 
-  new WebviewWindow(label, {
+  const window = new WebviewWindow(label, {
     url: `/app.html?${FLOATING_PANE_QUERY}=${encodeURIComponent(paneId)}&${FLOATING_WORKSPACE_QUERY}=${encodeURIComponent(workspaceId)}`,
     title: "DevNest Pane",
     width: 1000,
@@ -37,5 +37,28 @@ export async function openFloatingPaneWindow(
     resizable: true,
     decorations: false,
     transparent: false,
+  });
+
+  return await new Promise<boolean>((resolve) => {
+    let settled = false;
+
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+
+    void window.once("tauri://created", async () => {
+      try {
+        await window.setFocus();
+      } catch {
+        // Best-effort focus only.
+      }
+      finish(true);
+    });
+
+    void window.once("tauri://error", () => {
+      finish(false);
+    });
   });
 }

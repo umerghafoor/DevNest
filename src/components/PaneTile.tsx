@@ -257,6 +257,21 @@ const statusIconColor: Record<string, string> = {
 
 const PANE_DRAG_MIME = "application/x-devnest-pane";
 
+function dropIndicatorClass(position: DockPosition): string {
+  switch (position) {
+    case "left":
+      return "left-0 top-0 h-full w-1/2 border-r border-(--color-accent)";
+    case "right":
+      return "right-0 top-0 h-full w-1/2 border-l border-(--color-accent)";
+    case "top":
+      return "left-0 top-0 h-1/2 w-full border-b border-(--color-accent)";
+    case "bottom":
+      return "bottom-0 left-0 h-1/2 w-full border-t border-(--color-accent)";
+    case "center":
+      return "inset-[12%] border border-(--color-accent)";
+  }
+}
+
 function getDockPosition(
   event: React.DragEvent,
   rect: ReturnType<HTMLElement["getBoundingClientRect"]>,
@@ -433,10 +448,12 @@ function PaneHeader({ pane, workspaceId }: { pane: Pane; workspaceId: string }) 
         </button>
         <button
           title="Detach pane"
-          onClick={(e) => {
+          onClick={async (e) => {
             e.stopPropagation();
-            detachPane(workspaceId, pane.id);
-            void openFloatingPaneWindow(pane.id, workspaceId);
+            const opened = await openFloatingPaneWindow(pane.id, workspaceId);
+            if (opened) {
+              detachPane(workspaceId, pane.id);
+            }
           }}
           className="flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
         >
@@ -497,7 +514,12 @@ function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
       }}
     >
       {dropPosition && (
-        <div className="pointer-events-none absolute inset-0 z-20 border-2 border-(--color-accent)/70 bg-(--color-accent)/8" />
+        <>
+          <div className="pointer-events-none absolute inset-0 z-20 bg-(--color-accent)/6" />
+          <div
+            className={`pointer-events-none absolute z-[21] bg-(--color-accent)/16 shadow-[inset_0_0_0_2px_var(--color-accent)] ${dropIndicatorClass(dropPosition)}`}
+          />
+        </>
       )}
       <PaneHeader pane={pane} workspaceId={workspaceId} />
       <div className="min-h-0 flex-1 overflow-hidden" key={pane.instanceId}>
