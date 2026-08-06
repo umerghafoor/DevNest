@@ -4,12 +4,21 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   desktop:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     name: Build desktop (${{ matrix.platform.name }})
     strategy:
       fail-fast: false
@@ -76,6 +85,7 @@ jobs:
         run: |
           VERSION=$(node -p "require('./package.json').version")
           TAG="v$VERSION"
+          SHORT_SHA="${GITHUB_SHA::7}"
 
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
