@@ -358,7 +358,10 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       )}
 
       {bannerVisible && lastCmd && connectState === "connected" && (
-        <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs">
+        <div
+          className="absolute left-0 right-0 z-10 flex items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs shadow-sm"
+          style={{ top: searchOpen ? "2.25rem" : "0" }}
+        >
           <span className="text-(--color-fg-muted)">Last command:</span>
           <code className="flex-1 truncate font-mono text-(--color-fg)">
             {lastCmd}
