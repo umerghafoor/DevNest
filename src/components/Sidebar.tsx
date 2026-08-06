@@ -7,6 +7,7 @@ import { ThemeToggle } from "./ThemeToggle";
 import { toast } from "./Toast";
 import { confirm } from "./ConfirmDialog";
 import { iconForDeviceId } from "../lib/device-icon";
+import { useUiStore } from "../store/ui-store";
 
 type Status = ConnectionStatus | "connecting" | "error";
 
@@ -64,7 +65,8 @@ export function Sidebar() {
   const [dialogOpen, setDialogOpen] = useState(false);
   /** Non-null while the device-dialog is open in "edit" mode. */
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useUiStore((s) => s.sidebarCollapsed);
+  const setCollapsed = useUiStore((s) => s.setSidebarCollapsed);
   const [hoverExpanded, setHoverExpanded] = useState(false);
   const hoverTimerRef = useRef<number | null>(null);
 
@@ -195,7 +197,7 @@ export function Sidebar() {
 
               <button
                 onClick={() => {
-                  setCollapsed((c) => !c);
+                  setCollapsed(!collapsed);
                   setHoverExpanded(false);
                 }}
                 title="Collapse sidebar"
