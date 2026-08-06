@@ -1,5 +1,7 @@
 # DevNest
 
+Version 1.2.1 · Website: [devnest.optikflows.com](https://devnest.optikflows.com)
+
 A unified desktop control panel for developers and self-hosters. Manage Docker
 containers, Tailscale nodes, SSH connections, system services, logs, files, and
 more — all from one local-first desktop app built with Tauri 2.
