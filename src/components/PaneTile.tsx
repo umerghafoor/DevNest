@@ -1,8 +1,14 @@
 import { useRef, useCallback, lazy, Suspense, useState } from "react";
 import { iconForDeviceId } from "../lib/device-icon";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
-import type { PaneNode, SplitDirection, Pane } from "../store/app-store";
+import type {
+  PaneNode,
+  SplitDirection,
+  Pane,
+  DockPosition,
+} from "../store/app-store";
 import { terminalRegistry } from "../lib/terminal-registry";
+import { openFloatingPaneWindow } from "../lib/pane-window";
 import { DockerPanel } from "../panels/DockerPanel";
 import { MetricsPanel } from "../panels/MetricsPanel";
 import { TerminalPanel } from "../panels/TerminalPanel";
@@ -171,7 +177,7 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   app: ["settings"],
 };
 
-function PanelContent({ pane }: { pane: Pane }) {
+export function PanelContent({ pane }: { pane: Pane }) {
   switch (pane.panel) {
     case "docker":
       return <DockerPanel deviceId={pane.deviceId} />;
@@ -253,6 +259,37 @@ const statusIconColor: Record<string, string> = {
   offline: "text-(--color-fg-muted)",
   error: "text-(--color-error)",
 };
+
+const PANE_DRAG_MIME = "application/x-devnest-pane";
+
+function dropIndicatorClass(position: DockPosition): string {
+  switch (position) {
+    case "left":
+      return "left-0 top-0 h-full w-1/2 border-r border-(--color-accent)";
+    case "right":
+      return "right-0 top-0 h-full w-1/2 border-l border-(--color-accent)";
+    case "top":
+      return "left-0 top-0 h-1/2 w-full border-b border-(--color-accent)";
+    case "bottom":
+      return "bottom-0 left-0 h-1/2 w-full border-t border-(--color-accent)";
+    case "center":
+      return "inset-[12%] border border-(--color-accent)";
+  }
+}
+
+function getDockPosition(
+  event: React.DragEvent,
+  rect: ReturnType<HTMLElement["getBoundingClientRect"]>,
+): DockPosition {
+  const x = (event.clientX - rect.left) / rect.width;
+  const y = (event.clientY - rect.top) / rect.height;
+  const threshold = 0.25;
+  if (x < threshold) return "left";
+  if (x > 1 - threshold) return "right";
+  if (y < threshold) return "top";
+  if (y > 1 - threshold) return "bottom";
+  return "center";
+}
 
 function DeviceSwitcher({ pane }: { pane: Pane }) {
   const devices = useAppStore((s) => s.devices);
@@ -343,11 +380,18 @@ function DeviceSwitcher({ pane }: { pane: Pane }) {
   );
 }
 
-function PaneHeader({ pane }: { pane: Pane }) {
+function PaneHeader({
+  pane,
+  workspaceId,
+}: {
+  pane: Pane;
+  workspaceId: string;
+}) {
   const ws = useAppStore(selectActiveWorkspace);
   const setActivePane = useAppStore((s) => s.setActivePane);
   const closePane = useAppStore((s) => s.closePane);
   const splitPane = useAppStore((s) => s.splitPane);
+  const detachPane = useAppStore((s) => s.detachPane);
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
 
   const isActive = pane.id === ws.activePaneId;
@@ -364,8 +408,16 @@ function PaneHeader({ pane }: { pane: Pane }) {
 
   return (
     <div
+      draggable
       className="relative flex h-8 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 text-xs select-none cursor-default"
       onMouseDown={() => setActivePane(pane.id)}
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData(
+          PANE_DRAG_MIME,
+          JSON.stringify({ paneId: pane.id, workspaceId }),
+        );
+      }}
     >
       {isActive && (
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-(--color-accent)" />
@@ -406,6 +458,19 @@ function PaneHeader({ pane }: { pane: Pane }) {
           <SplitVIcon />
         </button>
         <button
+          title="Detach pane"
+          onClick={async (e) => {
+            e.stopPropagation();
+            const opened = await openFloatingPaneWindow(pane.id, workspaceId);
+            if (opened) {
+              detachPane(workspaceId, pane.id);
+            }
+          }}
+          className="flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        >
+          ↗
+        </button>
+        <button
           title="Close pane"
           onClick={(e) => {
             e.stopPropagation();
@@ -423,10 +488,14 @@ function PaneHeader({ pane }: { pane: Pane }) {
   );
 }
 
-function LeafPane({ pane }: { pane: Pane }) {
+function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
   const ws = useAppStore(selectActiveWorkspace);
   const setActivePane = useAppStore((s) => s.setActivePane);
+  const dockPane = useAppStore((s) => s.dockPane);
   const isActive = pane.id === ws.activePaneId;
+  const [dropPosition, setDropPosition] = useState<DockPosition | null>(null);
+
+  const finishDrop = useCallback(() => setDropPosition(null), []);
 
   return (
     <div
@@ -435,8 +504,42 @@ function LeafPane({ pane }: { pane: Pane }) {
         isActive ? "ring-1 ring-inset ring-(--color-accent)/30" : ""
       }`}
       onMouseDown={() => setActivePane(pane.id)}
+      onDragOver={(e) => {
+        if (!e.dataTransfer.types.includes(PANE_DRAG_MIME)) return;
+        e.preventDefault();
+        setDropPosition(
+          getDockPosition(e, e.currentTarget.getBoundingClientRect()),
+        );
+      }}
+      onDragLeave={finishDrop}
+      onDrop={(e) => {
+        const raw = e.dataTransfer.getData(PANE_DRAG_MIME);
+        finishDrop();
+        if (!raw) return;
+        e.preventDefault();
+        try {
+          const payload = JSON.parse(raw) as { paneId?: string };
+          if (!payload.paneId) return;
+          dockPane(
+            workspaceId,
+            payload.paneId,
+            pane.id,
+            dropPosition ?? "center",
+          );
+        } catch {
+          // ignore malformed drag payloads
+        }
+      }}
     >
-      <PaneHeader pane={pane} />
+      {dropPosition && (
+        <>
+          <div className="pointer-events-none absolute inset-0 z-20 bg-(--color-accent)/6" />
+          <div
+            className={`pointer-events-none absolute z-[21] bg-(--color-accent)/16 shadow-[inset_0_0_0_2px_var(--color-accent)] ${dropIndicatorClass(dropPosition)}`}
+          />
+        </>
+      )}
+      <PaneHeader pane={pane} workspaceId={workspaceId} />
       <div className="min-h-0 flex-1 overflow-hidden" key={pane.instanceId}>
         <PanelContent pane={pane} />
       </div>
@@ -511,8 +614,10 @@ function Divider({
 }
 
 export function PaneTile({ node }: { node: PaneNode }) {
+  const activeWorkspaceId = useAppStore((s) => s.activeWorkspaceId);
+
   if (node.type === "leaf") {
-    return <LeafPane pane={node.pane} />;
+    return <LeafPane pane={node.pane} workspaceId={activeWorkspaceId} />;
   }
 
   const isH = node.direction === "horizontal";

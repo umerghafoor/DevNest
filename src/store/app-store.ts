@@ -39,6 +39,7 @@ export interface Pane {
 // ─── Tiling tree ─────────────────────────────────────────────────────────────
 
 export type SplitDirection = "horizontal" | "vertical";
+export type DockPosition = "left" | "right" | "top" | "bottom" | "center";
 
 export interface SplitNode {
   type: "split";
@@ -62,6 +63,7 @@ export interface Workspace {
   id: string;
   name: string;
   paneRoot: PaneNode | null;
+  floatingPanes: Pane[];
   activePaneId: string | null;
 }
 
@@ -69,6 +71,13 @@ export interface Workspace {
 
 function makeLeaf(pane: Pane): LeafNode {
   return { type: "leaf", pane };
+}
+
+function normalizeWorkspace(workspace: Workspace): Workspace {
+  return {
+    ...workspace,
+    floatingPanes: workspace.floatingPanes ?? [],
+  };
 }
 
 function uid() {
@@ -147,7 +156,100 @@ function defaultWorkspace(name?: string): Workspace {
     id: uid(),
     name: name ?? randomWorkspaceName(),
     paneRoot: makeLeaf(dashboard),
+    floatingPanes: [],
     activePaneId: paneId,
+  };
+}
+
+function collectWorkspacePanes(workspace: Workspace): Pane[] {
+  return [
+    ...(workspace.paneRoot ? collectPanes(workspace.paneRoot) : []),
+    ...workspace.floatingPanes,
+  ];
+}
+
+function removeFromWorkspace(
+  workspace: Workspace,
+  paneId: string,
+): { workspace: Workspace; pane: Pane | null } {
+  if (workspace.paneRoot) {
+    const treePane = findPaneInTree(workspace.paneRoot, paneId);
+    if (treePane) {
+      const nextRoot = removeLeaf(workspace.paneRoot, paneId);
+      const remaining = nextRoot ? collectPanes(nextRoot) : [];
+      return {
+        workspace: {
+          ...workspace,
+          paneRoot: nextRoot,
+          activePaneId:
+            workspace.activePaneId === paneId
+              ? (remaining.at(-1)?.id ?? null)
+              : workspace.activePaneId,
+        },
+        pane: treePane,
+      };
+    }
+  }
+
+  const floatingIdx = workspace.floatingPanes.findIndex((p) => p.id === paneId);
+  if (floatingIdx !== -1) {
+    const pane = workspace.floatingPanes[floatingIdx];
+    const floatingPanes = workspace.floatingPanes.filter(
+      (p) => p.id !== paneId,
+    );
+    return {
+      workspace: { ...workspace, floatingPanes },
+      pane,
+    };
+  }
+
+  return { workspace, pane: null };
+}
+
+function insertIntoWorkspace(
+  workspace: Workspace,
+  targetPaneId: string,
+  sourcePane: Pane,
+  position: DockPosition,
+): Workspace {
+  if (!workspace.paneRoot) {
+    return {
+      ...workspace,
+      paneRoot: makeLeaf(sourcePane),
+      activePaneId: sourcePane.id,
+    };
+  }
+
+  const target = findPaneInTree(workspace.paneRoot, targetPaneId);
+  if (!target) return workspace;
+
+  if (position === "center") {
+    return {
+      ...workspace,
+      paneRoot: replaceLeaf(
+        workspace.paneRoot,
+        targetPaneId,
+        makeLeaf(sourcePane),
+      ),
+      activePaneId: sourcePane.id,
+    };
+  }
+
+  const horizontal = position === "left" || position === "right";
+  const firstIsSource = position === "left" || position === "top";
+  const split: SplitNode = {
+    type: "split",
+    id: uid(),
+    direction: horizontal ? "horizontal" : "vertical",
+    ratio: 0.5,
+    first: firstIsSource ? makeLeaf(sourcePane) : makeLeaf(target),
+    second: firstIsSource ? makeLeaf(target) : makeLeaf(sourcePane),
+  };
+
+  return {
+    ...workspace,
+    paneRoot: replaceLeaf(workspace.paneRoot, targetPaneId, split),
+    activePaneId: sourcePane.id,
   };
 }
 
@@ -189,6 +291,14 @@ interface AppState {
   setActivePane: (paneId: string | null) => void;
   updateSplitRatio: (splitId: string, ratio: number) => void;
   updatePaneDevice: (paneId: string, deviceId: string) => void;
+  detachPane: (workspaceId: string, paneId: string) => void;
+  closeFloatingPane: (workspaceId: string, paneId: string) => void;
+  dockPane: (
+    workspaceId: string,
+    paneId: string,
+    targetPaneId: string,
+    position: DockPosition,
+  ) => void;
 }
 
 const PERSIST_KEY = "devnest.workspaces";
@@ -217,6 +327,25 @@ function loadPersisted(): PersistedShape | null {
   }
 }
 
+function normalizePersistedShape(shape: PersistedShape): PersistedShape {
+  return {
+    activeWorkspaceId: shape.activeWorkspaceId,
+    workspaces: shape.workspaces.map((workspace) =>
+      normalizeWorkspace(workspace),
+    ),
+  };
+}
+
+export function syncAppStoreFromStorage(): void {
+  const next = loadPersisted();
+  if (!next) return;
+  const normalized = normalizePersistedShape(next);
+  useAppStore.setState({
+    workspaces: normalized.workspaces,
+    activeWorkspaceId: normalized.activeWorkspaceId,
+  });
+}
+
 function persistWorkspaces(s: {
   workspaces: Workspace[];
   activeWorkspaceId: string;
@@ -235,15 +364,18 @@ function persistWorkspaces(s: {
 }
 
 const persisted = loadPersisted();
-const initial = persisted ? null : defaultWorkspace();
+const normalizedPersisted = persisted
+  ? normalizePersistedShape(persisted)
+  : null;
+const initial = normalizedPersisted ? null : defaultWorkspace();
 
 export const useAppStore = create<AppState>((set, get) => ({
   devices: [],
   statuses: {},
   activeDeviceId: null,
 
-  workspaces: persisted?.workspaces ?? [initial!],
-  activeWorkspaceId: persisted?.activeWorkspaceId ?? initial!.id,
+  workspaces: normalizedPersisted?.workspaces ?? [initial!],
+  activeWorkspaceId: normalizedPersisted?.activeWorkspaceId ?? initial!.id,
 
   // Proxy getters — read active workspace fields directly
   get paneRoot() {
@@ -284,15 +416,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   removeDevice: (id) =>
     set((s) => {
       const workspaces = s.workspaces.map((w) => {
-        if (!w.paneRoot) return w;
-        let root: PaneNode | null = w.paneRoot;
-        for (const p of collectPanes(root)) {
-          if (p.deviceId === id) root = removeLeaf(root!, p.id);
+        if (!w.paneRoot && w.floatingPanes.length === 0) return w;
+        let nextWorkspace = w;
+        for (const p of collectWorkspacePanes(w)) {
+          if (p.deviceId === id) {
+            nextWorkspace = removeFromWorkspace(nextWorkspace, p.id).workspace;
+          }
         }
-        const remaining = root ? collectPanes(root) : [];
+        const remaining = collectWorkspacePanes(nextWorkspace);
         return {
-          ...w,
-          paneRoot: root,
+          ...nextWorkspace,
           activePaneId: remaining.some((p) => p.id === w.activePaneId)
             ? w.activePaneId
             : (remaining.at(-1)?.id ?? null),
@@ -439,6 +572,77 @@ export const useAppStore = create<AppState>((set, get) => ({
         };
       }),
     ),
+
+  detachPane: (workspaceId, paneId) =>
+    set((s) =>
+      patchWorkspaceById(s, workspaceId, (w) => {
+        if (!w.paneRoot) return {};
+        const pane = findPaneInTree(w.paneRoot, paneId);
+        if (!pane) return {};
+        const nextRoot = removeLeaf(w.paneRoot, paneId);
+        const remaining = nextRoot ? collectPanes(nextRoot) : [];
+        return {
+          paneRoot: nextRoot,
+          activePaneId:
+            w.activePaneId === paneId
+              ? (remaining.at(-1)?.id ?? null)
+              : w.activePaneId,
+          floatingPanes: [...w.floatingPanes, pane],
+        };
+      }),
+    ),
+
+  closeFloatingPane: (workspaceId, paneId) =>
+    set((s) =>
+      patchWorkspaceById(s, workspaceId, (w) => {
+        const exists = w.floatingPanes.some((p) => p.id === paneId);
+        if (!exists) return {};
+        return {
+          floatingPanes: w.floatingPanes.filter((p) => p.id !== paneId),
+        };
+      }),
+    ),
+
+  dockPane: (workspaceId, paneId, targetPaneId, position) =>
+    set((s) =>
+      patchWorkspaceById(s, workspaceId, (w) => {
+        const sourcePane =
+          (w.paneRoot ? findPaneInTree(w.paneRoot, paneId) : undefined) ??
+          w.floatingPanes.find((p) => p.id === paneId) ??
+          null;
+        if (!sourcePane) return {};
+        if (paneId === targetPaneId && w.paneRoot) return {};
+        const targetExists = !!(
+          w.paneRoot && findPaneInTree(w.paneRoot, targetPaneId)
+        );
+        if (paneId === targetPaneId && !w.paneRoot) {
+          const removed = removeFromWorkspace(w, paneId);
+          return {
+            ...removed.workspace,
+            paneRoot: makeLeaf(sourcePane),
+            activePaneId: sourcePane.id,
+          };
+        }
+        if (!targetExists) return {};
+
+        const removed = removeFromWorkspace(w, paneId);
+        const nextWorkspace = removed.workspace;
+        if (!nextWorkspace.paneRoot) {
+          return {
+            ...nextWorkspace,
+            paneRoot: makeLeaf(sourcePane),
+            activePaneId: sourcePane.id,
+          };
+        }
+
+        return insertIntoWorkspace(
+          nextWorkspace,
+          targetPaneId,
+          sourcePane,
+          position,
+        );
+      }),
+    ),
 }));
 
 // Save workspace tree + active workspace whenever they change, so panel
@@ -456,6 +660,13 @@ useAppStore.subscribe((s) => {
   }
 });
 
+if (typeof window !== "undefined") {
+  window.addEventListener("storage", (event) => {
+    if (event.key !== PERSIST_KEY) return;
+    syncAppStoreFromStorage();
+  });
+}
+
 // ─── Helper: patch the active workspace immutably ─────────────────────────────
 
 function patchActiveWorkspace(
@@ -465,6 +676,18 @@ function patchActiveWorkspace(
   return {
     workspaces: s.workspaces.map((w) =>
       w.id === s.activeWorkspaceId ? { ...w, ...fn(w) } : w,
+    ),
+  };
+}
+
+function patchWorkspaceById(
+  s: AppState,
+  workspaceId: string,
+  fn: (w: Workspace) => Partial<Workspace>,
+): Partial<AppState> {
+  return {
+    workspaces: s.workspaces.map((w) =>
+      w.id === workspaceId ? { ...w, ...fn(w) } : w,
     ),
   };
 }

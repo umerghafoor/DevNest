@@ -30,6 +30,10 @@ const TUNNEL_PREFIX = "sql:";
 
 type ConnState = "disconnected" | "connecting" | "connected" | "error";
 
+function isRetryableSshError(message: string | null): boolean {
+  return !!message && message.toLowerCase().includes("device not connected");
+}
+
 export function SqlPanel({ paneId }: { paneId?: string } = {}) {
   const saved = useSqlStore((s) => s.saved);
   const activeId = useSqlStore((s) => s.activeId);
@@ -329,7 +333,7 @@ function ConnectionRail({
                       disabled={connState === "connecting"}
                       className="rounded bg-(--color-accent) px-2 py-0.5 text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
                     >
-                      Connect
+                      {connState === "error" ? "Retry" : "Connect"}
                     </button>
                   )}
                   <button
@@ -403,9 +407,17 @@ function Toolbar({
             <span className="ml-2 text-(--color-fg-muted)">
               {ENGINE_LABELS[active.engine]}
             </span>
-            {connError && (
+            {connError && isRetryableSshError(connError) ? (
+              <button
+                onClick={onConnect}
+                disabled={connState === "connecting"}
+                className="ml-2 rounded border border-(--color-accent) px-2 py-0.5 text-[10px] text-(--color-accent) hover:bg-(--color-accent) hover:text-white disabled:opacity-40"
+              >
+                Retry
+              </button>
+            ) : connError ? (
               <span className="ml-2 text-(--color-error)">· {connError}</span>
-            )}
+            ) : null}
           </>
         ) : (
           <span className="text-(--color-fg-muted)">

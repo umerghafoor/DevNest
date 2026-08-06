@@ -8,19 +8,30 @@ const STORAGE_KEY = "devnest.ui";
 interface Stored {
   density: Density;
   fontSize: FontSize;
+  sidebarCollapsed: boolean;
 }
 
 function readStored(): Stored {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { density: "comfortable", fontSize: "md" };
+    if (!raw)
+      return {
+        density: "comfortable",
+        fontSize: "md",
+        sidebarCollapsed: false,
+      };
     const parsed = JSON.parse(raw) as Partial<Stored>;
     return {
       density: parsed.density ?? "comfortable",
       fontSize: parsed.fontSize ?? "md",
+      sidebarCollapsed: parsed.sidebarCollapsed ?? false,
     };
   } catch {
-    return { density: "comfortable", fontSize: "md" };
+    return {
+      density: "comfortable",
+      fontSize: "md",
+      sidebarCollapsed: false,
+    };
   }
 }
 
@@ -69,6 +80,7 @@ function forceRepaint() {
 interface UiState extends Stored {
   setDensity: (d: Density) => void;
   setFontSize: (f: FontSize) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
   init: () => void;
 }
 
@@ -81,14 +93,31 @@ export const useUiStore = create<UiState>((set, get) => ({
   setDensity: (density) => {
     applyDensity(density);
     const next = { ...get(), density };
-    persist({ density: next.density, fontSize: next.fontSize });
+    persist({
+      density: next.density,
+      fontSize: next.fontSize,
+      sidebarCollapsed: next.sidebarCollapsed,
+    });
     set({ density });
   },
   setFontSize: (fontSize) => {
     applyFontSize(fontSize);
     const next = { ...get(), fontSize };
-    persist({ density: next.density, fontSize: next.fontSize });
+    persist({
+      density: next.density,
+      fontSize: next.fontSize,
+      sidebarCollapsed: next.sidebarCollapsed,
+    });
     set({ fontSize });
+  },
+  setSidebarCollapsed: (sidebarCollapsed) => {
+    const next = { ...get(), sidebarCollapsed };
+    persist({
+      density: next.density,
+      fontSize: next.fontSize,
+      sidebarCollapsed: next.sidebarCollapsed,
+    });
+    set({ sidebarCollapsed });
   },
   init: () => {
     const s = readStored();

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { Sidebar } from "../components/Sidebar";
 import { MainPanel } from "../components/MainPanel";
 import { StatusBar } from "../components/StatusBar";
@@ -7,6 +8,7 @@ import { SudoPasswordDialog } from "../components/SudoPasswordDialog";
 import { ToastContainer } from "../components/Toast";
 import { ConfirmDialogHost } from "../components/ConfirmDialog";
 import { CommandPalette } from "../components/CommandPalette";
+import { FloatingPaneWindow } from "../components/FloatingPaneWindow";
 import { usePaletteStore } from "../store/palette-store";
 import { api } from "../lib/api";
 import {
@@ -14,12 +16,15 @@ import {
   selectActiveWorkspace,
   findPaneInTree,
   collectPanes,
+  syncAppStoreFromStorage,
 } from "../store/app-store";
 import { usePaneSettingsStore } from "../store/pane-settings-store";
 import { terminalRegistry } from "../lib/terminal-registry";
 import { useThemeStore } from "../store/theme-store";
 import { useUiStore } from "../store/ui-store";
 import { useColorsStore } from "../store/colors-store";
+import { getFloatingPaneIdFromLocation } from "../lib/pane-window";
+import { WORKSPACE_SYNC_EVENT } from "../lib/pane-window";
 import {
   useShortcutsStore,
   matchesBinding,
@@ -28,6 +33,7 @@ import {
 import { useDeviceHeartbeat } from "./use-device-heartbeat";
 
 export function App() {
+  const floatingPaneId = getFloatingPaneIdFromLocation();
   const setDevices = useAppStore((s) => s.setDevices);
   const initTheme = useThemeStore((s) => s.init);
   const initUi = useUiStore((s) => s.init);
@@ -60,8 +66,10 @@ export function App() {
     // an unbounded localStorage growth otherwise.
     const live = new Set<string>();
     for (const w of useAppStore.getState().workspaces) {
-      if (!w.paneRoot) continue;
-      for (const p of collectPanes(w.paneRoot)) live.add(p.id);
+      if (w.paneRoot) {
+        for (const p of collectPanes(w.paneRoot)) live.add(p.id);
+      }
+      for (const p of w.floatingPanes) live.add(p.id);
     }
     const stored = usePaneSettingsStore.getState().byPaneId;
     for (const id of Object.keys(stored)) {
@@ -77,8 +85,21 @@ export function App() {
     reapplyColors();
   }, [themeValue, reapplyColors]);
 
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    void listen(WORKSPACE_SYNC_EVENT, () => {
+      syncAppStoreFromStorage();
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
+
   // Global keyboard shortcuts driven by the customizable shortcut registry.
   useEffect(() => {
+    if (floatingPaneId) return;
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement | null)?.tagName;
       const inEditable =
@@ -155,6 +176,10 @@ export function App() {
     getBinding,
     togglePalette,
   ]);
+
+  if (floatingPaneId) {
+    return <FloatingPaneWindow />;
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col bg-(--color-bg) text-(--color-fg) overflow-hidden">
