@@ -167,6 +167,7 @@ export function App() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [
+    floatingPaneId,
     ws,
     activeDeviceId,
     closePane,

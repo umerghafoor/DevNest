@@ -81,7 +81,7 @@ export function FloatingPaneWindow() {
     return () => {
       unlisten?.();
     };
-  }, [paneId, workspaceId, windowHandle]);
+  }, [paneId, workspaceId, windowHandle, closeDetachedPane]);
 
   useEffect(() => {
     if (!paneId || !workspaceId) return;
@@ -91,7 +91,7 @@ export function FloatingPaneWindow() {
     }
     if (!sawPaneRef.current) return;
     destroyWindow();
-  }, [pane, paneId, workspaceId, windowHandle]);
+  }, [pane, paneId, workspaceId, windowHandle, destroyWindow]);
 
   const dockBack = () => {
     if (!paneId || !workspaceId) return;
