@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { emitTo } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -28,18 +28,18 @@ export function FloatingPaneWindow() {
   );
   const pane = workspace?.floatingPanes.find((p) => p.id === paneId) ?? null;
 
-  const destroyWindow = () => {
+  const destroyWindow = useCallback(() => {
     allowCloseRef.current = true;
     void windowHandle.destroy();
-  };
+  }, [windowHandle]);
 
-  const closeDetachedPane = () => {
+  const closeDetachedPane = useCallback(() => {
     if (!paneId || !workspaceId) return;
     const state = useAppStore.getState();
     state.closeFloatingPane(workspaceId, paneId);
     void emitTo("main", WORKSPACE_SYNC_EVENT);
     destroyWindow();
-  };
+  }, [paneId, workspaceId, destroyWindow]);
 
   const resolveDockTarget = () => {
     if (!paneId || !workspace) {
