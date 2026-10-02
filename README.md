@@ -9,8 +9,8 @@ dation. See [docs/plans/](docs/plans/) for the roadmap.
 
 ## Demo
 
-Watch the demo on YouTube: https://youtu.be/DW1sxw4geec
-[![DevNest Demo](https://img.youtube.com/vi/DW1sxw4geec/maxresdefault.jpg)](https://youtu.be/DW1sxw4geec)
+Watch the demo on YouTube: https://youtu.be/f_sWK1p-9cg
+[![DevNest Demo](https://img.youtube.com/vi/f_sWK1p-9cg/maxresdefault.jpg)](https://youtu.be/f_sWK1p-9cg)
 
 ## Stack
 
