@@ -182,7 +182,9 @@ export function AgentPanel({
   return (
     <div className="fade-up flex h-full flex-col text-xs">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-(--color-border) px-2 py-1 text-xs">
-        <div className={`${BTN_GROUP} relative flex items-center gap-1.5 pl-2 pr-1.5`}>
+        <div
+          className={`${BTN_GROUP} relative flex items-center gap-1.5 pl-2 pr-1.5`}
+        >
           <StatusDot status={s.status} />
           <span className="pointer-events-none flex items-center gap-1 font-medium text-(--color-fg)">
             {agent?.name ?? "Select agent"}
@@ -196,13 +198,19 @@ export function AgentPanel({
             className="no-focus-ring absolute inset-0 cursor-pointer opacity-0 disabled:cursor-default"
           >
             {agents.map((a) => (
-              <option key={a.id} value={a.id} className="bg-(--color-surface) text-(--color-fg)">
+              <option
+                key={a.id}
+                value={a.id}
+                className="bg-(--color-surface) text-(--color-fg)"
+              >
                 {a.name}
               </option>
             ))}
           </select>
         </div>
-        <div className={`${BTN_GROUP} flex h-6 min-w-[130px] max-w-xs flex-1 items-center px-1 focus-within:ring-1 focus-within:ring-(--color-accent)`}>
+        <div
+          className={`${BTN_GROUP} flex h-6 min-w-[130px] max-w-xs flex-1 items-center px-1 focus-within:ring-1 focus-within:ring-(--color-accent)`}
+        >
           <input
             className="h-full min-w-0 flex-1 bg-transparent px-1 font-mono text-[11px] text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-60"
             placeholder={
