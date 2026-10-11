@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { homeDir } from "@tauri-apps/api/path";
 import {
+  MoreHorizontal,
   Play,
   RotateCcw,
   ScrollText,
@@ -42,8 +43,6 @@ import {
 } from "../panels/AgentPanel";
 
 const MIN_WIDTH = 300;
-const ICON_BTN =
-  "flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)";
 const AGENT_KEY = "devnest.master.agent";
 
 const SUGGESTIONS = [
@@ -89,7 +88,7 @@ export function MasterPanel() {
       <div
         ref={self}
         style={{ width }}
-        className="flex shrink-0 flex-col border-l border-(--color-border) bg-(--color-bg)"
+        className="flex shrink-0 flex-col border-l border-(--color-border) bg-(--color-surface)"
       >
         <MasterBody hostId={host.id} />
       </div>
@@ -173,74 +172,6 @@ function MasterBody({ hostId }: { hostId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-xs">
-      <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-(--color-border) px-2 select-none">
-        <StatusDot status={s.status} />
-        <span className="font-medium">Master</span>
-        <span className="opacity-40">·</span>
-        {/* Borderless picker: reads as text, opens the native menu. */}
-        <select
-          value={agentId}
-          onChange={(e) => setAgentId(e.target.value)}
-          disabled={running}
-          className="no-focus-ring min-w-0 max-w-[140px] cursor-pointer truncate bg-transparent text-(--color-fg-muted) outline-none hover:text-(--color-fg) disabled:cursor-default disabled:opacity-100"
-          title={
-            running
-              ? "Stop the agent to switch"
-              : "Agent that powers the Master"
-          }
-        >
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <div className="ml-auto flex items-center gap-0.5">
-          {s.status === "ready" && s.items.some((i) => i.kind === "user") && (
-            <button
-              className={ICON_BTN}
-              onClick={() => void newConversation(s)}
-              title="New conversation"
-            >
-              <RotateCcw size={11} />
-            </button>
-          )}
-          {running ? (
-            <button
-              className={ICON_BTN}
-              onClick={() => void stopAgent(s)}
-              title="Stop agent"
-            >
-              <Square size={10} />
-            </button>
-          ) : (
-            <button
-              className={ICON_BTN}
-              onClick={() => void start()}
-              title="Start agent"
-            >
-              <Play size={11} />
-            </button>
-          )}
-          {s.stderr.length > 0 && (
-            <button
-              className={`${ICON_BTN} ${showLogs ? "text-(--color-fg)" : ""}`}
-              onClick={() => setShowLogs((v) => !v)}
-              title="Agent stderr"
-            >
-              <ScrollText size={11} />
-            </button>
-          )}
-          <button
-            className={ICON_BTN}
-            onClick={() => setOpen(false)}
-            title="Close"
-          >
-            <X size={12} />
-          </button>
-        </div>
-      </div>
-
       {agent && !running && (installed === false || installRun) && (
         <InstallBanner
           agent={agent}
@@ -258,10 +189,22 @@ function MasterBody({ hostId }: { hostId: string }) {
         </pre>
       )}
 
-      <Transcript
-        s={s}
-        empty={<EmptyState s={s} onStart={() => void start()} />}
-      />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <MasterMenu
+          s={s}
+          agentId={agentId}
+          onAgent={setAgentId}
+          running={running}
+          showLogs={showLogs}
+          onLogs={() => setShowLogs((v) => !v)}
+          onStart={() => void start()}
+          onClose={() => setOpen(false)}
+        />
+        <Transcript
+          s={s}
+          empty={<EmptyState s={s} onStart={() => void start()} />}
+        />
+      </div>
 
       {s.status === "auth" && <AuthBar s={s} paneId="" deviceId={hostId} />}
 
@@ -273,6 +216,148 @@ function MasterBody({ hostId }: { hostId: string }) {
 
       <Composer s={s} onTerminal={canTerminal ? openTerminal : undefined} />
     </div>
+  );
+}
+
+/** The panel's controls, tucked behind a ⋯ button in the top-right corner. */
+function MasterMenu({
+  s,
+  agentId,
+  onAgent,
+  running,
+  showLogs,
+  onLogs,
+  onStart,
+  onClose,
+}: {
+  s: AgentSession;
+  agentId: string;
+  onAgent: (id: string) => void;
+  running: boolean;
+  showLogs: boolean;
+  onLogs: () => void;
+  onStart: () => void;
+  onClose: () => void;
+}) {
+  const agents = useAgentsStore((st) => st.agents);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const down = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", down);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", down);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  const act = (fn: () => void) => () => {
+    setOpen(false);
+    fn();
+  };
+  const canNew = s.status === "ready" && s.items.some((i) => i.kind === "user");
+
+  return (
+    <div ref={ref} className="absolute top-1.5 right-2 z-20">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        title="Master agent"
+        className={`relative flex h-6 w-6 items-center justify-center rounded-md bg-(--color-surface) text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) ${open ? "bg-(--color-surface-2) text-(--color-fg)" : ""}`}
+      >
+        <MoreHorizontal size={14} />
+        <span className="absolute top-0.5 right-0.5">
+          <StatusDot status={s.status} />
+        </span>
+      </button>
+      {open && (
+        <div className="modal-content absolute top-full right-0 mt-1 w-56 overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-xl">
+          <div className="flex items-center gap-2 px-3 py-1.5">
+            <StatusDot status={s.status} />
+            <span className="font-medium">Master</span>
+            <span className="ml-auto text-[11px] text-(--color-fg-muted)">
+              {s.status}
+            </span>
+          </div>
+          <label className="flex items-center gap-2 px-3 py-1">
+            <span className="w-12 shrink-0 text-(--color-fg-muted)">Agent</span>
+            <select
+              value={agentId}
+              onChange={(e) => onAgent(e.target.value)}
+              disabled={running}
+              className="min-w-0 flex-1 rounded bg-(--color-surface-2) px-1.5 py-0.5 outline-none disabled:opacity-60"
+              title={running ? "Stop the agent to switch" : undefined}
+            >
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="my-1 h-px bg-(--color-border)" />
+          {canNew && (
+            <MenuItem
+              icon={<RotateCcw size={12} />}
+              onClick={act(() => void newConversation(s))}
+            >
+              New conversation
+            </MenuItem>
+          )}
+          {running ? (
+            <MenuItem
+              icon={<Square size={11} />}
+              onClick={act(() => void stopAgent(s))}
+            >
+              Stop agent
+            </MenuItem>
+          ) : (
+            <MenuItem icon={<Play size={12} />} onClick={act(onStart)}>
+              Start agent
+            </MenuItem>
+          )}
+          {s.stderr.length > 0 && (
+            <MenuItem icon={<ScrollText size={12} />} onClick={act(onLogs)}>
+              {showLogs ? "Hide logs" : "Show logs"}
+              <span className="ml-auto text-(--color-fg-muted)">
+                {s.stderr.length}
+              </span>
+            </MenuItem>
+          )}
+          <div className="my-1 h-px bg-(--color-border)" />
+          <MenuItem icon={<X size={12} />} onClick={act(onClose)}>
+            Close panel
+          </MenuItem>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuItem({
+  icon,
+  onClick,
+  children,
+}: {
+  icon: React.ReactNode;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-(--color-surface-2)"
+    >
+      <span className="flex w-4 shrink-0 justify-center text-(--color-fg-muted)">
+        {icon}
+      </span>
+      {children}
+    </button>
   );
 }
 

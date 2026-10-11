@@ -42,6 +42,7 @@ import {
   type MenuCommand,
 } from "../lib/agent-local-commands";
 import { QuestionForm } from "./agent/QuestionForm";
+import { promptHistory, pushPrompt, stepHistory } from "../lib/prompt-history";
 import { MasterWidget } from "../components/MasterWidgets";
 import {
   ArrowUp,
@@ -918,6 +919,11 @@ export function Composer({
   const [sel, setSel] = useState(0);
   const [dismissed, setDismissed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  // ↑/↓ through earlier prompts; `draft` is what was typed before browsing.
+  const hist = useRef<{ index: number | null; draft: string }>({
+    index: null,
+    draft: "",
+  });
   const ready = s.status === "ready";
   const busy = s.status === "prompting";
 
@@ -961,6 +967,7 @@ export function Composer({
     setText(v);
     setSel(0);
     setDismissed(false);
+    hist.current.index = null;
   };
 
   const pick = (c: MenuCommand) => {
@@ -972,6 +979,7 @@ export function Composer({
     const t = text.trim();
     if (!t || !ready) return;
     edit("");
+    pushPrompt(t);
     if (runLocalCommand(s, t)) return;
     const name = /^\/(\S+)/.exec(t)?.[1];
     if (name && onTerminal && !known(name)) {
@@ -982,8 +990,39 @@ export function Composer({
     void sendPrompt(s, t);
   };
 
+  /** Recall an earlier prompt with ↑ / ↓ (caret on the first / last line). */
+  const browseHistory = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const up = e.key === "ArrowUp";
+    if ((!up && e.key !== "ArrowDown") || e.shiftKey || e.altKey || e.metaKey)
+      return false;
+    const el = e.currentTarget;
+    const atEdge = up
+      ? !el.value.slice(0, el.selectionStart).includes("\n")
+      : !el.value.slice(el.selectionEnd).includes("\n");
+    const browsing = hist.current.index !== null;
+    if (!atEdge || (!browsing && (!up || suggestions.length > 0))) return false;
+    const draft = browsing ? hist.current.draft : text;
+    const step = stepHistory(
+      promptHistory(),
+      hist.current.index,
+      up ? -1 : 1,
+      draft,
+    );
+    if (!step) return false;
+    e.preventDefault();
+    hist.current = { index: step.index, draft };
+    setText(step.text);
+    setDismissed(true);
+    requestAnimationFrame(() => {
+      const t = ref.current;
+      if (t) t.selectionStart = t.selectionEnd = t.value.length;
+    });
+    return true;
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.nativeEvent.isComposing) return;
+    if (browseHistory(e)) return;
     if (suggestions.length) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
