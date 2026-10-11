@@ -13,18 +13,11 @@ export interface TerminalEntry {
   unlistenExit: (() => void) | null;
   /** The DOM container the terminal is currently open() into */
   container: HTMLDivElement | null;
-  /** True while a command is running (Enter sent, waiting for next prompt) */
-  running: boolean;
-  /** Accumulates recent output bytes for prompt detection */
-  outputTail: string;
-  /** True once at least one command has completed in this session */
-  hasCompletedCommand: boolean;
   /**
-   * Called by the output listener when running state changes.
-   * Swapped by the currently-mounted TerminalPanel so the stale first-mount
-   * closure always reaches the live component.
+   * True until the user runs a command or dismisses the "Re-run last command"
+   * banner. Persisted here so it survives the panel re-mounting.
    */
-  onBannerChange: ((visible: boolean) => void) | null;
+  showRerunBanner: boolean;
 }
 
 /**

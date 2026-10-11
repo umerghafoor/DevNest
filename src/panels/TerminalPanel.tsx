@@ -70,9 +70,6 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
     }
 
     if (existing) {
-      // Point the output listener at this component's setBannerVisible.
-      existing.onBannerChange = setBannerVisible;
-
       // xterm's open() can only be called once. On re-attach we move the
       // xterm-owned DOM node into the new container instead of re-opening.
       const xtermEl = existing.container?.querySelector(".xterm");
@@ -86,19 +83,12 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       fitAddonRef.current = existing.fit;
       searchAddonRef.current = existing.search;
       setConnectState("connected");
-      // Sync banner: only show if a command actually completed in this session.
-      setBannerVisible(
-        existing.hasCompletedCommand &&
-          !existing.running &&
-          !!loadLastCmd(sessionKey),
-      );
+      // Keep the banner only if it hasn't been used or dismissed yet.
+      setBannerVisible(existing.showRerunBanner && !!saved);
 
       const ro = new ResizeObserver(() => existing.fit.fit());
       ro.observe(container);
-      return () => {
-        existing.onBannerChange = null;
-        ro.disconnect();
-      };
+      return () => ro.disconnect();
     }
 
     // First mount: create xterm + PTY.
@@ -169,26 +159,6 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           for (let i = 0; i < binary.length; i++)
             bytes[i] = binary.charCodeAt(i);
           term.write(bytes);
-
-          // Detect shell prompt in output → shell is idle again.
-          const entry = terminalRegistry.get(sessionKey);
-          if (entry?.running) {
-            entry.outputTail = (
-              entry.outputTail + new TextDecoder().decode(bytes)
-            ).slice(-120);
-            /* eslint-disable no-control-regex */
-            const clean = entry.outputTail.replace(
-              /\x1b\[[0-9;]*[A-Za-z]/g,
-              "",
-            );
-            /* eslint-enable no-control-regex */
-            if (/[$#%>]\s*$/.test(clean)) {
-              entry.running = false;
-              entry.outputTail = "";
-              entry.hasCompletedCommand = true;
-              entry.onBannerChange?.(true);
-            }
-          }
         });
 
         const unlistenExit = await listen(`terminal-exit:${termId}`, () => {
@@ -210,12 +180,10 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
             if (line) {
               saveLastCmd(sessionKey, line);
               setLastCmd(line);
-              // Command submitted — hide banner until next prompt arrives.
+              // The banner is only a "resume" hint for a fresh session; once
+              // the user runs anything, it's done.
               const e2 = terminalRegistry.get(sessionKey);
-              if (e2) {
-                e2.running = true;
-                e2.outputTail = "";
-              }
+              if (e2) e2.showRerunBanner = false;
               setBannerVisible(false);
             }
             inputLineRef.current = "";
@@ -243,10 +211,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
           unlisten,
           unlistenExit,
           container,
-          running: false,
-          outputTail: "",
-          hasCompletedCommand: false,
-          onBannerChange: setBannerVisible,
+          showRerunBanner: !!saved,
         });
 
         setConnectState("connected");
@@ -276,14 +241,20 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
 
   const termIdForRerun = terminalRegistry.get(sessionKey)?.termId ?? null;
 
+  const dismissBanner = useCallback(() => {
+    const entry = terminalRegistry.get(sessionKey);
+    if (entry) entry.showRerunBanner = false;
+    setBannerVisible(false);
+  }, [sessionKey]);
+
   const rerunLastCmd = useCallback(() => {
     if (!lastCmd || !termIdForRerun) return;
-    setBannerVisible(false);
+    dismissBanner();
     const encoded = btoa(
       String.fromCharCode(...new TextEncoder().encode(lastCmd + "\r")),
     );
     void invoke("terminal_write", { termId: termIdForRerun, data: encoded });
-  }, [lastCmd, termIdForRerun]);
+  }, [lastCmd, termIdForRerun, dismissBanner]);
 
   const findNext = useCallback(() => {
     if (!search) return;
@@ -356,10 +327,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       )}
 
       {bannerVisible && lastCmd && connectState === "connected" && (
-        <div
-          className="absolute left-0 right-0 z-10 flex items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs shadow-sm"
-          style={{ top: searchOpen ? "2.25rem" : "0" }}
-        >
+        <div className="flex shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs">
           <span className="text-(--color-fg-muted)">Last command:</span>
           <code className="flex-1 truncate font-mono text-(--color-fg)">
             {lastCmd}
@@ -371,7 +339,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
             Re-run
           </button>
           <button
-            onClick={() => setBannerVisible(false)}
+            onClick={dismissBanner}
             className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
           >
             ✕
@@ -379,10 +347,13 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         </div>
       )}
 
-      <div className="relative flex-1">
+      {/* Padding lives on this wrapper, not the xterm container: FitAddon
+          measures the container's full height, so padding there makes it
+          over-count rows and clip the last line. */}
+      <div className="relative min-h-0 flex-1 overflow-hidden p-2">
         <div
           ref={containerRef}
-          className="h-full w-full p-2"
+          className="h-full w-full"
           style={{
             fontVariantLigatures: "none",
             opacity: connectState === "connected" ? 1 : 0,
