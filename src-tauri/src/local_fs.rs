@@ -192,10 +192,7 @@ fn scan_dir(dir: &Path, depth: u32, max_depth: u32) -> AppResult<DiskUsageNode> 
                 size += file_size;
                 if depth < max_depth {
                     children.push(DiskUsageNode {
-                        name: entry
-                            .file_name()
-                            .to_string_lossy()
-                            .into_owned(),
+                        name: entry.file_name().to_string_lossy().into_owned(),
                         path: entry_path.to_string_lossy().into_owned(),
                         size: file_size,
                         children: Vec::new(),
@@ -208,7 +205,7 @@ fn scan_dir(dir: &Path, depth: u32, max_depth: u32) -> AppResult<DiskUsageNode> 
         }
     }
 
-    children.sort_by(|a, b| b.size.cmp(&a.size));
+    children.sort_by_key(|b| std::cmp::Reverse(b.size));
 
     Ok(DiskUsageNode {
         name: dir

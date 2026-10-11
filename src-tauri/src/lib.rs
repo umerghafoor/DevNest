@@ -160,11 +160,7 @@ fn sftp_disk_usage(
     // Build a tree from the flat list by inserting children under their parent.
     if entries.is_empty() {
         return Ok(sftp::DiskUsageNode {
-            name: path
-                .rsplit('/')
-                .next()
-                .unwrap_or(&path)
-                .to_string(),
+            name: path.rsplit('/').next().unwrap_or(&path).to_string(),
             path: path.clone(),
             size: 0,
             children: Vec::new(),
@@ -192,7 +188,7 @@ fn sftp_disk_usage(
         // Sort entries by path depth (deepest first) so children are attached
         // before their parents.
         let mut sorted_paths: Vec<&str> = nodes.keys().copied().collect();
-        sorted_paths.sort_by(|a, b| b.matches('/').count().cmp(&a.matches('/').count()));
+        sorted_paths.sort_by_key(|b| std::cmp::Reverse(b.matches('/').count()));
 
         for p in &sorted_paths {
             if *p == root_path {
@@ -202,7 +198,11 @@ fn sftp_disk_usage(
             let parent = match p.rfind('/') {
                 Some(idx) => {
                     let candidate = &p[..idx];
-                    if candidate.is_empty() { "/" } else { candidate }
+                    if candidate.is_empty() {
+                        "/"
+                    } else {
+                        candidate
+                    }
                 }
                 None => continue,
             };
@@ -216,7 +216,7 @@ fn sftp_disk_usage(
 
         // Sort children by size descending in every node.
         fn sort_children(node: &mut sftp::DiskUsageNode) {
-            node.children.sort_by(|a, b| b.size.cmp(&a.size));
+            node.children.sort_by_key(|b| std::cmp::Reverse(b.size));
             for child in &mut node.children {
                 sort_children(child);
             }
