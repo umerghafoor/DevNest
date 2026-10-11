@@ -703,7 +703,7 @@ function SettingsRow({ s }: { s: AgentSession }) {
   if (s.config.length === 0 && !s.modes) return null;
 
   return (
-    <div className="mt-1.5 flex flex-wrap items-center gap-1 px-0.5">
+    <div className="flex items-center">
       {s.config.map((o) =>
         o.type === "boolean" ? (
           <button
@@ -765,7 +765,7 @@ function SettingsRow({ s }: { s: AgentSession }) {
 }
 
 const PILL =
-  "relative inline-flex h-5 items-center gap-0.5 rounded-md px-1.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-50";
+  "relative inline-flex h-6 items-center gap-0.5 rounded-md px-1.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-50";
 
 /** Compact pill showing the selected option, with the native menu on click. */
 function SelectPill({
@@ -909,7 +909,7 @@ function Composer({ s }: { s: AgentSession }) {
   })();
 
   return (
-    <div className="shrink-0 border-t border-(--color-border) px-4 py-2.5">
+    <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
       <div className="relative mx-auto max-w-3xl">
         {s.elicitation ? (
           // A pending question replaces the input: answering it is the only
@@ -951,11 +951,11 @@ function Composer({ s }: { s: AgentSession }) {
               </ul>
             )}
 
-            <div className="flex items-end gap-1.5 rounded-xl border border-(--color-border) bg-(--color-surface) p-1 pl-3 transition-colors focus-within:border-(--color-accent)">
+            <div className="flex flex-wrap items-end gap-x-1 rounded-xl border border-(--color-border) bg-(--color-surface) p-1 pl-3 transition-colors focus-within:border-(--color-accent)">
               <textarea
                 ref={ref}
                 rows={1}
-                className="no-focus-ring max-h-40 min-h-7 flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
+                className="no-focus-ring max-h-40 min-h-7 min-w-48 flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
                 placeholder={
                   ready
                     ? s.commands.length
@@ -970,24 +970,27 @@ function Composer({ s }: { s: AgentSession }) {
                 onChange={(e) => edit(e.target.value)}
                 onKeyDown={onKeyDown}
               />
-              {busy ? (
-                <button
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
-                  onClick={() => cancelTurn(s)}
-                  title="Stop this turn"
-                >
-                  <Square size={11} fill="currentColor" />
-                </button>
-              ) : (
-                <button
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
-                  onClick={submit}
-                  disabled={!ready || !text.trim()}
-                  title="Send (Enter) · Newline (Shift+Enter)"
-                >
-                  <ArrowUp size={15} />
-                </button>
-              )}
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
+                <SettingsRow s={s} />
+                {busy ? (
+                  <button
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
+                    onClick={() => cancelTurn(s)}
+                    title="Stop this turn"
+                  >
+                    <Square size={11} fill="currentColor" />
+                  </button>
+                ) : (
+                  <button
+                    className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
+                    onClick={submit}
+                    disabled={!ready || !text.trim()}
+                    title="Send (Enter) · Newline (Shift+Enter)"
+                  >
+                    <ArrowUp size={15} />
+                  </button>
+                )}
+              </div>
             </div>
 
             {hint && (
@@ -995,7 +998,6 @@ function Composer({ s }: { s: AgentSession }) {
                 Argument: {hint}
               </div>
             )}
-            <SettingsRow s={s} />
           </>
         )}
       </div>
