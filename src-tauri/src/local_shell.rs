@@ -61,7 +61,7 @@ fn find_windows_sh() -> Option<PathBuf> {
 
     let from_install = ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)"]
         .iter()
-        .filter_map(|v| std::env::var_os(v))
+        .filter_map(std::env::var_os)
         .map(|d| PathBuf::from(d).join("Git"))
         .chain(
             std::env::var_os("LOCALAPPDATA").map(|d| PathBuf::from(d).join("Programs").join("Git")),
