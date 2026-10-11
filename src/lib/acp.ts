@@ -141,6 +141,13 @@ export interface AuthMethod {
   id: string;
   name: string;
   description?: string | null;
+  /** `{"api-key": {...}}` marks a method that takes a key the user types. */
+  _meta?: Record<string, unknown> | null;
+}
+
+/** Does this auth method want an API key from the user? */
+export function wantsApiKey(m: AuthMethod) {
+  return !!m._meta && "api-key" in m._meta;
 }
 
 export interface InitializeResult {
@@ -274,8 +281,12 @@ export class AcpConnection {
     });
   }
 
-  authenticate(methodId: string) {
-    return this.request<unknown>("authenticate", { methodId });
+  /** `apiKey` goes in `_meta["api-key"]`, as Gemini CLI expects. */
+  authenticate(methodId: string, apiKey?: string) {
+    return this.request<unknown>("authenticate", {
+      methodId,
+      ...(apiKey ? { _meta: { "api-key": apiKey } } : {}),
+    });
   }
 
   newSession(cwd: string) {

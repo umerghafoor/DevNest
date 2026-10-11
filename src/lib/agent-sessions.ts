@@ -8,6 +8,7 @@ import {
   contentText,
   type ContentBlock,
   isInside,
+  wantsApiKey,
   type AuthMethod,
   type AvailableCommand,
   type ElicitationRequest,
@@ -350,6 +351,8 @@ async function openSession(s: AgentSession) {
       e.code === AUTH_REQUIRED &&
       s.authMethods.length
     ) {
+      // Sign in silently with a key saved from an earlier session.
+      if (await trySavedKey(s)) return;
       s.status = "auth";
       system(s, "The agent needs you to sign in.");
       return;
@@ -358,12 +361,48 @@ async function openSession(s: AgentSession) {
   }
 }
 
-export async function authenticate(s: AgentSession, methodId: string) {
+/** Keychain id for an agent's API key for one auth method. */
+function keyId(s: AgentSession, methodId: string) {
+  return `${s.agent?.id ?? "agent"}:${methodId}`;
+}
+
+async function trySavedKey(s: AgentSession): Promise<boolean> {
+  if (!s.conn) return false;
+  for (const m of s.authMethods.filter(wantsApiKey)) {
+    const key = await api.agentSecretGet(keyId(s, m.id)).catch(() => null);
+    if (!key) continue;
+    try {
+      await s.conn.authenticate(m.id, key);
+      const { sessionId, modes } = await s.conn.newSession(s.cwd);
+      s.sessionId = sessionId;
+      s.modes = modes?.availableModes?.length ? modes : null;
+      s.status = "ready";
+      system(s, `${s.agent?.name ?? "Agent"} ready (${m.name}).`);
+      return true;
+    } catch {
+      // Saved key no longer works — fall through to asking the user.
+    }
+  }
+  return false;
+}
+
+/**
+ * Sign in with `methodId`. For API-key methods pass the key; it's saved in
+ * the system keychain and reused on later launches.
+ */
+export async function authenticate(
+  s: AgentSession,
+  methodId: string,
+  apiKey?: string,
+) {
   if (!s.conn) return;
   s.status = "starting";
   notify(s);
   try {
-    await s.conn.authenticate(methodId);
+    await s.conn.authenticate(methodId, apiKey);
+    if (apiKey) {
+      await api.agentSecretSet(keyId(s, methodId), apiKey).catch(() => {});
+    }
     await openSession(s);
   } catch (e) {
     s.status = "auth";

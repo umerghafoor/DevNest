@@ -485,6 +485,12 @@ export const api = {
     call<void>("agent_spawn", { deviceId, agentId, command, args, cwd, env }),
   agentCommandExists: (deviceId: string, command: string) =>
     call<boolean>("agent_command_exists", { deviceId, command }),
+  agentSecretSet: (keyId: string, secret: string) =>
+    call<void>("agent_secret_set", { keyId, secret }),
+  agentSecretGet: (keyId: string) =>
+    call<string | null>("agent_secret_get", { keyId }),
+  agentSecretDelete: (keyId: string) =>
+    call<void>("agent_secret_delete", { keyId }),
   agentSend: (agentId: string, line: string) =>
     call<void>("agent_send", { agentId, line }),
   agentKill: (agentId: string) => call<void>("agent_kill", { agentId }),

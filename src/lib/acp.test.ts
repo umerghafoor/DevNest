@@ -170,6 +170,17 @@ describe("AcpConnection", () => {
     });
   });
 
+  it("sends an API key in authenticate _meta", () => {
+    const { conn, sent } = setup();
+    void conn.authenticate("gemini-api-key", "k-123");
+    void conn.authenticate("oauth-personal");
+    expect(sent[0]).toMatchObject({
+      method: "authenticate",
+      params: { methodId: "gemini-api-key", _meta: { "api-key": "k-123" } },
+    });
+    expect(sent[1].params).toEqual({ methodId: "oauth-personal" });
+  });
+
   it("declines url-mode elicitation", async () => {
     const { conn, sent, flush } = setup();
     conn.feed(

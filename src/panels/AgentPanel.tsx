@@ -18,7 +18,7 @@ import {
   type TranscriptItem,
 } from "../lib/agent-sessions";
 import type { AvailableCommand, PermissionOption, ToolCall } from "../lib/acp";
-import { contentText } from "../lib/acp";
+import { contentText, wantsApiKey } from "../lib/acp";
 import {
   joinArgs,
   splitArgs,
@@ -223,21 +223,7 @@ export function AgentPanel({
 
       <Transcript s={s} />
 
-      {s.status === "auth" && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-(--color-border) bg-(--color-warn)/10 px-3 py-2">
-          <span>Sign in with:</span>
-          {s.authMethods.map((m) => (
-            <button
-              key={m.id}
-              className="rounded bg-(--color-accent) px-2 py-1 text-(--color-accent-fg) hover:opacity-90"
-              title={m.description ?? undefined}
-              onClick={() => void authenticate(s, m.id)}
-            >
-              {m.name}
-            </button>
-          ))}
-        </div>
-      )}
+      {s.status === "auth" && <AuthBar s={s} />}
 
       {s.permission && <PermissionCard s={s} />}
 
@@ -318,6 +304,67 @@ function InstallBanner({
             {run.log.join("\n")}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+function AuthBar({ s }: { s: AgentSession }) {
+  // Method whose API-key field is open.
+  const [keyFor, setKeyFor] = useState<string | null>(null);
+  const [key, setKey] = useState("");
+  const method = s.authMethods.find((m) => m.id === keyFor);
+
+  return (
+    <div className="shrink-0 border-t border-(--color-border) bg-(--color-warn)/10 px-4 py-2">
+      <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-1.5">
+        <span className="mr-1">Sign in with</span>
+        {s.authMethods.map((m) => (
+          <button
+            key={m.id}
+            className={`h-6 rounded-md px-2 ${
+              keyFor === m.id
+                ? "bg-(--color-accent) text-(--color-accent-fg)"
+                : "bg-(--color-surface) hover:bg-(--color-surface-2)"
+            }`}
+            title={m.description ?? undefined}
+            onClick={() =>
+              wantsApiKey(m) ? setKeyFor(m.id) : void authenticate(s, m.id)
+            }
+          >
+            {m.name}
+          </button>
+        ))}
+      </div>
+      {method && (
+        <form
+          className="mx-auto mt-2 flex max-w-3xl items-center gap-1.5"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!key.trim()) return;
+            void authenticate(s, method.id, key.trim());
+            setKey("");
+          }}
+        >
+          <input
+            type="password"
+            autoFocus
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder={`${method.name}…`}
+            className={`${SMALL_INPUT} flex-1 font-mono`}
+          />
+          <button
+            type="submit"
+            disabled={!key.trim()}
+            className="h-6 rounded-md bg-(--color-accent) px-3 font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
+          >
+            Sign in
+          </button>
+          <span className="text-[11px] text-(--color-fg-muted)">
+            Saved in your system keychain
+          </span>
+        </form>
       )}
     </div>
   );

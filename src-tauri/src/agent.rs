@@ -476,6 +476,21 @@ pub fn agent_command_exists(
     command_exists(&state.pool, &device, &command)
 }
 
+#[tauri::command(async)]
+pub fn agent_secret_set(key_id: String, secret: String) -> AppResult<()> {
+    crate::secrets::set_agent(&key_id, &secret)
+}
+
+#[tauri::command(async)]
+pub fn agent_secret_get(key_id: String) -> AppResult<Option<String>> {
+    crate::secrets::get_agent(&key_id)
+}
+
+#[tauri::command(async)]
+pub fn agent_secret_delete(key_id: String) -> AppResult<()> {
+    crate::secrets::delete_agent(&key_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
