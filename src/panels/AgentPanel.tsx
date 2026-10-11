@@ -21,12 +21,7 @@ import {
   type AgentSession,
   type TranscriptItem,
 } from "../lib/agent-sessions";
-import type {
-  AuthMethod,
-  AvailableCommand,
-  PermissionOption,
-  ToolCall,
-} from "../lib/acp";
+import type { AuthMethod, PermissionOption, ToolCall } from "../lib/acp";
 import { contentText, wantsApiKey } from "../lib/acp";
 import {
   joinArgs,
@@ -39,6 +34,11 @@ import { BTN_GROUP, SMALL_INPUT, TOOL_BTN } from "../lib/ui";
 import { toast } from "../components/Toast";
 import { RemoteFilePicker } from "../components/RemoteFilePicker";
 import { SafeMarkdown } from "../components/SafeMarkdown";
+import {
+  allCommands,
+  runLocalCommand,
+  type MenuCommand,
+} from "../lib/agent-local-commands";
 import { QuestionForm } from "./agent/QuestionForm";
 import {
   ArrowUp,
@@ -815,7 +815,7 @@ function SelectPill({
 }
 
 /** Commands matching a `/partial` with no space typed yet; else none. */
-function matchCommands(text: string, commands: AvailableCommand[]) {
+function matchCommands(text: string, commands: MenuCommand[]) {
   const m = /^\/(\S*)$/.exec(text);
   if (!m || commands.length === 0) return [];
   const q = m[1].toLowerCase();
@@ -839,7 +839,8 @@ function Composer({ s }: { s: AgentSession }) {
   const ready = s.status === "ready";
   const busy = s.status === "prompting";
 
-  const suggestions = dismissed ? [] : matchCommands(text, s.commands);
+  const commands = allCommands(s);
+  const suggestions = dismissed ? [] : matchCommands(text, commands);
   const active = Math.min(sel, Math.max(0, suggestions.length - 1));
   const menuRef = useRef<React.ComponentRef<"ul">>(null);
 
@@ -864,7 +865,7 @@ function Composer({ s }: { s: AgentSession }) {
     setDismissed(false);
   };
 
-  const pick = (c: AvailableCommand) => {
+  const pick = (c: MenuCommand) => {
     edit(`/${c.name} `);
     ref.current?.focus();
   };
@@ -873,6 +874,7 @@ function Composer({ s }: { s: AgentSession }) {
     const t = text.trim();
     if (!t || !ready) return;
     edit("");
+    if (runLocalCommand(s, t)) return;
     void sendPrompt(s, t);
   };
 
@@ -904,7 +906,7 @@ function Composer({ s }: { s: AgentSession }) {
 
   const hint = (() => {
     const m = /^\/(\S+)\s*$/.exec(text);
-    const cmd = m && s.commands.find((c) => c.name === m[1]);
+    const cmd = m && commands.find((c) => c.name === m[1]);
     return cmd?.input?.hint ?? null;
   })();
 
@@ -942,9 +944,17 @@ function Composer({ s }: { s: AgentSession }) {
                       }}
                     >
                       <span className="shrink-0 font-mono">/{c.name}</span>
-                      <span className="truncate text-(--color-fg-muted)">
+                      <span className="min-w-0 flex-1 truncate text-(--color-fg-muted)">
                         {c.description}
                       </span>
+                      {c.local && (
+                        <span
+                          className="shrink-0 rounded bg-(--color-surface-2) px-1 text-[10px] text-(--color-fg-muted)"
+                          title="Handled by DevNest, not sent to the agent"
+                        >
+                          DevNest
+                        </span>
+                      )}
                     </button>
                   </li>
                 ))}
@@ -958,7 +968,7 @@ function Composer({ s }: { s: AgentSession }) {
                 className="no-focus-ring max-h-40 min-h-7 min-w-48 flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
                 placeholder={
                   ready
-                    ? s.commands.length
+                    ? commands.length
                       ? "Ask the agent… / for commands"
                       : "Ask the agent…"
                     : busy

@@ -495,6 +495,36 @@ export async function sendPrompt(s: AgentSession, text: string) {
   }
 }
 
+/** Drop the transcript and start a fresh session on the same agent. */
+export async function newConversation(s: AgentSession) {
+  if (!s.conn || s.status === "prompting") return;
+  s.items = [];
+  s.sessionId = null;
+  s.status = "starting";
+  notify(s);
+  try {
+    await openSession(s);
+  } catch (e) {
+    s.status = "ready";
+    system(s, `Couldn't start a new conversation: ${describe(e)}`, true);
+  }
+}
+
+/** Show the sign-in choices (e.g. to switch account). */
+export function showSignIn(s: AgentSession) {
+  if (!s.conn || s.authMethods.length === 0) {
+    system(s, "This agent doesn't offer sign-in methods.", true);
+    return;
+  }
+  s.status = "auth";
+  notify(s);
+}
+
+/** Note in the transcript (used by DevNest's own slash commands). */
+export function note(s: AgentSession, text: string, error = false) {
+  system(s, text, error);
+}
+
 /** Change one agent setting; the agent answers with the full new list. */
 export async function setConfig(
   s: AgentSession,
