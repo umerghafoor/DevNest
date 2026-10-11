@@ -293,9 +293,7 @@ pub fn run_command(pool: &SessionPool, device: &Device, cmd: &str) -> AppResult<
 }
 
 fn run_local(cmd: &str, stdin: Option<&str>) -> AppResult<CommandOutput> {
-    let mut child = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(cmd)
+    let mut child = crate::local_shell::sh(cmd)
         .stdin(if stdin.is_some() {
             Stdio::piped()
         } else {

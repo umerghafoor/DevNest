@@ -59,9 +59,7 @@ impl LogStreamPool {
 
             if device.is_localhost {
                 // Spawn a local process
-                let child = std::process::Command::new("sh")
-                    .arg("-c")
-                    .arg(&cmd)
+                let child = crate::local_shell::sh(&cmd)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::piped())
                     .spawn();

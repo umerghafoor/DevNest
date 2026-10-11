@@ -1,11 +1,11 @@
 use std::path::Path;
-use std::process::Command;
 
 use serde::Serialize;
 use tauri::State;
 
 use crate::devices::{self, Device};
 use crate::error::{AppError, AppResult};
+use crate::local_shell;
 use crate::ssh;
 use crate::state::AppState;
 
@@ -58,7 +58,7 @@ fn run_git_raw(
     cwd: Option<&str>,
 ) -> AppResult<GitOutput> {
     if device.is_localhost {
-        let mut cmd = Command::new("git");
+        let mut cmd = local_shell::command("git");
         cmd.args(args);
         if let Some(dir) = cwd {
             cmd.current_dir(Path::new(dir));
@@ -163,7 +163,7 @@ pub fn git_clone(url: String, parent_dir: String, repo_name: String) -> AppResul
         )));
     }
     let target_str = target.to_string_lossy().to_string();
-    let out = Command::new("git")
+    let out = local_shell::command("git")
         .args(["clone", "--progress", &url, &target_str])
         .output()
         .map_err(|e| AppError::Invalid(format!("git not available: {e}")))?;

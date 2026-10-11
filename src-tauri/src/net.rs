@@ -385,11 +385,7 @@ mod tests {
     }
 
     fn sh(script: &str) -> String {
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(script)
-            .output()
-            .unwrap();
+        let out = crate::local_shell::sh(script).output().unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 

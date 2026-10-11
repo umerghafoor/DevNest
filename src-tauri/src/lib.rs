@@ -7,6 +7,7 @@ mod git;
 mod github;
 mod http_client;
 mod local_fs;
+mod local_shell;
 mod log_stream;
 mod mac_rounded_corners;
 mod metrics;
