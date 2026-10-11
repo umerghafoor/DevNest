@@ -62,6 +62,50 @@ function vramPercent(g: GpuInfo): number | null {
     : null;
 }
 
+/**
+ * Everything a Metrics pane has collected so far. Kept outside React so the
+ * charts survive the panel unmounting — switching workspace tabs or adding a
+ * pane remounts panels, which would otherwise restart every chart from zero.
+ */
+interface MetricsHistory {
+  deviceId: string;
+  overallCpu: number[];
+  mem: number[];
+  gpu: Map<string, number[]>;
+  perCore: Map<number, number[]>;
+  net: Map<string, { rx: number[]; tx: number[] }>;
+  prevCores: Map<number, CpuCoreTicks>;
+  prevNet: Map<string, { rx: number; tx: number; ts: number }>;
+  snap: MetricsSnapshot | null;
+  cpuInfo: CpuInfo | null;
+  coreUsage: CoreUsage[];
+  netRates: NetRate[];
+}
+
+const historyCache = new Map<string, MetricsHistory>();
+
+/** Cached history for this pane, or a fresh one if it's new or the device changed. */
+function getHistory(key: string, deviceId: string): MetricsHistory {
+  const cached = historyCache.get(key);
+  if (cached && cached.deviceId === deviceId) return cached;
+  const fresh: MetricsHistory = {
+    deviceId,
+    overallCpu: [],
+    mem: [],
+    gpu: new Map(),
+    perCore: new Map(),
+    net: new Map(),
+    prevCores: new Map(),
+    prevNet: new Map(),
+    snap: null,
+    cpuInfo: null,
+    coreUsage: [],
+    netRates: [],
+  };
+  historyCache.set(key, fresh);
+  return fresh;
+}
+
 export function MetricsPanel({ deviceId, paneId }: Props) {
   const [settings, updateSettings] = usePaneSettings<MetricsSettings>(
     paneId,
@@ -69,34 +113,36 @@ export function MetricsPanel({ deviceId, paneId }: Props) {
   );
   const { intervalMs, paused } = settings;
 
-  const [snap, setSnap] = useState<MetricsSnapshot | null>(null);
+  // Restore whatever this pane collected before it was last unmounted.
+  const history = getHistory(paneId ?? deviceId, deviceId);
+  const historyRef = useRef(history);
+  historyRef.current = history;
+
+  const [snap, setSnap] = useState<MetricsSnapshot | null>(history.snap);
   const [error, setError] = useState<string | null>(null);
-  const [cpuInfo, setCpuInfo] = useState<CpuInfo | null>(null);
+  const [cpuInfo, setCpuInfo] = useState<CpuInfo | null>(history.cpuInfo);
   const [dimms, setDimms] = useState<DimmModule[] | null>(null);
   const [dimmError, setDimmError] = useState<string | null>(null);
   const [loadingDimms, setLoadingDimms] = useState(false);
 
-  // History buffers (rolling sparkline data)
-  const overallCpuHistory = useRef<number[]>([]);
-  const memHistory = useRef<number[]>([]);
-  const gpuHistory = useRef<Map<string, number[]>>(new Map());
-  const perCoreHistory = useRef<Map<number, number[]>>(new Map());
-  const netRateHistory = useRef<Map<string, { rx: number[]; tx: number[] }>>(
-    new Map(),
-  );
+  // History buffers (rolling sparkline data). These point into the cached
+  // history, so pushing to them updates the cache too.
+  const overallCpuHistory = useRef(history.overallCpu);
+  const memHistory = useRef(history.mem);
+  const gpuHistory = useRef(history.gpu);
+  const perCoreHistory = useRef(history.perCore);
+  const netRateHistory = useRef(history.net);
   const [tick, setTick] = useState(0);
 
   // Previous raw values for delta computation
-  const prevCores = useRef<Map<number, CpuCoreTicks>>(new Map());
-  const prevNet = useRef<Map<string, { rx: number; tx: number; ts: number }>>(
-    new Map(),
-  );
+  const prevCores = useRef(history.prevCores);
+  const prevNet = useRef(history.prevNet);
   // Skip a tick if the previous SSH round-trip hasn't come back yet, so a
   // short interval on a slow link can't pile up requests.
   const inFlight = useRef(false);
 
-  const [coreUsage, setCoreUsage] = useState<CoreUsage[]>([]);
-  const [netRates, setNetRates] = useState<NetRate[]>([]);
+  const [coreUsage, setCoreUsage] = useState<CoreUsage[]>(history.coreUsage);
+  const [netRates, setNetRates] = useState<NetRate[]>(history.netRates);
 
   const poll = useCallback(async () => {
     if (inFlight.current) return;
@@ -146,6 +192,7 @@ export function MetricsPanel({ deviceId, paneId }: Props) {
         prevCores.current.set(c.core, c);
       }
       setCoreUsage(usage);
+      historyRef.current.coreUsage = usage;
 
       // ─ overall CPU (avg of cores) ─
       const overall =
@@ -199,8 +246,10 @@ export function MetricsPanel({ deviceId, paneId }: Props) {
         });
       }
       setNetRates(rates);
+      historyRef.current.netRates = rates;
 
       setSnap(s);
+      historyRef.current.snap = s;
       setError(null);
       setTick((t) => t + 1);
     } catch (e) {
@@ -210,22 +259,31 @@ export function MetricsPanel({ deviceId, paneId }: Props) {
     }
   }, [deviceId]);
 
-  // Reset history and load one-shot info when the device changes.
+  // Point the buffers at this device's history (cached or fresh) and load
+  // one-shot info. On a plain remount this restores the same objects, so the
+  // charts carry on where they left off.
   useEffect(() => {
-    overallCpuHistory.current = [];
-    perCoreHistory.current = new Map();
-    memHistory.current = [];
-    gpuHistory.current = new Map();
-    netRateHistory.current = new Map();
-    prevCores.current = new Map();
-    prevNet.current = new Map();
-    setSnap(null);
-    setCpuInfo(null);
+    const h = historyRef.current;
+    overallCpuHistory.current = h.overallCpu;
+    perCoreHistory.current = h.perCore;
+    memHistory.current = h.mem;
+    gpuHistory.current = h.gpu;
+    netRateHistory.current = h.net;
+    prevCores.current = h.prevCores;
+    prevNet.current = h.prevNet;
+    setSnap(h.snap);
+    setCoreUsage(h.coreUsage);
+    setNetRates(h.netRates);
+    setCpuInfo(h.cpuInfo);
     setDimms(null);
     setDimmError(null);
+    if (h.cpuInfo) return;
     void api
       .cpuInfo(deviceId)
-      .then(setCpuInfo)
+      .then((info) => {
+        h.cpuInfo = info;
+        setCpuInfo(info);
+      })
       .catch(() => {
         // best-effort
       });
