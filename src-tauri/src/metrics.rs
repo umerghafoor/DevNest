@@ -264,7 +264,94 @@ pub fn dimms(pool: &SessionPool, device: &Device) -> AppResult<Vec<DimmModule>> 
     Ok(parse_dmidecode_memory(&out.stdout))
 }
 
+// ─── System info (one-shot) ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemInfo {
+    pub hostname: String,
+    pub user: String,
+    pub os: String,
+    pub distro: String,
+    pub kernel: String,
+    pub architecture: String,
+    pub cpu_model: String,
+    pub cores: Option<u32>,
+    pub memory_bytes: Option<u64>,
+    pub timezone: String,
+    pub uptime_seconds: Option<u64>,
+    pub shell: String,
+}
+
+/// Host details for the System Info panel. Plain POSIX sh so it works on both
+/// Linux and macOS; every probe is best-effort and prints `key=value`.
+pub fn system_info(pool: &SessionPool, device: &Device) -> AppResult<SystemInfo> {
+    let cmd = r#"
+echo "hostname=$(hostname 2>/dev/null)"
+echo "user=$(id -un 2>/dev/null)"
+echo "os=$(uname -s 2>/dev/null)"
+echo "kernel=$(uname -r 2>/dev/null)"
+echo "arch=$(uname -m 2>/dev/null)"
+echo "shell=$SHELL"
+if [ -r /etc/os-release ]; then
+  echo "distro=$(. /etc/os-release; echo "$PRETTY_NAME")"
+elif command -v sw_vers >/dev/null 2>&1; then
+  echo "distro=$(sw_vers -productName) $(sw_vers -productVersion)"
+fi
+if [ -r /proc/cpuinfo ]; then
+  echo "cpu=$(grep -m1 -E 'model name|Model' /proc/cpuinfo | cut -d: -f2-)"
+  echo "mem=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)"
+  echo "uptime=$(cut -d. -f1 /proc/uptime)"
+else
+  echo "cpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
+  echo "mem=$(sysctl -n hw.memsize 2>/dev/null)"
+  boot=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+  [ -n "$boot" ] && echo "uptime=$(( $(date +%s) - boot ))"
+fi
+echo "cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null)"
+tz=$(readlink /etc/localtime 2>/dev/null | sed 's|.*zoneinfo/||')
+[ -z "$tz" ] && tz=$(cat /etc/timezone 2>/dev/null)
+[ -z "$tz" ] && tz=$(date +%Z)
+echo "tz=$tz"
+"#;
+    let out = ssh::run_command_no_sudo(pool, device, cmd)?;
+    if out.exit_code != 0 && out.stdout.trim().is_empty() {
+        return Err(AppError::Ssh(format!(
+            "system_info exit {}: {}",
+            out.exit_code,
+            out.stderr.trim()
+        )));
+    }
+    Ok(parse_system_info(&out.stdout))
+}
+
 // ─── Parsers ─────────────────────────────────────────────────────────────────
+
+fn parse_system_info(raw: &str) -> SystemInfo {
+    let mut info = SystemInfo::default();
+    for line in raw.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim().to_string();
+        match key {
+            "hostname" => info.hostname = value,
+            "user" => info.user = value,
+            "os" => info.os = value,
+            "distro" => info.distro = value,
+            "kernel" => info.kernel = value,
+            "arch" => info.architecture = value,
+            "cpu" => info.cpu_model = value,
+            "cores" => info.cores = value.parse().ok(),
+            "mem" => info.memory_bytes = value.parse().ok(),
+            "tz" => info.timezone = value,
+            "uptime" => info.uptime_seconds = value.parse().ok(),
+            "shell" => info.shell = value,
+            _ => {}
+        }
+    }
+    info
+}
 
 fn split_named_sections<'a>(
     s: &'a str,

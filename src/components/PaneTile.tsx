@@ -87,7 +87,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   dashboard: "Quick overview of devices and panels",
-  sysinfo: "Browser-side host info",
+  sysinfo: "Host OS, CPU, memory and uptime",
   terminal: "Interactive shell session",
   files: "Browse and edit files",
   processes: "Top processes by CPU and memory",
@@ -208,7 +208,7 @@ export function PanelContent({ pane }: { pane: Pane }) {
     case "ngrok":
       return <NgrokPanel deviceId={pane.deviceId} />;
     case "sysinfo":
-      return <SysInfoPanel />;
+      return <SysInfoPanel deviceId={pane.deviceId} />;
     case "editor":
       return <EditorPanel deviceId={pane.deviceId} />;
     case "markdown":

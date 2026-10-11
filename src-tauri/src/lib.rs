@@ -195,6 +195,7 @@ pub fn run() {
             commands::docker_logs,
             commands::metrics_snapshot,
             commands::cpu_info,
+            commands::system_info,
             commands::dimm_info,
             commands::sql_set_password,
             commands::sql_clear_password,

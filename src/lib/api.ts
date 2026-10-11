@@ -282,6 +282,21 @@ export interface CpuInfo {
   architecture: string;
 }
 
+export interface SystemInfo {
+  hostname: string;
+  user: string;
+  os: string;
+  distro: string;
+  kernel: string;
+  architecture: string;
+  cpuModel: string;
+  cores: number | null;
+  memoryBytes: number | null;
+  timezone: string;
+  uptimeSeconds: number | null;
+  shell: string;
+}
+
 export interface DimmModule {
   locator: string;
   size: string;
@@ -376,6 +391,8 @@ export const api = {
   metricsSnapshot: (deviceId: string) =>
     call<MetricsSnapshot>("metrics_snapshot", { deviceId }),
   cpuInfo: (deviceId: string) => call<CpuInfo>("cpu_info", { deviceId }),
+  systemInfo: (deviceId: string) =>
+    call<SystemInfo>("system_info", { deviceId }),
   dimmInfo: (deviceId: string) => call<DimmModule[]>("dimm_info", { deviceId }),
 
   gitIsRepo: (deviceId: string, path: string) =>
