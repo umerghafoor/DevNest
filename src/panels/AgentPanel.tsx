@@ -579,6 +579,12 @@ function Item({ item, deviceId }: { item: TranscriptItem; deviceId: string }) {
         </details>
       );
     case "tool":
+      // A shown widget is its own result; only surface the call if it failed.
+      if (
+        devnestTool(item.call.title) === "show widget" &&
+        item.call.status !== "failed"
+      )
+        return null;
       return <ToolCard call={item.call} />;
     case "plan":
       return (
@@ -628,8 +634,15 @@ const TOOL_STATUS_ICON: Record<string, string> = {
   failed: "✕",
 };
 
+/** "mcp__devnest__list_devices" → "list devices"; null for other tools. */
+function devnestTool(title: string | null | undefined) {
+  const m = /^mcp__devnest__(\w+)$/.exec(title ?? "");
+  return m ? m[1].replace(/_/g, " ") : null;
+}
+
 function ToolCard({ call }: { call: ToolCall }) {
   const status = call.status ?? "pending";
+  const devnest = devnestTool(call.title);
   return (
     <details className="rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-1.5">
       <summary className="flex cursor-pointer items-center gap-2 select-none">
@@ -644,9 +657,16 @@ function ToolCard({ call }: { call: ToolCall }) {
         >
           {TOOL_STATUS_ICON[status] ?? "○"}
         </span>
-        <span className="truncate font-mono">
-          {call.title ?? call.kind ?? "tool"}
-        </span>
+        {devnest ? (
+          <span className="truncate">
+            <span className="text-(--color-fg-muted)">DevNest · </span>
+            {devnest}
+          </span>
+        ) : (
+          <span className="truncate font-mono">
+            {call.title ?? call.kind ?? "tool"}
+          </span>
+        )}
       </summary>
       <div className="mt-1 space-y-1">
         {call.locations?.map((l, i) => (

@@ -172,10 +172,10 @@ function MasterBody({ hostId }: { hostId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-xs">
-      <div className="flex shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5">
+      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 select-none">
+        <span className="text-[10px] opacity-40">✧</span>
+        <span className="font-medium">Master</span>
         <StatusDot status={s.status} />
-        <Sparkles size={13} className="shrink-0 text-(--color-accent)" />
-        <span className="font-semibold">Master</span>
         <select
           value={agentId}
           onChange={(e) => setAgentId(e.target.value)}

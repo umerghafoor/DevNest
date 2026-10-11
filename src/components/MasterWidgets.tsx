@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { ExternalLink } from "lucide-react";
+import { Maximize2 } from "lucide-react";
 import {
   api,
   errorMessage,
@@ -9,12 +9,13 @@ import {
 } from "../lib/api";
 import { WIDGETS } from "../lib/master";
 import { useAppStore } from "../store/app-store";
+import { PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
 
 /**
  * Live widgets the Master agent shows in its transcript, for the host or any
- * DevNest device. Each one polls the device itself while it's on screen —
- * nothing is a snapshot from the agent. "Open as panel" opens the matching
- * full DevNest panel on the same device.
+ * DevNest device. Each is a small embedded pane — same header and rows as
+ * the full panels — that polls the device itself while it's on screen.
+ * The maximize button opens the full panel on the same device.
  */
 export function MasterWidget({
   widget,
@@ -31,8 +32,10 @@ export function MasterWidget({
   const visible = useVisible(ref);
   const openPane = useAppStore((s) => s.openPane);
   const device = useAppStore((s) => s.devices.find((d) => d.id === deviceId));
+  const status = useAppStore((s) => s.statuses[deviceId]);
   const meta = WIDGETS[widget];
-  const name = device?.name ?? deviceName;
+  const name = device?.name ?? deviceName ?? "device";
+  const online = device?.isLocalhost || status === "connected";
 
   const dock = () => {
     if (!meta) return;
@@ -43,47 +46,55 @@ export function MasterWidget({
   return (
     <div
       ref={ref}
-      className="overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface)"
+      className="overflow-hidden rounded-md border border-(--color-border) bg-(--color-bg) text-xs"
     >
-      <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-1.5">
-        <span
-          className={`h-1.5 w-1.5 shrink-0 rounded-full ${visible ? "bg-(--color-online) animate-pulse" : "bg-(--color-fg-muted)"}`}
-          title={visible ? "Live" : "Paused while off screen"}
+      <div
+        className="relative flex h-8 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 select-none"
+        title={title}
+      >
+        <div
+          className={`absolute top-0 right-0 left-0 h-0.5 ${visible ? "bg-(--color-accent)" : "bg-transparent"}`}
         />
-        <span className="min-w-0 flex-1 truncate font-semibold">
-          {title || meta?.label || widget}
+        <span className="text-[10px] opacity-40">
+          {meta ? PANEL_ICONS[meta.panel] : "◇"}
         </span>
-        {name && (
+        <span className="font-medium">
+          {meta?.label ?? (meta ? PANEL_LABELS[meta.panel] : widget)}
+        </span>
+        <span className="opacity-40">·</span>
+        <span className="flex min-w-0 items-center gap-1 text-(--color-fg-muted)">
           <span
-            className="max-w-[40%] shrink-0 truncate rounded bg-(--color-surface-2) px-1.5 py-0.5 text-[10px] text-(--color-fg-muted)"
-            title={device?.isLocalhost ? "This computer" : device?.host}
-          >
-            {name}
-          </span>
-        )}
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${online ? "bg-(--color-online)" : "bg-(--color-fg-muted)"}`}
+          />
+          <span className="truncate">{name}</span>
+        </span>
+        <span
+          className="ml-auto shrink-0 text-[10px] text-(--color-fg-muted)"
+          title={visible ? "Updating live" : "Paused while off screen"}
+        >
+          {visible ? "live" : "paused"}
+        </span>
         {meta && (
           <button
-            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+            className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
             onClick={dock}
-            title={`Open ${meta.label} for ${name ?? "this device"} as a panel`}
+            title={`Open ${meta.label} for ${name} as a panel`}
           >
-            <ExternalLink size={11} /> Open as panel
+            <Maximize2 size={11} />
           </button>
         )}
       </div>
-      <div className="px-3 py-2">
-        {widget === "system_monitor" ? (
-          <SystemMonitor live={visible} deviceId={deviceId} />
-        ) : widget === "processes" ? (
-          <Processes live={visible} deviceId={deviceId} />
-        ) : widget === "tailscale" ? (
-          <Tailscale live={visible} deviceId={deviceId} />
-        ) : widget === "docker" ? (
-          <Docker live={visible} deviceId={deviceId} />
-        ) : (
-          <Muted>Unknown widget “{widget}”.</Muted>
-        )}
-      </div>
+      {widget === "system_monitor" ? (
+        <SystemMonitor live={visible} deviceId={deviceId} />
+      ) : widget === "processes" ? (
+        <Processes live={visible} deviceId={deviceId} />
+      ) : widget === "tailscale" ? (
+        <Tailscale live={visible} deviceId={deviceId} />
+      ) : widget === "docker" ? (
+        <Docker live={visible} deviceId={deviceId} />
+      ) : (
+        <Note>Unknown widget “{widget}”.</Note>
+      )}
     </div>
   );
 }
@@ -96,6 +107,7 @@ interface StatsFeed {
   latest: HostStats | null;
   prev: HostStats | null;
   cpu: number[];
+  mem: number[];
   error: string | null;
   version: number;
   subs: Set<() => void>;
@@ -112,6 +124,7 @@ function feedFor(deviceId: string): StatsFeed {
       latest: null,
       prev: null,
       cpu: [],
+      mem: [],
       error: null,
       version: 0,
       subs: new Set(),
@@ -132,6 +145,7 @@ async function pollLoop(deviceId: string, f: StatsFeed) {
       f.prev = f.latest;
       f.latest = s;
       f.cpu = [...f.cpu, s.cpuPercent].slice(-HISTORY);
+      f.mem = [...f.mem, pct(s.memUsed, s.memTotal)].slice(-HISTORY);
       f.error = null;
     } catch (e) {
       f.error = errorMessage(e);
@@ -175,7 +189,7 @@ function SystemMonitor({
 }) {
   const f = useDeviceStats(deviceId, live);
   const s = f.latest;
-  if (!s) return f.error ? <Err>{f.error}</Err> : <Muted>Reading…</Muted>;
+  if (!s) return f.error ? <Note error>{f.error}</Note> : <Note>Reading…</Note>;
 
   const dt = f.prev ? (s.timestampMs - f.prev.timestampMs) / 1000 : 0;
   const rate = (now: number, before?: number) =>
@@ -184,75 +198,87 @@ function SystemMonitor({
   const tx = rate(s.netTx, f.prev?.netTx);
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-end gap-3">
-        <div className="w-20 shrink-0">
-          <div className="text-[11px] text-(--color-fg-muted)">
-            CPU · {s.cores} cores
-          </div>
-          <div className="text-xl font-semibold tabular-nums">
-            {s.cpuPercent.toFixed(0)}%
-          </div>
-        </div>
-        <Sparkline values={f.cpu} />
+    <>
+      <div className="space-y-1 px-3 py-2">
+        <Meter
+          label="CPU"
+          percent={s.cpuPercent}
+          history={f.cpu}
+          color="var(--color-accent)"
+          detail={`${s.cores} cores`}
+        />
+        <Meter
+          label="Mem"
+          percent={pct(s.memUsed, s.memTotal)}
+          history={f.mem}
+          color="var(--color-online)"
+          detail={`${fmtBytes(s.memUsed)} / ${fmtBytes(s.memTotal)}`}
+        />
+        <Meter
+          label="Disk"
+          percent={pct(s.diskUsed, s.diskTotal)}
+          color="var(--color-warn)"
+          detail={`${fmtBytes(s.diskUsed)} / ${fmtBytes(s.diskTotal)}`}
+        />
       </div>
-      <Bar label="Memory" used={s.memUsed} total={s.memTotal} />
-      <Bar label="Disk" used={s.diskUsed} total={s.diskTotal} />
-      <div className="grid grid-cols-3 gap-2 text-[11px] text-(--color-fg-muted)">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-t border-(--color-border) px-3 py-1 text-[11px] text-(--color-fg-muted)">
         <span title="Load average 1 / 5 / 15 min">
-          Load{" "}
-          <b className="text-(--color-fg) tabular-nums">
+          load{" "}
+          <span className="font-mono text-(--color-fg)">
             {s.load.map((l) => l.toFixed(2)).join(" ")}
-          </b>
+          </span>
         </span>
         <span>
-          Net{" "}
-          <b className="text-(--color-fg) tabular-nums">
+          <span className="font-mono text-(--color-fg)">
             ↓{rx == null ? "–" : fmtBytes(rx)}/s ↑
             {tx == null ? "–" : fmtBytes(tx)}/s
-          </b>
+          </span>
         </span>
-        <span className="text-right">
-          Up <b className="text-(--color-fg)">{fmtUptime(s.uptimeSecs)}</b>
+        <span className="ml-auto">
+          up{" "}
+          <span className="text-(--color-fg)">{fmtUptime(s.uptimeSecs)}</span>
         </span>
       </div>
-    </div>
+    </>
   );
 }
 
 function Processes({ live, deviceId }: { live: boolean; deviceId: string }) {
   const f = useDeviceStats(deviceId, live);
   const s = f.latest;
-  if (!s) return f.error ? <Err>{f.error}</Err> : <Muted>Reading…</Muted>;
+  if (!s) return f.error ? <Note error>{f.error}</Note> : <Note>Reading…</Note>;
   return (
-    <table className="w-full table-fixed text-[11px]">
-      <thead className="text-(--color-fg-muted)">
-        <tr>
-          <th className="text-left font-normal">Process</th>
-          <th className="w-14 text-right font-normal">PID</th>
-          <th className="w-12 text-right font-normal">CPU</th>
-          <th className="w-12 text-right font-normal">Mem</th>
-        </tr>
-      </thead>
-      <tbody className="tabular-nums">
-        {s.top.map((p) => (
-          <tr key={p.pid}>
-            <td className="truncate" title={p.name}>
-              {p.name}
-            </td>
-            <td className="text-right text-(--color-fg-muted)">{p.pid}</td>
-            <td className="text-right">{p.cpu.toFixed(1)}%</td>
-            <td className="text-right">{p.mem.toFixed(1)}%</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <ul>
+      <HeadRow>
+        <span className="min-w-0 flex-1">Process</span>
+        <span className="w-14 shrink-0 text-right">PID</span>
+        <span className="w-12 shrink-0 text-right">CPU</span>
+        <span className="w-12 shrink-0 text-right">Mem</span>
+      </HeadRow>
+      {s.top.map((p) => (
+        <Row key={p.pid}>
+          <span className="min-w-0 flex-1 truncate" title={p.name}>
+            {p.name}
+          </span>
+          <span className="w-14 shrink-0 text-right font-mono text-(--color-fg-muted)">
+            {p.pid}
+          </span>
+          <span className="w-12 shrink-0 text-right font-mono tabular-nums">
+            {p.cpu.toFixed(1)}%
+          </span>
+          <span className="w-12 shrink-0 text-right font-mono tabular-nums">
+            {p.mem.toFixed(1)}%
+          </span>
+        </Row>
+      ))}
+    </ul>
   );
 }
 
 interface TailnetPeer {
   tailscaleIps: string[];
   hostName: string;
+  dnsName: string;
   online: boolean;
   isExitNode: boolean;
   os: string;
@@ -269,52 +295,64 @@ function Tailscale({ live, deviceId }: { live: boolean; deviceId: string }) {
   const { data, error } = usePoll(live, 5000, () =>
     invoke<TailnetStatus>("tailscale_status", { deviceId }),
   );
-  if (!data) return error ? <Err>{error}</Err> : <Muted>Reading…</Muted>;
+  if (!data) return error ? <Note error>{error}</Note> : <Note>Reading…</Note>;
   if (!data.available)
-    return <Muted>Tailscale isn’t running on this device.</Muted>;
+    return (
+      <Note>Tailscale is not installed or not running on this device.</Note>
+    );
 
   const peers = [...data.peers].sort(
-    (a, b) => Number(b.online) - Number(a.online),
+    (a, b) =>
+      Number(b.online) - Number(a.online) ||
+      a.hostName.localeCompare(b.hostName, undefined, { sensitivity: "base" }),
   );
   const online = peers.filter((p) => p.online).length;
+  const self = data.selfNode;
   return (
-    <div className="space-y-1.5 text-[11px]">
-      <div className="flex flex-wrap gap-x-3 text-(--color-fg-muted)">
-        <span>
-          This device{" "}
-          <b className="text-(--color-fg)">{data.selfNode?.hostName ?? "?"}</b>{" "}
-          {data.selfNode?.tailscaleIps[0]}
-        </span>
-        <span>
-          {online}/{peers.length} peers online
-        </span>
-        <span>
-          Exit node{" "}
-          <b className="text-(--color-fg)">{data.currentExitNode ?? "none"}</b>
+    <>
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-(--color-border) px-2 py-1">
+        {self && (
+          <span className="min-w-0 truncate text-(--color-fg-muted)">
+            <span className="font-medium text-(--color-fg)">
+              {self.hostName}
+            </span>{" "}
+            <span className="font-mono">{self.tailscaleIps[0] ?? "—"}</span>
+          </span>
+        )}
+        {data.currentExitNode && (
+          <span className="rounded-md bg-(--color-online)/12 px-1.5 py-0.5 text-(--color-online)">
+            via {data.currentExitNode}
+          </span>
+        )}
+        <span className="ml-auto text-(--color-fg-muted) tabular-nums">
+          {online}/{peers.length} online
         </span>
       </div>
-      <ul className="max-h-40 space-y-0.5 overflow-y-auto">
+      <ul className="max-h-56 overflow-y-auto">
         {peers.map((p) => (
-          <li
-            key={p.hostName + p.tailscaleIps[0]}
-            className="flex items-center gap-2"
-          >
+          <Row key={p.dnsName || p.hostName}>
+            <Dot on={p.online} />
             <span
-              className={`h-1.5 w-1.5 shrink-0 rounded-full ${p.online ? "bg-(--color-online)" : "bg-(--color-offline)"}`}
-            />
-            <span className="min-w-0 flex-1 truncate">{p.hostName}</span>
+              className={`min-w-0 flex-1 truncate ${p.online ? "" : "text-(--color-fg-muted)"}`}
+              title={p.dnsName || p.hostName}
+            >
+              {p.hostName}
+            </span>
             {p.isExitNode && (
-              <span className="rounded bg-(--color-accent)/15 px-1 text-[10px]">
+              <span
+                className="shrink-0 text-[10px] text-(--color-fg-muted)"
+                title="Offers itself as an exit node"
+              >
                 exit
               </span>
             )}
-            <span className="font-mono text-(--color-fg-muted)">
-              {p.tailscaleIps[0]}
+            <span className="w-28 shrink-0 truncate text-right font-mono text-(--color-fg-muted)">
+              {p.tailscaleIps[0] ?? "—"}
             </span>
-          </li>
+          </Row>
         ))}
       </ul>
-    </div>
+    </>
   );
 }
 
@@ -322,26 +360,146 @@ function Docker({ live, deviceId }: { live: boolean; deviceId: string }) {
   const { data, error } = usePoll<ContainerSummary[]>(live, 5000, () =>
     api.dockerListContainers(deviceId),
   );
-  if (!data) return error ? <Err>{error}</Err> : <Muted>Reading…</Muted>;
-  if (data.length === 0) return <Muted>No containers.</Muted>;
+  if (!data) return error ? <Note error>{error}</Note> : <Note>Reading…</Note>;
+  if (data.length === 0) return <Note>No containers.</Note>;
+  const running = data.filter((c) => c.state === "running").length;
   return (
-    <ul className="max-h-48 space-y-0.5 overflow-y-auto text-[11px]">
+    <ul className="max-h-56 overflow-y-auto">
+      <HeadRow>
+        <span className="min-w-0 flex-1">
+          Container{" "}
+          <span className="tabular-nums">
+            ({running}/{data.length} running)
+          </span>
+        </span>
+        <span className="w-28 shrink-0 text-right">Status</span>
+      </HeadRow>
       {data.map((c) => (
-        <li key={c.id} className="flex items-center gap-2">
-          <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${c.state === "running" ? "bg-(--color-online)" : "bg-(--color-offline)"}`}
-          />
+        <Row key={c.id}>
+          <Dot on={c.state === "running"} />
           <span className="min-w-0 flex-1 truncate" title={c.image}>
             {c.name}
           </span>
-          <span className="truncate text-(--color-fg-muted)">{c.status}</span>
-        </li>
+          <span className="w-28 shrink-0 truncate text-right text-(--color-fg-muted)">
+            {c.status}
+          </span>
+        </Row>
       ))}
     </ul>
   );
 }
 
-// ─── Bits ─────────────────────────────────────────────────────────────────────
+// ─── Bits (same look as the full panels) ──────────────────────────────────────
+
+/** Metrics' compact meter: label, sparkline over the usage fill, value. */
+function Meter({
+  label,
+  percent,
+  history,
+  color,
+  detail,
+}: {
+  label: string;
+  percent: number;
+  history?: number[];
+  color: string;
+  detail: string;
+}) {
+  return (
+    <div className="flex h-6 items-center gap-2">
+      <span className="w-9 shrink-0 text-[11px] tracking-wide text-(--color-fg-muted) uppercase">
+        {label}
+      </span>
+      <div className="relative min-w-12 flex-1 self-stretch overflow-hidden rounded-sm bg-(--color-surface)">
+        <div
+          className="absolute inset-y-0 left-0 opacity-25 transition-[width] duration-500"
+          style={{ width: `${Math.min(percent, 100)}%`, background: color }}
+        />
+        {history && history.length > 1 && (
+          <div className="absolute inset-0">
+            <Sparkline data={history} stroke={color} />
+          </div>
+        )}
+      </div>
+      <span className="w-11 shrink-0 text-right font-mono font-semibold tabular-nums">
+        {percent.toFixed(percent < 10 ? 1 : 0)}%
+      </span>
+      <span
+        className="w-28 shrink-0 truncate text-(--color-fg-muted)"
+        title={detail}
+      >
+        {detail}
+      </span>
+    </div>
+  );
+}
+
+function Sparkline({ data, stroke }: { data: number[]; stroke: string }) {
+  const w = 200;
+  const h = 40;
+  const step = w / Math.max(1, data.length - 1);
+  const points = data
+    .map(
+      (v, i) =>
+        `${(i * step).toFixed(1)},${(h - (Math.min(v, 100) / 100) * h).toFixed(1)}`,
+    )
+    .join(" ");
+  return (
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      preserveAspectRatio="none"
+      className="h-full w-full"
+    >
+      <polyline
+        points={points}
+        fill="none"
+        stroke={stroke}
+        strokeWidth="1.5"
+        vectorEffect="non-scaling-stroke"
+      />
+    </svg>
+  );
+}
+
+function HeadRow({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="sticky top-0 z-10 flex h-6 items-center gap-2 border-b border-(--color-border) bg-(--color-bg) px-3 text-[11px] text-(--color-fg-muted)">
+      {children}
+    </li>
+  );
+}
+
+function Row({ children }: { children: React.ReactNode }) {
+  return (
+    <li className="flex h-7 items-center gap-2 border-b border-(--color-border) px-3 last:border-b-0 hover:bg-(--color-surface)">
+      {children}
+    </li>
+  );
+}
+
+function Dot({ on }: { on: boolean }) {
+  return (
+    <span
+      className={`h-2 w-2 shrink-0 rounded-full ${on ? "bg-(--color-online)" : "bg-(--color-offline)"}`}
+    />
+  );
+}
+
+function Note({
+  children,
+  error,
+}: {
+  children: React.ReactNode;
+  error?: boolean;
+}) {
+  return (
+    <div
+      className={`px-3 py-3 text-center ${error ? "text-(--color-error)" : "text-(--color-fg-muted)"}`}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** Poll `fetch` every `ms` while `live`. Keeps the last good value. */
 function usePoll<T>(live: boolean, ms: number, fetch: () => Promise<T>) {
@@ -385,76 +543,8 @@ function useVisible(ref: React.RefObject<HTMLElement | null>) {
   return visible;
 }
 
-function Bar({
-  label,
-  used,
-  total,
-}: {
-  label: string;
-  used: number;
-  total: number;
-}) {
-  const pct = total > 0 ? Math.min(100, (used / total) * 100) : 0;
-  const color =
-    pct > 90
-      ? "bg-(--color-error)"
-      : pct > 75
-        ? "bg-(--color-warn)"
-        : "bg-(--color-accent)";
-  return (
-    <div>
-      <div className="mb-0.5 flex justify-between text-[11px]">
-        <span className="text-(--color-fg-muted)">{label}</span>
-        <span className="tabular-nums">
-          {fmtBytes(used)} / {fmtBytes(total)} · {pct.toFixed(0)}%
-        </span>
-      </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-(--color-surface-2)">
-        <div
-          className={`h-full rounded-full ${color} transition-[width] duration-500`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Sparkline({ values }: { values: number[] }) {
-  const w = 200;
-  const h = 36;
-  if (values.length < 2) return <div className="h-9 flex-1" />;
-  const step = w / (HISTORY - 1);
-  const x0 = w - (values.length - 1) * step;
-  const pts = values.map(
-    (v, i) => `${x0 + i * step},${h - (Math.min(100, v) / 100) * h}`,
-  );
-  return (
-    <svg
-      viewBox={`0 0 ${w} ${h}`}
-      preserveAspectRatio="none"
-      className="h-9 min-w-0 flex-1"
-    >
-      <polygon
-        points={`${x0},${h} ${pts.join(" ")} ${w},${h}`}
-        className="fill-(--color-accent) opacity-15"
-      />
-      <polyline
-        points={pts.join(" ")}
-        fill="none"
-        className="stroke-(--color-accent)"
-        strokeWidth="1.5"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}
-
-function Muted({ children }: { children: React.ReactNode }) {
-  return <div className="text-[11px] text-(--color-fg-muted)">{children}</div>;
-}
-
-function Err({ children }: { children: React.ReactNode }) {
-  return <div className="text-[11px] text-(--color-error)">{children}</div>;
+function pct(used: number, total: number) {
+  return total > 0 ? Math.min(100, (used / total) * 100) : 0;
 }
 
 function fmtBytes(n: number) {
