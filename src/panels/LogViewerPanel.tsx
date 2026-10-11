@@ -15,6 +15,7 @@ import {
   updateLogSession,
 } from "../lib/log-sessions";
 import { usePaneSettings } from "../store/pane-settings-store";
+import { BTN_GROUP, SMALL_INPUT, TOOL_BTN, segBtn } from "../lib/ui";
 
 interface Props {
   deviceId: string;
@@ -33,13 +34,6 @@ const PRESETS = [
   { label: "journalctl", cmd: "journalctl -f --no-pager 2>/dev/null" },
   { label: "dmesg", cmd: "dmesg -w 2>/dev/null || dmesg | tail -n 50" },
 ];
-
-// Compact controls. Not using the shared `.input` class: it's unlayered CSS,
-// so its large padding / font size would override these utilities.
-const SMALL_INPUT =
-  "h-6 rounded-md border border-transparent bg-(--color-surface) px-2 text-xs text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) focus:border-(--color-accent)";
-const TOOL_BTN =
-  "h-6 rounded px-2 hover:bg-(--color-surface-2) disabled:opacity-40";
 
 export function LogViewerPanel({ deviceId, paneId }: Props) {
   const [settings, updateSettings] = usePaneSettings(paneId, { filter: "" });
@@ -163,27 +157,19 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
       {/* Toolbar — one slim row */}
       <div className="flex flex-wrap items-center gap-1.5 border-b border-(--color-border) px-2 py-1 text-xs">
         {/* Presets as a segmented control */}
-        <div className="flex items-center rounded-md bg-(--color-surface) p-0.5">
+        <div className={BTN_GROUP}>
           {PRESETS.map((p) => (
             <button
               key={p.label}
               onClick={() => setCmd(p.cmd)}
-              className={`h-6 rounded px-2 transition-colors ${
-                cmd === p.cmd
-                  ? "bg-(--color-accent) text-(--color-accent-fg)"
-                  : "text-(--color-fg-muted) hover:text-(--color-fg)"
-              }`}
+              className={segBtn(cmd === p.cmd)}
             >
               {p.label}
             </button>
           ))}
           <button
             onClick={() => setCmd(customCmd || "")}
-            className={`h-6 rounded px-2 transition-colors ${
-              isCustom
-                ? "bg-(--color-accent) text-(--color-accent-fg)"
-                : "text-(--color-fg-muted) hover:text-(--color-fg)"
-            }`}
+            className={segBtn(isCustom)}
           >
             Custom
           </button>
@@ -208,7 +194,7 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
             placeholder="Filter…"
             className={`${SMALL_INPUT} w-36`}
           />
-          <div className="flex items-center rounded-md bg-(--color-surface) p-0.5">
+          <div className={BTN_GROUP}>
             {running ? (
               <button
                 onClick={() => void stopLogStream(session)}
