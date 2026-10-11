@@ -160,6 +160,8 @@ export function FileBrowserPanel({ deviceId }: Props) {
     asc: true,
   });
   const [showHidden, setShowHidden] = useState(true);
+  const [selected, setSelected] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
@@ -210,11 +212,70 @@ export function FileBrowserPanel({ deviceId }: Props) {
   const crumbs = cwd.split("/").filter(Boolean);
   const crumbPath = (i: number) => "/" + crumbs.slice(0, i + 1).join("/");
 
-  const openFirstMatch = () => {
-    const first = visible[0];
-    if (!first) return;
-    if (first.isDir) void load(first.path);
-    else void openEditor(first);
+  // Keep the selection valid and visible.
+  useEffect(() => {
+    setSelected(0);
+  }, [cwd, filter, showHidden, sort]);
+
+  // A clicked row unmounts on navigation; hand focus back so keys keep working.
+  useEffect(() => {
+    const root = rootRef.current;
+    const active = document.activeElement;
+    if (root && (active === document.body || root.contains(active))) {
+      if (active?.tagName !== "INPUT") root.focus({ preventScroll: true });
+    }
+  }, [entries]);
+
+  useEffect(() => {
+    rootRef.current
+      ?.querySelector(`[data-row-idx="${selected}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+
+  const openSelected = () => {
+    const entry = visible[Math.min(selected, visible.length - 1)];
+    if (!entry) return;
+    if (entry.isDir) void load(entry.path);
+    else void openEditor(entry);
+  };
+
+  // Arrow-key list navigation. `inInput` limits keys to those that don't
+  // clash with text editing.
+  const handleNavKey = (e: React.KeyboardEvent, inInput: boolean): boolean => {
+    const last = visible.length - 1;
+    switch (e.key) {
+      case "ArrowDown":
+        setSelected((i) => Math.min(last, i + 1));
+        break;
+      case "ArrowUp":
+        setSelected((i) => Math.max(0, i - 1));
+        break;
+      case "Enter":
+        openSelected();
+        break;
+      case "Home":
+        if (inInput) return false;
+        setSelected(0);
+        break;
+      case "End":
+        if (inInput) return false;
+        setSelected(Math.max(0, last));
+        break;
+      case "ArrowRight":
+        if (inInput) return false;
+        if (!visible[selected]?.isDir) return false;
+        openSelected();
+        break;
+      case "ArrowLeft":
+      case "Backspace":
+        if (inInput || cwd === "/") return false;
+        goUp();
+        break;
+      default:
+        return false;
+    }
+    e.preventDefault();
+    return true;
   };
 
   // Type anywhere in the panel to start filtering; Ctrl/Cmd+F focuses the box.
@@ -228,7 +289,9 @@ export function FileBrowserPanel({ deviceId }: Props) {
       filterRef.current?.select();
       return;
     }
-    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (handleNavKey(e, false)) return;
+    if (e.key.length === 1) {
       e.preventDefault();
       setFilter((f) => f + e.key);
       filterRef.current?.focus();
@@ -471,6 +534,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
 
   return (
     <div
+      ref={rootRef}
       tabIndex={-1}
       onKeyDown={handleKeyDown}
       className="relative flex h-full flex-col select-none overflow-hidden outline-none"
@@ -576,8 +640,8 @@ export function FileBrowserPanel({ deviceId }: Props) {
                     if (ev.key === "Escape") {
                       setFilter("");
                       ev.currentTarget.blur();
-                    } else if (ev.key === "Enter") {
-                      openFirstMatch();
+                    } else {
+                      handleNavKey(ev, true);
                     }
                   }}
                   placeholder="Filter files…"
@@ -706,10 +770,16 @@ export function FileBrowserPanel({ deviceId }: Props) {
                       );
                       ev.dataTransfer.effectAllowed = "copyMove";
                     }}
+                    data-row-idx={i}
+                    onClick={() => setSelected(i)}
                     onDoubleClick={() =>
                       e.isDir ? navigate(e) : void openEditor(e)
                     }
-                    className="group row-animate cursor-default border-b border-(--color-border) transition-colors hover:bg-(--color-surface)"
+                    className={`group row-animate cursor-default border-b border-(--color-border) transition-colors hover:bg-(--color-surface) ${
+                      i === selected
+                        ? "bg-(--color-accent)/10 shadow-[inset_2px_0_0_var(--color-accent)]"
+                        : ""
+                    }`}
                     style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }}
                   >
                     <td className="px-3 py-1.5 align-middle">
@@ -804,9 +874,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
               {visible.length}
               {q || !showHidden ? ` of ${entries.length}` : ""} items
             </span>
-            <span>
-              Drag to transfer · type to filter
-            </span>
+            <span>↑↓ navigate · Enter/→ open · ←/⌫ up · type to filter</span>
           </div>
         </>
       )}

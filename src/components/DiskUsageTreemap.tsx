@@ -1,5 +1,15 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  ChevronRight,
+  File as FileIcon,
+  Folder,
+  FolderOpen,
+  Home,
+  LayoutGrid,
+  PieChart,
+  RefreshCw,
+} from "lucide-react";
 import { errorMessage } from "../lib/api";
 
 export interface DiskUsageNode {
@@ -31,20 +41,14 @@ interface Rect {
   depth: number;
 }
 
-// Depth-based color palette
-const PALETTE = [
-  "oklch(0.68 0.16 240)", // blue
-  "oklch(0.68 0.16 160)", // emerald
-  "oklch(0.72 0.18 55)", // amber
-  "oklch(0.68 0.18 340)", // rose
-  "oklch(0.68 0.16 290)", // purple
-  "oklch(0.68 0.16 200)", // cyan
-  "oklch(0.72 0.17 90)", // yellow-lime
-];
+// Colors are keyed by top-level branch (hue) and tinted by depth (lightness),
+// so a branch reads as one family in both the treemap and the sunburst.
+const HUES = [240, 160, 55, 340, 290, 200, 100, 20];
 
-function getColor(index: number, _depth: number): string {
-  const base = PALETTE[index % PALETTE.length];
-  return base;
+function getColor(branch: number, depth: number): string {
+  const hue = HUES[branch % HUES.length];
+  const l = Math.max(0.55, 0.74 - Math.max(0, depth - 1) * 0.06);
+  return `oklch(${l} 0.14 ${hue})`;
 }
 
 // Squarified treemap calculation
@@ -116,11 +120,14 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
   const [currentRoot, setCurrentRoot] = useState<DiskUsageNode | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [hovered, setHovered] = useState<Rect | null>(null);
+  const [hovered, setHovered] = useState<DiskUsageNode | null>(null);
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(
     null,
   );
-  const [chartType, setChartType] = useState<"treemap" | "sunburst">("treemap");
+  const [chartType, setChartType] = useState<"treemap" | "sunburst">(
+    "sunburst",
+  );
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const scan = useCallback(
     async (scanPath: string) => {
@@ -152,7 +159,6 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
     if (!data || !currentRoot) return [];
     if (data.path === currentRoot.path) return [data];
 
-    // Find path from data to currentRoot
     const trail: DiskUsageNode[] = [];
     function find(node: DiskUsageNode): boolean {
       trail.push(node);
@@ -167,215 +173,230 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
     return trail;
   }, [data, currentRoot]);
 
-  // Treemap rects calculation
+  // Children ranked by size; their rank is the branch color index.
+  const ranked = useMemo(
+    () =>
+      currentRoot
+        ? [...currentRoot.children].sort((a, b) => b.size - a.size)
+        : [],
+    [currentRoot],
+  );
+
   const rects = useMemo(() => {
     if (!currentRoot) return [];
-    // Container dimension assumed 1000 x 600 for SVG viewBox
     return layoutTreemap(currentRoot, 0, 0, 1000, 600, 0);
   }, [currentRoot]);
 
-  // Handle drill down
-  const handleRectClick = (r: Rect) => {
-    if (r.node.children && r.node.children.length > 0) {
-      setCurrentRoot(r.node);
-    }
+  const zoomInto = (node: DiskUsageNode) => {
+    if (node.children && node.children.length > 0) setCurrentRoot(node);
   };
 
-  // Sunburst calculation
+  // Sunburst: starts at 12 o'clock, branches sorted by size.
   const sunburstArcs = useMemo(() => {
     if (!currentRoot) return [];
     const arcs: Array<{
       node: DiskUsageNode;
       pathD: string;
       depth: number;
-      index: number;
+      branch: number;
     }> = [];
 
-    const centerX = 500;
-    const centerY = 300;
-    const maxRadius = 260;
+    const cx = 300;
+    const cy = 300;
+    const holeR = 62;
+    const maxR = 292;
     const levels = 3;
-    const layerThickness = maxRadius / levels;
+    const thickness = (maxR - holeR) / levels;
+    const START = -Math.PI / 2;
 
     function buildArcs(
       node: DiskUsageNode,
       depth: number,
       startAngle: number,
       endAngle: number,
-      _idx: number,
+      parentBranch: number,
     ) {
       if (depth >= levels || !node.children || node.children.length === 0)
         return;
 
-      const innerR = 40 + depth * layerThickness;
-      const outerR = innerR + layerThickness - 2;
+      const innerR = holeR + depth * thickness;
+      const outerR = innerR + thickness - 2;
       const total = node.children.reduce((acc, c) => acc + c.size, 0) || 1;
-      let curAngle = startAngle;
+      let cur = startAngle;
 
-      node.children.forEach((child, childIdx) => {
-        const span = (child.size / total) * (endAngle - startAngle);
-        const childStart = curAngle;
-        const childEnd = curAngle + span;
-        curAngle += span;
+      [...node.children]
+        .sort((a, b) => b.size - a.size)
+        .forEach((child, idx) => {
+          const span = (child.size / total) * (endAngle - startAngle);
+          const a0 = cur;
+          const a1 = cur + span;
+          cur += span;
+          if (span <= 0.012) return;
 
-        if (span > 0.02) {
-          // Generate annular sector path
-          const x1 = centerX + outerR * Math.cos(childStart);
-          const y1 = centerY + outerR * Math.sin(childStart);
-          const x2 = centerX + outerR * Math.cos(childEnd);
-          const y2 = centerY + outerR * Math.sin(childEnd);
-          const x3 = centerX + innerR * Math.cos(childEnd);
-          const y3 = centerY + innerR * Math.sin(childEnd);
-          const x4 = centerX + innerR * Math.cos(childStart);
-          const y4 = centerY + innerR * Math.sin(childStart);
+          const branch = depth === 0 ? idx : parentBranch;
+          // Leave a hairline gap so neighbours stay distinct.
+          const g = Math.min(0.004, span / 4);
+          const p = (r: number, a: number) =>
+            `${cx + r * Math.cos(a)} ${cy + r * Math.sin(a)}`;
+          const large = span - 2 * g > Math.PI ? 1 : 0;
+          const d = `M ${p(outerR, a0 + g)} A ${outerR} ${outerR} 0 ${large} 1 ${p(outerR, a1 - g)} L ${p(innerR, a1 - g)} A ${innerR} ${innerR} 0 ${large} 0 ${p(innerR, a0 + g)} Z`;
 
-          const largeArc = span > Math.PI ? 1 : 0;
-          const d = `M ${x1} ${y1} A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2} ${y2} L ${x3} ${y3} A ${innerR} ${innerR} 0 ${largeArc} 0 ${x4} ${y4} Z`;
-
-          arcs.push({ node: child, pathD: d, depth, index: childIdx });
-          buildArcs(child, depth + 1, childStart, childEnd, childIdx);
-        }
-      });
+          arcs.push({ node: child, pathD: d, depth, branch });
+          buildArcs(child, depth + 1, a0, a1, branch);
+        });
     }
 
-    buildArcs(currentRoot, 0, 0, Math.PI * 2, 0);
+    buildArcs(currentRoot, 0, START, START + Math.PI * 2, 0);
     return arcs;
   }, [currentRoot]);
 
+  const onChartMove = (e: React.MouseEvent) => {
+    const box = chartRef.current?.getBoundingClientRect();
+    if (!box) return;
+    setTooltipPos({ x: e.clientX - box.left, y: e.clientY - box.top });
+  };
+
+  const goUp = () => {
+    if (breadcrumbs.length > 1)
+      setCurrentRoot(breadcrumbs[breadcrumbs.length - 2]);
+  };
+
+  const rootSize = currentRoot?.size ?? 0;
+  const pct = (n: DiskUsageNode) =>
+    rootSize > 0 ? (n.size / rootSize) * 100 : 0;
+  const centerNode = hovered ?? currentRoot;
+
+  const tipW = 260;
+  const boxW = chartRef.current?.clientWidth ?? 800;
+  const boxH = chartRef.current?.clientHeight ?? 500;
+
   return (
-    <div className="flex h-full flex-col select-none overflow-hidden bg-(--color-bg)">
-      {/* Treemap toolbar */}
-      <div className="flex items-center justify-between border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5 text-xs">
-        {/* Breadcrumb path */}
-        <div className="flex items-center gap-1 overflow-x-auto py-0.5 no-scrollbar">
-          {breadcrumbs.map((bc, idx) => (
-            <div key={bc.path} className="flex items-center gap-1 shrink-0">
-              {idx > 0 && <span className="text-(--color-fg-muted)">/</span>}
-              <button
-                onClick={() => setCurrentRoot(bc)}
-                className={`rounded px-1.5 py-0.5 transition-colors ${
-                  idx === breadcrumbs.length - 1
-                    ? "font-semibold text-(--color-fg) bg-(--color-surface-2)"
-                    : "text-(--color-accent) hover:underline"
-                }`}
-              >
-                {bc.name || "/"}
-              </button>
-            </div>
-          ))}
+    <div className="flex h-full flex-col overflow-hidden bg-(--color-bg) select-none">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3 border-b border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs">
+        <div className="no-scrollbar flex min-w-0 items-center gap-0.5 overflow-x-auto whitespace-nowrap">
+          {breadcrumbs.map((bc, idx) => {
+            const last = idx === breadcrumbs.length - 1;
+            return (
+              <div key={bc.path} className="flex shrink-0 items-center">
+                {idx > 0 && (
+                  <ChevronRight className="h-3 w-3 text-(--color-fg-muted)/60" />
+                )}
+                <button
+                  onClick={() => setCurrentRoot(bc)}
+                  className={`flex items-center gap-1 rounded-md px-1.5 py-0.5 transition-colors ${
+                    last
+                      ? "bg-(--color-surface-2) font-semibold text-(--color-fg)"
+                      : "text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+                  }`}
+                >
+                  {idx === 0 && <Home className="h-3 w-3" />}
+                  {bc.name || "/"}
+                </button>
+              </div>
+            );
+          })}
           {currentRoot && (
-            <span className="ml-2 font-mono text-[11px] text-(--color-fg-muted)">
-              ({fmtSize(currentRoot.size)})
+            <span className="ml-2 rounded-full bg-(--color-accent)/15 px-2 py-0.5 font-mono text-[11px] text-(--color-fg)">
+              {fmtSize(currentRoot.size)}
             </span>
           )}
         </div>
 
-        {/* View toggles & Rescan */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex rounded border border-(--color-border) p-0.5 bg-(--color-bg)">
-            <button
-              onClick={() => setChartType("treemap")}
-              className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
-                chartType === "treemap"
-                  ? "bg-(--color-accent) text-white font-medium"
-                  : "text-(--color-fg-muted) hover:text-(--color-fg)"
-              }`}
-            >
-              Treemap
-            </button>
-            <button
-              onClick={() => setChartType("sunburst")}
-              className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
-                chartType === "sunburst"
-                  ? "bg-(--color-accent) text-white font-medium"
-                  : "text-(--color-fg-muted) hover:text-(--color-fg)"
-              }`}
-            >
-              Sunburst
-            </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex rounded-md bg-(--color-surface-2) p-0.5">
+            {(
+              [
+                ["sunburst", "Sunburst", PieChart],
+                ["treemap", "Treemap", LayoutGrid],
+              ] as const
+            ).map(([type, label, Icon]) => (
+              <button
+                key={type}
+                onClick={() => setChartType(type)}
+                className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
+                  chartType === type
+                    ? "bg-(--color-bg) text-(--color-fg) shadow-sm"
+                    : "text-(--color-fg-muted) hover:text-(--color-fg)"
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
 
           <button
             onClick={() => void scan(currentRoot?.path ?? path)}
             disabled={loading}
-            className="rounded border border-(--color-border) px-2 py-0.5 text-[11px] hover:bg-(--color-surface-2) disabled:opacity-40 transition-colors"
+            className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium text-(--color-fg-muted) transition-colors hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-40"
           >
-            {loading ? "Scanning…" : "↻ Rescan"}
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+            {loading ? "Scanning…" : "Rescan"}
           </button>
         </div>
       </div>
 
-      {/* Main visualization area */}
-      <div className="relative flex-1 min-h-0 w-full overflow-hidden p-2">
-        {loading ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 text-xs text-(--color-fg-muted)">
-            <span className="h-6 w-6 rounded-full border-2 border-(--color-accent) border-t-transparent animate-spin" />
-            <span>Scanning directory disk usage…</span>
-          </div>
-        ) : error ? (
-          <div className="flex h-full items-center justify-center text-xs text-(--color-error)">
-            {error}
-          </div>
-        ) : !currentRoot ||
-          (currentRoot.children.length === 0 && currentRoot.size === 0) ? (
-          <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
-            Directory is empty or inaccessible
-          </div>
-        ) : chartType === "treemap" ? (
-          <div className="relative h-full w-full">
+      <div className="flex min-h-0 flex-1">
+        {/* Visualization */}
+        <div ref={chartRef} className="relative min-w-0 flex-1 p-3">
+          {loading ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-xs text-(--color-fg-muted)">
+              <span className="h-6 w-6 animate-spin rounded-full border-2 border-(--color-accent) border-t-transparent" />
+              <span>Scanning directory disk usage…</span>
+            </div>
+          ) : error ? (
+            <div className="flex h-full items-center justify-center text-xs text-(--color-error)">
+              {error}
+            </div>
+          ) : !currentRoot ||
+            (currentRoot.children.length === 0 && currentRoot.size === 0) ? (
+            <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
+              Directory is empty or inaccessible
+            </div>
+          ) : chartType === "treemap" ? (
             <svg
               viewBox="0 0 1000 600"
               preserveAspectRatio="none"
-              className="h-full w-full rounded border border-(--color-border)"
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltipPos({
-                  x: e.clientX - rect.left,
-                  y: e.clientY - rect.top,
-                });
-              }}
+              className="h-full w-full overflow-hidden rounded-lg"
+              onMouseMove={onChartMove}
               onMouseLeave={() => setHovered(null)}
             >
               {rects.map((r, i) => {
-                const isDir = Boolean(
-                  r.node.children && r.node.children.length > 0,
-                );
-                const color = getColor(i, r.depth);
-                const isHovered = hovered?.node.path === r.node.path;
-
+                const isDir = r.node.children?.length > 0;
+                const isHovered = hovered?.path === r.node.path;
                 return (
                   <g
                     key={r.node.path + i}
-                    onClick={() => handleRectClick(r)}
-                    onMouseEnter={() => setHovered(r)}
-                    className="cursor-pointer transition-all"
+                    onClick={() => zoomInto(r.node)}
+                    onMouseEnter={() => setHovered(r.node)}
+                    className={isDir ? "cursor-pointer" : "cursor-default"}
                   >
                     <rect
                       x={r.x + 1}
                       y={r.y + 1}
                       width={Math.max(1, r.w - 2)}
                       height={Math.max(1, r.h - 2)}
-                      fill={color}
-                      fillOpacity={isHovered ? 0.95 : 0.75}
-                      stroke={isHovered ? "var(--color-fg)" : "var(--color-bg)"}
-                      strokeWidth={isHovered ? 2 : 1}
-                      rx={2}
+                      fill={getColor(i, 1)}
+                      fillOpacity={isHovered ? 1 : 0.82}
+                      stroke="var(--color-bg)"
+                      strokeWidth={2}
+                      rx={4}
                     />
-                    {r.w > 45 && r.h > 24 && (
+                    {r.w > 60 && r.h > 30 && (
                       <foreignObject
-                        x={r.x + 3}
-                        y={r.y + 3}
-                        width={r.w - 6}
-                        height={r.h - 6}
+                        x={r.x + 6}
+                        y={r.y + 5}
+                        width={r.w - 12}
+                        height={r.h - 10}
                         className="pointer-events-none overflow-hidden"
                       >
-                        <div className="flex h-full flex-col justify-start text-[10px] leading-tight text-white drop-shadow font-medium">
-                          <span className="truncate">
-                            {isDir ? "📁 " : "📄 "}
-                            {r.node.name}
-                          </span>
-                          <span className="opacity-90 font-mono text-[9px]">
-                            {fmtSize(r.node.size)}
+                        <div className="flex h-full flex-col justify-start text-[11px] font-medium leading-tight text-white drop-shadow">
+                          <span className="truncate">{r.node.name}</span>
+                          <span className="font-mono text-[10px] opacity-90">
+                            {fmtSize(r.node.size)} · {pct(r.node).toFixed(1)}%
                           </span>
                         </div>
                       </foreignObject>
@@ -384,130 +405,188 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
                 );
               })}
             </svg>
-          </div>
-        ) : (
-          /* Sunburst chart */
-          <div className="relative h-full w-full flex items-center justify-center">
+          ) : (
             <svg
-              viewBox="0 0 1000 600"
+              viewBox="0 0 600 600"
               className="h-full w-full"
-              onMouseMove={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setTooltipPos({
-                  x: e.clientX - rect.left,
-                  y: e.clientY - rect.top,
-                });
-              }}
+              onMouseMove={onChartMove}
               onMouseLeave={() => setHovered(null)}
             >
-              {/* Center circle */}
-              <circle
-                cx={500}
-                cy={300}
-                r={36}
-                fill="var(--color-surface-2)"
-                stroke="var(--color-border)"
-                strokeWidth={2}
-                className="cursor-pointer"
-                onClick={() => {
-                  if (breadcrumbs.length > 1) {
-                    setCurrentRoot(breadcrumbs[breadcrumbs.length - 2]);
-                  }
-                }}
-              />
-              <text
-                x={500}
-                y={296}
-                textAnchor="middle"
-                fontSize={10}
-                fill="var(--color-fg)"
-                className="pointer-events-none font-medium"
-              >
-                {currentRoot.name || "/"}
-              </text>
-              <text
-                x={500}
-                y={312}
-                textAnchor="middle"
-                fontSize={9}
-                fill="var(--color-fg-muted)"
-                className="pointer-events-none font-mono"
-              >
-                {fmtSize(currentRoot.size)}
-              </text>
-
               {sunburstArcs.map((arc, i) => {
-                const isHovered = hovered?.node.path === arc.node.path;
-                const color = getColor(arc.index, arc.depth);
-
+                const isHovered = hovered?.path === arc.node.path;
+                const dim = hovered && !isHovered;
+                const isDir = arc.node.children?.length > 0;
                 return (
                   <path
                     key={arc.node.path + i}
                     d={arc.pathD}
-                    fill={color}
-                    fillOpacity={isHovered ? 0.95 : 0.75}
-                    stroke={isHovered ? "var(--color-fg)" : "var(--color-bg)"}
-                    strokeWidth={isHovered ? 2 : 1}
-                    className="cursor-pointer transition-all"
-                    onClick={() => {
-                      if (arc.node.children && arc.node.children.length > 0) {
-                        setCurrentRoot(arc.node);
-                      }
-                    }}
-                    onMouseEnter={() =>
-                      setHovered({
-                        node: arc.node,
-                        x: 0,
-                        y: 0,
-                        w: 0,
-                        h: 0,
-                        depth: arc.depth,
-                      })
-                    }
+                    fill={getColor(arc.branch, arc.depth + 1)}
+                    fillOpacity={isHovered ? 1 : dim ? 0.45 : 0.88}
+                    className={`transition-[fill-opacity] duration-100 ${
+                      isDir ? "cursor-pointer" : "cursor-default"
+                    }`}
+                    onClick={() => zoomInto(arc.node)}
+                    onMouseEnter={() => setHovered(arc.node)}
                   />
                 );
               })}
-            </svg>
-          </div>
-        )}
 
-        {/* Hover Tooltip */}
-        {hovered && tooltipPos && (
-          <div
-            className="pointer-events-none absolute z-30 flex flex-col gap-0.5 rounded border border-(--color-border) bg-(--color-surface) px-2.5 py-1.5 text-xs shadow-lg"
-            style={{
-              left: Math.min(tooltipPos.x + 12, 800),
-              top: Math.min(tooltipPos.y + 12, 500),
-            }}
-          >
-            <div className="flex items-center gap-1.5 font-medium text-(--color-fg)">
-              <span>{hovered.node.children?.length ? "📁" : "📄"}</span>
-              <span>{hovered.node.name}</span>
-            </div>
-            <div className="font-mono text-[11px] text-(--color-accent)">
-              {fmtSize(hovered.node.size)}
-              {currentRoot && currentRoot.size > 0 && (
+              {/* Center: hovered item, or current folder. Click to go up. */}
+              <g
+                onClick={goUp}
+                className={breadcrumbs.length > 1 ? "cursor-pointer" : ""}
+              >
+                <circle
+                  cx={300}
+                  cy={300}
+                  r={56}
+                  fill="var(--color-surface)"
+                  stroke="var(--color-border)"
+                  strokeWidth={1.5}
+                />
+                <text
+                  x={300}
+                  y={296}
+                  textAnchor="middle"
+                  fontSize={12}
+                  fontWeight={600}
+                  fill="var(--color-fg)"
+                  className="pointer-events-none"
+                >
+                  {(() => {
+                    const n = centerNode?.name || "/";
+                    return n.length > 12 ? n.slice(0, 11) + "…" : n;
+                  })()}
+                </text>
+                <text
+                  x={300}
+                  y={314}
+                  textAnchor="middle"
+                  fontSize={11}
+                  fill="var(--color-fg-muted)"
+                  className="pointer-events-none font-mono"
+                >
+                  {centerNode ? fmtSize(centerNode.size) : ""}
+                </text>
+                {!hovered && breadcrumbs.length > 1 && (
+                  <text
+                    x={300}
+                    y={332}
+                    textAnchor="middle"
+                    fontSize={9}
+                    fill="var(--color-fg-muted)"
+                    className="pointer-events-none"
+                  >
+                    ↑ click to go up
+                  </text>
+                )}
+              </g>
+            </svg>
+          )}
+
+          {/* Hover tooltip */}
+          {hovered && tooltipPos && !loading && (
+            <div
+              className="pointer-events-none absolute z-30 flex flex-col gap-0.5 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs shadow-lg"
+              style={{
+                width: tipW,
+                left:
+                  tooltipPos.x + 14 + tipW > boxW
+                    ? tooltipPos.x - tipW - 14
+                    : tooltipPos.x + 14,
+                top: Math.min(tooltipPos.y + 14, boxH - 90),
+              }}
+            >
+              <div className="flex items-center gap-1.5 font-medium text-(--color-fg)">
+                {hovered.children?.length ? (
+                  <Folder className="h-3.5 w-3.5 text-(--color-accent)" />
+                ) : (
+                  <FileIcon className="h-3.5 w-3.5 text-(--color-fg-muted)" />
+                )}
+                <span className="truncate">{hovered.name}</span>
+              </div>
+              <div className="font-mono text-[11px] text-(--color-accent)">
+                {fmtSize(hovered.size)}
                 <span className="ml-1 text-(--color-fg-muted)">
-                  ({((hovered.node.size / currentRoot.size) * 100).toFixed(1)}%)
+                  ({pct(hovered).toFixed(1)}% of {currentRoot?.name || "/"})
                 </span>
+              </div>
+              <div className="truncate font-mono text-[10px] text-(--color-fg-muted)">
+                {hovered.path}
+              </div>
+              {hovered.children?.length > 0 && (
+                <div className="mt-0.5 text-[10px] text-(--color-online)">
+                  Click to zoom into {hovered.children.length} items
+                </div>
               )}
             </div>
-            <div className="font-mono text-[10px] text-(--color-fg-muted) truncate max-w-sm">
-              {hovered.node.path}
+          )}
+        </div>
+
+        {/* Ranked list */}
+        {currentRoot && !loading && !error && ranked.length > 0 && (
+          <aside className="hidden w-72 shrink-0 flex-col border-l border-(--color-border) bg-(--color-surface) md:flex">
+            <div className="px-3 py-2 text-[11px] font-medium uppercase tracking-wide text-(--color-fg-muted)">
+              Largest items
             </div>
-            {hovered.node.children && hovered.node.children.length > 0 && (
-              <div className="mt-0.5 text-[10px] text-(--color-online)">
-                Click to inspect {hovered.node.children.length} sub-items
-              </div>
-            )}
-          </div>
+            <ul className="min-h-0 flex-1 overflow-y-auto pb-2">
+              {ranked.map((n, i) => {
+                const isDir = n.children?.length > 0;
+                const active = hovered?.path === n.path;
+                return (
+                  <li key={n.path}>
+                    <button
+                      onClick={() => zoomInto(n)}
+                      onMouseEnter={() => setHovered(n)}
+                      onMouseLeave={() => setHovered(null)}
+                      className={`block w-full px-3 py-1.5 text-left transition-colors ${
+                        active ? "bg-(--color-surface-2)" : ""
+                      } ${isDir ? "cursor-pointer" : "cursor-default"}`}
+                    >
+                      <div className="flex items-center gap-2 text-xs">
+                        <span
+                          className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                          style={{ background: getColor(i, 1) }}
+                        />
+                        {isDir ? (
+                          <FolderOpen className="h-3.5 w-3.5 shrink-0 text-(--color-fg-muted)" />
+                        ) : (
+                          <FileIcon className="h-3.5 w-3.5 shrink-0 text-(--color-fg-muted)" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate text-(--color-fg)">
+                          {n.name}
+                        </span>
+                        <span className="shrink-0 font-mono text-[11px] text-(--color-fg-muted)">
+                          {fmtSize(n.size)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 pl-[18px]">
+                        <div className="h-1 flex-1 overflow-hidden rounded-full bg-(--color-surface-2)">
+                          <div
+                            className="h-full rounded-full"
+                            style={{
+                              width: `${Math.max(1, pct(n))}%`,
+                              background: getColor(i, 1),
+                            }}
+                          />
+                        </div>
+                        <span className="w-9 text-right font-mono text-[10px] text-(--color-fg-muted)">
+                          {pct(n).toFixed(1)}%
+                        </span>
+                      </div>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
         )}
       </div>
 
-      {/* Footer hint */}
+      {/* Footer */}
       <div className="flex items-center justify-between border-t border-(--color-border) bg-(--color-surface) px-3 py-1 text-[11px] text-(--color-fg-muted)">
         <span>
-          Click any directory to zoom in · Click breadcrumbs to return
+          Click a folder to zoom in · click the center or breadcrumbs to go back
         </span>
         {onNavigate && currentRoot && (
           <button
