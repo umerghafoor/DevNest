@@ -23,6 +23,40 @@ fn run_git_for(
     args: &[&str],
     cwd: Option<&str>,
 ) -> AppResult<String> {
+    let out = run_git_raw(state, device, args, cwd)?;
+    if out.exit_code != 0 {
+        return Err(git_error(&out));
+    }
+    Ok(if device.is_localhost {
+        out.stdout.trim().to_string()
+    } else {
+        out.stdout.trim_end_matches(['\n', '\r']).to_string()
+    })
+}
+
+struct GitOutput {
+    exit_code: i32,
+    stdout: String,
+    stderr: String,
+}
+
+fn git_error(out: &GitOutput) -> AppError {
+    let stderr = out.stderr.trim();
+    AppError::Invalid(if stderr.is_empty() {
+        format!("git exited with status {}", out.exit_code)
+    } else {
+        stderr.to_string()
+    })
+}
+
+/// Run git and return its exit code and untrimmed output, for commands where
+/// a non-zero exit isn't a failure (e.g. `diff --no-index` exits 1 on changes).
+fn run_git_raw(
+    state: &AppState,
+    device: &Device,
+    args: &[&str],
+    cwd: Option<&str>,
+) -> AppResult<GitOutput> {
     if device.is_localhost {
         let mut cmd = Command::new("git");
         cmd.args(args);
@@ -32,15 +66,11 @@ fn run_git_for(
         let out = cmd
             .output()
             .map_err(|e| AppError::Invalid(format!("git not available: {e}")))?;
-        if !out.status.success() {
-            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
-            return Err(AppError::Invalid(if stderr.is_empty() {
-                format!("git exited with status {}", out.status)
-            } else {
-                stderr
-            }));
-        }
-        return Ok(String::from_utf8_lossy(&out.stdout).trim().to_string());
+        return Ok(GitOutput {
+            exit_code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+        });
     }
 
     // Remote — build `cd '<dir>' && git '<arg>' '<arg>' …`
@@ -56,15 +86,11 @@ fn run_git_for(
         shell.push_str(&single_quote(a));
     }
     let out = ssh::run_command_no_sudo(&state.pool, device, &shell)?;
-    if out.exit_code != 0 {
-        let stderr = out.stderr.trim();
-        return Err(AppError::Invalid(if stderr.is_empty() {
-            format!("git exited with status {}", out.exit_code)
-        } else {
-            stderr.to_string()
-        }));
-    }
-    Ok(out.stdout.trim_end_matches(['\n', '\r']).to_string())
+    Ok(GitOutput {
+        exit_code: out.exit_code,
+        stdout: out.stdout,
+        stderr: out.stderr,
+    })
 }
 
 /// POSIX single-quoting: wrap in `'…'`, escape `'` as `'\''`.
@@ -437,5 +463,269 @@ pub fn git_diff(
             ],
             Some(&path),
         ),
+    }
+}
+
+// ─── Working tree: status, stage/unstage, diff, commit ──────────────────────
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatusFile {
+    pub path: String,
+    /// Source path for renames / copies.
+    pub orig_path: Option<String>,
+    /// Index (staged) status letter, '.' when unchanged.
+    pub index: String,
+    /// Worktree (unstaged) status letter, '.' when unchanged.
+    pub worktree: String,
+    pub untracked: bool,
+    pub conflicted: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GitStatus {
+    pub branch: Option<String>,
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
+    pub files: Vec<GitStatusFile>,
+}
+
+/// Parse `git status --porcelain=v2 --branch -z`.
+fn parse_status_v2(raw: &str) -> GitStatus {
+    let mut st = GitStatus::default();
+    let mut fields = raw.split('\0').peekable();
+    while let Some(entry) = fields.next() {
+        if entry.is_empty() {
+            continue;
+        }
+        if let Some(h) = entry.strip_prefix("# ") {
+            if let Some(v) = h.strip_prefix("branch.head ") {
+                st.branch = (v != "(detached)").then(|| v.to_string());
+            } else if let Some(v) = h.strip_prefix("branch.upstream ") {
+                st.upstream = Some(v.to_string());
+            } else if let Some(v) = h.strip_prefix("branch.ab ") {
+                for part in v.split_whitespace() {
+                    if let Some(n) = part.strip_prefix('+') {
+                        st.ahead = n.parse().unwrap_or(0);
+                    } else if let Some(n) = part.strip_prefix('-') {
+                        st.behind = n.parse().unwrap_or(0);
+                    }
+                }
+            }
+            continue;
+        }
+        let kind = entry.as_bytes()[0];
+        match kind {
+            b'?' => st.files.push(GitStatusFile {
+                path: entry[2..].to_string(),
+                orig_path: None,
+                index: ".".into(),
+                worktree: "?".into(),
+                untracked: true,
+                conflicted: false,
+            }),
+            b'1' | b'2' | b'u' => {
+                // Fixed number of space-separated fields before the path.
+                let n = match kind {
+                    b'1' => 8,
+                    b'2' => 9,
+                    _ => 10,
+                };
+                let parts: Vec<&str> = entry.splitn(n + 1, ' ').collect();
+                if parts.len() < n + 1 {
+                    continue;
+                }
+                let xy = parts[1].as_bytes();
+                let orig_path = if kind == b'2' {
+                    fields.next().map(|p| p.to_string())
+                } else {
+                    None
+                };
+                st.files.push(GitStatusFile {
+                    path: parts[n].to_string(),
+                    orig_path,
+                    index: (xy[0] as char).to_string(),
+                    worktree: (xy[1] as char).to_string(),
+                    untracked: false,
+                    conflicted: kind == b'u',
+                });
+            }
+            _ => {}
+        }
+    }
+    st
+}
+
+#[tauri::command(async)]
+pub fn git_status(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> AppResult<GitStatus> {
+    let device = require_device(&state, &device_id)?;
+    let out = run_git_raw(
+        &state,
+        &device,
+        &[
+            "status",
+            "--porcelain=v2",
+            "--branch",
+            "-z",
+            "--untracked-files=all",
+        ],
+        Some(&path),
+    )?;
+    if out.exit_code != 0 {
+        return Err(git_error(&out));
+    }
+    Ok(parse_status_v2(&out.stdout))
+}
+
+/// Unified diff of one working-tree file: staged (index vs HEAD) or
+/// unstaged (worktree vs index). Untracked files diff against /dev/null.
+#[tauri::command(async)]
+pub fn git_working_diff(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+    file_path: String,
+    staged: bool,
+    untracked: bool,
+) -> AppResult<String> {
+    let device = require_device(&state, &device_id)?;
+    let out = if untracked {
+        run_git_raw(
+            &state,
+            &device,
+            &["diff", "--no-color", "--no-index", "--", "/dev/null", &file_path],
+            Some(&path),
+        )?
+    } else if staged {
+        run_git_raw(
+            &state,
+            &device,
+            &["diff", "--no-color", "-U3", "--cached", "--", &file_path],
+            Some(&path),
+        )?
+    } else {
+        run_git_raw(
+            &state,
+            &device,
+            &["diff", "--no-color", "-U3", "--", &file_path],
+            Some(&path),
+        )?
+    };
+    // `diff --no-index` exits 1 when the files differ — that's the normal case.
+    if out.exit_code > 1 {
+        return Err(git_error(&out));
+    }
+    Ok(out.stdout)
+}
+
+#[tauri::command(async)]
+pub fn git_stage(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+    files: Vec<String>,
+) -> AppResult<()> {
+    let device = require_device(&state, &device_id)?;
+    if files.is_empty() {
+        return Ok(());
+    }
+    // `add -A -- <paths>` also stages deletions of the listed paths.
+    let mut args = vec!["add", "-A", "--"];
+    args.extend(files.iter().map(String::as_str));
+    run_git_for(&state, &device, &args, Some(&path)).map(|_| ())
+}
+
+#[tauri::command(async)]
+pub fn git_unstage(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+    files: Vec<String>,
+) -> AppResult<()> {
+    let device = require_device(&state, &device_id)?;
+    if files.is_empty() {
+        return Ok(());
+    }
+    let mut args = vec!["restore", "--staged", "--"];
+    args.extend(files.iter().map(String::as_str));
+    match run_git_for(&state, &device, &args, Some(&path)) {
+        Ok(_) => Ok(()),
+        // Older git (< 2.23) has no `restore`; `reset` does the same here.
+        Err(_) => {
+            let mut args = vec!["reset", "-q", "HEAD", "--"];
+            args.extend(files.iter().map(String::as_str));
+            run_git_for(&state, &device, &args, Some(&path)).map(|_| ())
+        }
+    }
+}
+
+/// Commit what's staged. Returns git's one-line summary.
+#[tauri::command(async)]
+pub fn git_commit(
+    state: State<'_, AppState>,
+    device_id: String,
+    path: String,
+    message: String,
+    amend: bool,
+) -> AppResult<String> {
+    let device = require_device(&state, &device_id)?;
+    if message.trim().is_empty() {
+        return Err(AppError::Invalid("Commit message is empty".into()));
+    }
+    let mut args = vec!["commit", "-m", message.as_str()];
+    if amend {
+        args.push("--amend");
+    }
+    run_git_for(&state, &device, &args, Some(&path))
+}
+
+#[cfg(test)]
+mod status_tests {
+    use super::*;
+
+    #[test]
+    fn parses_porcelain_v2() {
+        let raw = [
+            "# branch.oid abc",
+            "# branch.head main",
+            "# branch.upstream origin/main",
+            "# branch.ab +2 -1",
+            "1 M. N... 100644 100644 100644 aaa bbb src/staged.py",
+            "1 .M N... 100644 100644 100644 aaa bbb src/unstaged file.py",
+            "1 MM N... 100644 100644 100644 aaa bbb both.py",
+            "2 R. N... 100644 100644 100644 aaa bbb R100 new_name.py",
+            "old_name.py",
+            "u UU N... 100644 100644 100644 100644 aaa bbb ccc conflict.py",
+            "? notes.txt",
+            "",
+        ]
+        .join("\0");
+        let st = parse_status_v2(&raw);
+        assert_eq!(st.branch.as_deref(), Some("main"));
+        assert_eq!(st.upstream.as_deref(), Some("origin/main"));
+        assert_eq!((st.ahead, st.behind), (2, 1));
+        let paths: Vec<_> = st.files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(
+            paths,
+            [
+                "src/staged.py",
+                "src/unstaged file.py",
+                "both.py",
+                "new_name.py",
+                "conflict.py",
+                "notes.txt"
+            ]
+        );
+        assert_eq!(st.files[0].index, "M");
+        assert_eq!(st.files[0].worktree, ".");
+        assert_eq!(st.files[3].orig_path.as_deref(), Some("old_name.py"));
+        assert!(st.files[4].conflicted);
+        assert!(st.files[5].untracked);
     }
 }

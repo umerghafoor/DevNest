@@ -435,6 +435,28 @@ export const api = {
     call<GitCommitDetail>("git_show", { deviceId, path, hash }),
   gitDiff: (deviceId: string, path: string, hash: string, filePath: string) =>
     call<string>("git_diff", { deviceId, path, hash, filePath }),
+  gitStatus: (deviceId: string, path: string) =>
+    call<GitStatus>("git_status", { deviceId, path }),
+  gitWorkingDiff: (
+    deviceId: string,
+    path: string,
+    filePath: string,
+    staged: boolean,
+    untracked: boolean,
+  ) =>
+    call<string>("git_working_diff", {
+      deviceId,
+      path,
+      filePath,
+      staged,
+      untracked,
+    }),
+  gitStage: (deviceId: string, path: string, files: string[]) =>
+    call<void>("git_stage", { deviceId, path, files }),
+  gitUnstage: (deviceId: string, path: string, files: string[]) =>
+    call<void>("git_unstage", { deviceId, path, files }),
+  gitCommit: (deviceId: string, path: string, message: string, amend = false) =>
+    call<string>("git_commit", { deviceId, path, message, amend }),
 
   fsReadText: (path: string) => call<string>("fs_read_text", { path }),
   fsWriteText: (path: string, content: string) =>
@@ -576,6 +598,25 @@ export interface GitTag {
 export interface GitChangedFile {
   status: string;
   path: string;
+}
+
+export interface GitStatusFile {
+  path: string;
+  origPath: string | null;
+  /** Staged status letter ("M", "A", "D", "R"…), "." when unchanged. */
+  index: string;
+  /** Unstaged status letter, "." when unchanged, "?" when untracked. */
+  worktree: string;
+  untracked: boolean;
+  conflicted: boolean;
+}
+
+export interface GitStatus {
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  files: GitStatusFile[];
 }
 
 export interface GitCommitDetail {
