@@ -27,6 +27,15 @@ import { useAppStore } from "../store/app-store";
 import { BTN_GROUP, SMALL_INPUT, TOOL_BTN } from "../lib/ui";
 import { toast } from "../components/Toast";
 import { RemoteFilePicker } from "../components/RemoteFilePicker";
+import { SafeMarkdown } from "../components/SafeMarkdown";
+import {
+  ArrowUp,
+  FolderOpen,
+  Play,
+  ScrollText,
+  Settings2,
+  Square,
+} from "lucide-react";
 
 /**
  * Chat with a third-party coding agent (Claude Code, Codex, Gemini CLI, …)
@@ -125,9 +134,9 @@ export function AgentPanel({
             </option>
           ))}
         </select>
-        <div className="flex min-w-[160px] flex-1 items-center gap-1">
+        <div className="flex h-6 min-w-[160px] flex-1 items-center rounded-md bg-(--color-surface-2)/60 pr-0.5 focus-within:ring-1 focus-within:ring-(--color-accent)">
           <input
-            className={`${SMALL_INPUT} min-w-0 flex-1 font-mono`}
+            className="h-6 min-w-0 flex-1 bg-transparent px-2 font-mono text-xs text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-70"
             placeholder={
               isLocal
                 ? "/path/to/project"
@@ -138,22 +147,22 @@ export function AgentPanel({
             disabled={running}
           />
           <button
-            className={TOOL_BTN}
+            className="inline-flex h-5 w-6 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-40"
             onClick={() => void browse()}
             disabled={running}
             title="Choose folder"
           >
-            …
+            <FolderOpen size={13} />
           </button>
         </div>
         <div className={BTN_GROUP}>
           {running ? (
             <button className={TOOL_BTN} onClick={() => void stopAgent(s)}>
-              Stop
+              <Square size={11} /> Stop
             </button>
           ) : (
             <button className={TOOL_BTN} onClick={start}>
-              Start
+              <Play size={11} /> Start
             </button>
           )}
           <button
@@ -161,14 +170,18 @@ export function AgentPanel({
             onClick={() => setShowLogs((v) => !v)}
             title="Agent stderr"
           >
-            Logs{s.stderr.length ? ` (${s.stderr.length})` : ""}
+            <ScrollText size={12} />
+            Logs
+            {s.stderr.length > 0 && (
+              <span className="text-(--color-fg-muted)">{s.stderr.length}</span>
+            )}
           </button>
           <button
             className={TOOL_BTN}
             onClick={() => setManaging((v) => !v)}
             title="Configure agents"
           >
-            ⚙
+            <Settings2 size={12} />
           </button>
         </div>
       </div>
@@ -339,16 +352,21 @@ function Transcript({ s }: { s: AgentSession }) {
         const el = e.currentTarget;
         stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
       }}
-      className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3"
+      className="min-h-0 flex-1 overflow-y-auto px-4 py-4"
     >
       {s.items.length === 0 ? (
-        <div className="flex h-full items-center justify-center text-center text-(--color-fg-muted)">
-          Pick an agent and a project folder, then Start.
-          <br />
-          Any Agent Client Protocol agent works — add your own with ⚙.
+        <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-(--color-fg-muted)">
+          <span>Pick an agent and a project folder, then Start.</span>
+          <span>
+            Any Agent Client Protocol agent works — add your own in settings.
+          </span>
         </div>
       ) : (
-        s.items.map((it) => <Item key={it.id} item={it} />)
+        <div className="mx-auto flex max-w-3xl flex-col gap-3">
+          {s.items.map((it) => (
+            <Item key={it.id} item={it} />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -358,21 +376,19 @@ function Item({ item }: { item: TranscriptItem }) {
   switch (item.kind) {
     case "user":
       return (
-        <div className="ml-8 rounded-lg bg-(--color-accent)/15 px-3 py-2 whitespace-pre-wrap">
-          {item.text}
+        <div className="flex justify-end">
+          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-(--color-accent)/15 px-3.5 py-2 leading-relaxed whitespace-pre-wrap">
+            {item.text}
+          </div>
         </div>
       );
     case "agent":
-      // Rendered as plain text on purpose: agent output is untrusted and
-      // this webview can invoke backend commands, so no HTML injection.
-      return (
-        <div className="mr-8 px-1 leading-relaxed whitespace-pre-wrap">
-          {item.text}
-        </div>
-      );
+      // SafeMarkdown never injects HTML: agent output is untrusted and this
+      // webview can invoke backend commands.
+      return <SafeMarkdown text={item.text} className="agent-md" />;
     case "thought":
       return (
-        <details className="mr-8 px-1 text-(--color-fg-muted)">
+        <details className="text-(--color-fg-muted)">
           <summary className="cursor-pointer select-none">Thinking…</summary>
           <div className="mt-1 whitespace-pre-wrap italic">{item.text}</div>
         </details>
@@ -545,8 +561,17 @@ function PermissionCard({ s }: { s: AgentSession }) {
 
 function Composer({ s }: { s: AgentSession }) {
   const [text, setText] = useState("");
+  const ref = useRef<HTMLTextAreaElement>(null);
   const ready = s.status === "ready";
   const busy = s.status === "prompting";
+
+  // Grow with the content up to a cap, then scroll.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, [text]);
 
   const submit = () => {
     const t = text.trim();
@@ -556,43 +581,52 @@ function Composer({ s }: { s: AgentSession }) {
   };
 
   return (
-    <div className="flex shrink-0 items-end gap-2 border-t border-(--color-border) bg-(--color-surface) px-3 py-2">
-      <textarea
-        rows={2}
-        className="min-h-[2.5rem] flex-1 resize-none rounded-md border border-transparent bg-(--color-bg) px-2 py-1.5 text-xs outline-none placeholder:text-(--color-fg-muted) focus:border-(--color-accent)"
-        placeholder={
-          ready
-            ? "Ask the agent… (Enter to send, Shift+Enter for newline)"
-            : busy
-              ? "Agent is working…"
-              : "Start an agent to chat"
-        }
-        value={text}
-        disabled={!ready && !busy}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-            e.preventDefault();
-            submit();
+    <div className="shrink-0 border-t border-(--color-border) px-4 py-3">
+      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-(--color-border) bg-(--color-surface) py-1.5 pr-1.5 pl-3 focus-within:border-(--color-accent)">
+        <textarea
+          ref={ref}
+          rows={1}
+          className="max-h-40 min-h-[1.75rem] flex-1 resize-none bg-transparent py-1 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-60"
+          placeholder={
+            ready
+              ? "Ask the agent…"
+              : busy
+                ? "Agent is working…"
+                : "Start an agent to chat"
           }
-        }}
-      />
-      {busy ? (
-        <button
-          className="h-7 rounded bg-(--color-surface-2) px-3 hover:opacity-90"
-          onClick={() => cancelTurn(s)}
-        >
-          Cancel
-        </button>
-      ) : (
-        <button
-          className="h-7 rounded bg-(--color-accent) px-3 font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
-          onClick={submit}
-          disabled={!ready || !text.trim()}
-        >
-          Send
-        </button>
-      )}
+          value={text}
+          disabled={!ready && !busy}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+        {busy ? (
+          <button
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
+            onClick={() => cancelTurn(s)}
+            title="Stop this turn"
+          >
+            <Square size={12} fill="currentColor" />
+          </button>
+        ) : (
+          <button
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
+            onClick={submit}
+            disabled={!ready || !text.trim()}
+            title="Send (Enter) · Newline (Shift+Enter)"
+          >
+            <ArrowUp size={15} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

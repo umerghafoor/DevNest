@@ -494,3 +494,44 @@ button.press:active:not(:disabled),
     transition: none !important;
   }
 }
+
+/* Agent chat replies: markdown-preview, tightened for a chat transcript. */
+.markdown-preview.agent-md {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.markdown-preview.agent-md > :first-child {
+  margin-top: 0;
+}
+.markdown-preview.agent-md > :last-child {
+  margin-bottom: 0;
+}
+.markdown-preview.agent-md p {
+  margin: 0.5em 0;
+}
+.markdown-preview.agent-md h1,
+.markdown-preview.agent-md h2,
+.markdown-preview.agent-md h3 {
+  font-size: 1.05em;
+  margin: 1em 0 0.4em;
+  border: 0;
+  padding: 0;
+}
+.markdown-preview.agent-md pre {
+  padding: 0.6em 0.8em;
+  font-size: 12px;
+}
+.markdown-preview.agent-md ul,
+.markdown-preview.agent-md ol {
+  margin: 0.4em 0;
+}
+/* Tailwind preflight strips markers; chat lists need them. */
+.markdown-preview.agent-md ul {
+  list-style: disc;
+}
+.markdown-preview.agent-md ol {
+  list-style: decimal;
+}
+.markdown-preview.agent-md li::marker {
+  color: var(--color-fg-muted);
+}
