@@ -17,7 +17,8 @@
     "fix": "npm run format && npm run format:rust",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bump": "node scripts/bump-version.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
