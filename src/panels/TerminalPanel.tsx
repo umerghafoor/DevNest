@@ -55,11 +55,19 @@ function readTerminalTheme() {
   const style = getComputedStyle(document.documentElement);
   const bg = toHex(style.getPropertyValue("--color-bg").trim(), "#0b0d10");
   const fg = toHex(style.getPropertyValue("--color-fg").trim(), "#e6edf3");
+  const accent = toHex(
+    style.getPropertyValue("--color-accent").trim(),
+    "#e0a040",
+  );
   return {
     background: bg,
     foreground: fg,
     cursor: fg,
     cursorAccent: bg,
+    // xterm's default selection is translucent white, which is invisible on
+    // a light background. Use the accent at partial opacity in both modes.
+    selectionBackground: accent + "99",
+    selectionInactiveBackground: accent + "80",
     black: "#0b0d10",
     brightBlack: "#6e7681",
   };
