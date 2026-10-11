@@ -35,6 +35,49 @@ function saveLastCmd(sessionKey: string, cmd: string) {
   }
 }
 
+// Resolve a CSS color (the app tokens are oklch, which xterm can't parse) to
+// a hex string by painting one pixel.
+const colorCtx = document
+  .createElement("canvas")
+  .getContext("2d", { willReadFrequently: true });
+
+function toHex(css: string, fallback: string): string {
+  if (!colorCtx || !css) return fallback;
+  colorCtx.clearRect(0, 0, 1, 1);
+  colorCtx.fillStyle = fallback;
+  colorCtx.fillStyle = css;
+  colorCtx.fillRect(0, 0, 1, 1);
+  const [r, g, b] = colorCtx.getImageData(0, 0, 1, 1).data;
+  return "#" + [r, g, b].map((n) => n.toString(16).padStart(2, "0")).join("");
+}
+
+function readTerminalTheme() {
+  const style = getComputedStyle(document.documentElement);
+  const bg = toHex(style.getPropertyValue("--color-bg").trim(), "#0b0d10");
+  const fg = toHex(style.getPropertyValue("--color-fg").trim(), "#e6edf3");
+  return {
+    background: bg,
+    foreground: fg,
+    cursor: fg,
+    cursorAccent: bg,
+    black: "#0b0d10",
+    brightBlack: "#6e7681",
+  };
+}
+
+// Theme, OS appearance and custom colors all land on <html> as a class or
+// inline style, so watching those attributes catches every change.
+function watchTerminalTheme(term: Terminal): () => void {
+  const mo = new MutationObserver(() => {
+    term.options.theme = readTerminalTheme();
+  });
+  mo.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class", "style"],
+  });
+  return () => mo.disconnect();
+}
+
 export function TerminalPanel({ deviceId, instanceId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -80,6 +123,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
       }
       existing.container = container;
       existing.fit.fit();
+      existing.term.options.theme = readTerminalTheme();
       fitAddonRef.current = existing.fit;
       searchAddonRef.current = existing.search;
       setConnectState("connected");
@@ -88,24 +132,16 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
 
       const ro = new ResizeObserver(() => existing.fit.fit());
       ro.observe(container);
-      return () => ro.disconnect();
+      const unwatchTheme = watchTerminalTheme(existing.term);
+      return () => {
+        ro.disconnect();
+        unwatchTheme();
+      };
     }
 
     // First mount: create xterm + PTY.
     const term = new Terminal({
-      theme: {
-        background:
-          getComputedStyle(document.documentElement)
-            .getPropertyValue("--color-bg")
-            .trim() || "#0b0d10",
-        foreground:
-          getComputedStyle(document.documentElement)
-            .getPropertyValue("--color-fg")
-            .trim() || "#e6edf3",
-        cursor: "#e6edf3",
-        black: "#0b0d10",
-        brightBlack: "#6e7681",
-      },
+      theme: readTerminalTheme(),
       fontFamily: '"Cascadia Code", "Fira Code", "Jetbrains Mono", monospace',
       fontSize: 13,
       lineHeight: 1.4,
@@ -226,10 +262,12 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
 
     const ro = new ResizeObserver(() => fit.fit());
     ro.observe(container);
+    const unwatchTheme = watchTerminalTheme(term);
 
     return () => {
       cancelled = true;
       ro.disconnect();
+      unwatchTheme();
       // Only dispose if this terminal never made it into the registry
       // (i.e. start() was cancelled before completing — e.g. strict-mode).
       // If it's in the registry the registry owns its lifetime.
