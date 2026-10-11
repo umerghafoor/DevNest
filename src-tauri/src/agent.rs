@@ -347,15 +347,36 @@ fn emit_lines(buf: &mut Vec<u8>, data: &[u8], event: &str, app: &AppHandle, skip
     }
 }
 
-/// GUI apps on macOS don't inherit the user's shell PATH, so `npx`, `gemini`
-/// & co. wouldn't resolve. Run through a login shell and `exec` the agent so
-/// it still ends up as our direct child (kill works) with args passed as-is.
+/// Shell prelude that adopts the PATH the user gets in an interactive
+/// terminal. GUI apps on macOS don't inherit the shell PATH at all, and SSH
+/// exec channels run a non-interactive shell, which on most distros skips
+/// `~/.bashrc` — exactly where nvm, fnm, volta & co. add themselves. So
+/// `gemini` works when the user types it but isn't found here.
+///
+/// We ask `$SHELL -lic` for its PATH, fenced by markers so anything the rc
+/// files print can't corrupt it, and keep the current PATH if the answer
+/// doesn't look like one (e.g. fish prints lists space-separated).
+const ADOPT_USER_PATH: &str = r#"p=$("${SHELL:-/bin/sh}" -lic 'printf "\n__DEVNEST_PATH__=%s\n" "$PATH"' </dev/null 2>/dev/null | sed -n 's/^__DEVNEST_PATH__=//p' | tail -n 1)
+case "$p" in *:*) PATH="$p"; export PATH ;; esac
+"#;
+
+/// `sh -c <script> devnest <command> <args…>`: exec the command with the
+/// user's PATH, so it stays our direct child (kill works) with args as-is.
+fn run_script() -> String {
+    format!("{ADOPT_USER_PATH}exec \"$@\"")
+}
+
+/// Exits 0 if `$1` resolves with the user's PATH.
+fn check_script() -> String {
+    format!("{ADOPT_USER_PATH}command -v \"$1\" >/dev/null 2>&1")
+}
+
 #[cfg(unix)]
 fn login_shell_command(command: &str, args: &[String]) -> Command {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/sh".into());
-    let mut cmd = Command::new(shell);
-    cmd.arg("-lc")
-        .arg(r#"exec "$0" "$@""#)
+    let mut cmd = Command::new("/bin/sh");
+    cmd.arg("-c")
+        .arg(run_script())
+        .arg("devnest")
         .arg(command)
         .args(args);
     cmd
@@ -368,8 +389,7 @@ fn login_shell_command(command: &str, args: &[String]) -> Command {
     cmd
 }
 
-/// Remote equivalent: `exec` channels get a non-login shell, so wrap in the
-/// user's login shell for the same PATH they'd have over interactive SSH.
+/// Remote equivalent, as one command line for the SSH exec channel.
 fn remote_command(spec: &Spec) -> String {
     let mut s = String::new();
     if !spec.cwd.trim().is_empty() {
@@ -383,7 +403,9 @@ fn remote_command(spec: &Spec) -> String {
             s.push(' ');
         }
     }
-    s.push_str(r#""${SHELL:-/bin/sh}" -lc 'exec "$0" "$@"' "#);
+    s.push_str("sh -c ");
+    s.push_str(&q(&run_script()));
+    s.push_str(" devnest ");
     s.push_str(&q(&spec.command));
     for a in &spec.args {
         s.push(' ');
@@ -405,20 +427,19 @@ fn remote_path(p: &str) -> String {
 
 /// Is `command` resolvable in the user's login shell on the device?
 fn command_exists(pool: &SessionPool, device: &Device, command: &str) -> AppResult<bool> {
-    let script = format!(
-        r#""${{SHELL:-/bin/sh}}" -lc 'command -v "$0" >/dev/null 2>&1' {}"#,
-        q(command)
-    );
     if device.is_localhost {
-        let status = Command::new("sh")
+        let status = Command::new("/bin/sh")
             .arg("-c")
-            .arg(&script)
+            .arg(check_script())
+            .arg("devnest")
+            .arg(command)
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()?;
         return Ok(status.success());
     }
+    let script = format!("sh -c {} devnest {}", q(&check_script()), q(command));
     let sess = pool.get_or_connect(device)?;
     let out = sess.lock().run_with_stdin(&script, None)?;
     Ok(out.exit_code == 0)
@@ -503,23 +524,55 @@ mod tests {
             cwd: "~/my repo".into(),
             env: HashMap::new(),
         };
-        assert_eq!(
-            remote_command(&spec),
-            r#"cd "$HOME"/'my repo' && exec "${SHELL:-/bin/sh}" -lc 'exec "$0" "$@"' 'npx' '-y' 'pkg with space'"#
-        );
+        let cmd = remote_command(&spec);
+        assert!(cmd.starts_with(r#"cd "$HOME"/'my repo' && exec sh -c '"#));
+        assert!(cmd.ends_with(r#"' devnest 'npx' '-y' 'pkg with space'"#));
     }
 
+    /// Run the real scripts with a fake $SHELL whose interactive startup
+    /// adds a directory to PATH and prints noise, like an nvm .bashrc.
+    #[cfg(unix)]
     #[test]
-    fn remote_command_without_cwd() {
-        let spec = Spec {
-            command: "sh".into(),
-            args: vec!["-c".into(), "npm i -g x".into()],
-            cwd: String::new(),
-            env: HashMap::new(),
-        };
-        assert_eq!(
-            remote_command(&spec),
-            r#"exec "${SHELL:-/bin/sh}" -lc 'exec "$0" "$@"' 'sh' '-c' 'npm i -g x'"#
-        );
+    fn adopts_interactive_path_and_ignores_rc_noise() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("devnest-path-{}", std::process::id()));
+        let bin = dir.join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let tool = bin.join("fake-agent");
+        std::fs::write(&tool, "#!/bin/sh\necho agent-ran \"$@\"\n").unwrap();
+        std::fs::set_permissions(&tool, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // A "shell" that only knows the extra PATH entry when interactive.
+        let shell = dir.join("fake-shell");
+        std::fs::write(
+            &shell,
+            format!(
+                "#!/bin/sh\necho welcome-banner\nPATH=\"{}:$PATH\"\nshift\nexec /bin/sh -c \"$@\"\n",
+                bin.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let exists = Command::new("/bin/sh")
+            .env("SHELL", &shell)
+            .args(["-c", &check_script(), "devnest", "fake-agent"])
+            .status()
+            .unwrap();
+        assert!(exists.success());
+
+        let out = Command::new("/bin/sh")
+            .env("SHELL", &shell)
+            .args(["-c", &run_script(), "devnest", "fake-agent", "a b"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "agent-ran a b");
+
+        let missing = Command::new("/bin/sh")
+            .env("SHELL", &shell)
+            .args(["-c", &check_script(), "devnest", "nope-not-here"])
+            .status()
+            .unwrap();
+        assert!(!missing.success());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
