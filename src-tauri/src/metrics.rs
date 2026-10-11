@@ -658,10 +658,7 @@ fn parse_gpus(s: &str) -> Vec<GpuInfo> {
                 memory_total_mb: f[5].parse().ok(),
                 temperature_c: f[6].parse().ok(),
                 power_w: f[7].parse().ok(),
-                error: f
-                    .get(8)
-                    .filter(|e| !e.is_empty())
-                    .map(|e| e.to_string()),
+                error: f.get(8).filter(|e| !e.is_empty()).map(|e| e.to_string()),
             })
         })
         .collect()

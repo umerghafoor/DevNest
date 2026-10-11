@@ -599,7 +599,14 @@ pub fn git_working_diff(
         run_git_raw(
             &state,
             &device,
-            &["diff", "--no-color", "--no-index", "--", "/dev/null", &file_path],
+            &[
+                "diff",
+                "--no-color",
+                "--no-index",
+                "--",
+                "/dev/null",
+                &file_path,
+            ],
             Some(&path),
         )?
     } else if staged {
