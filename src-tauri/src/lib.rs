@@ -10,6 +10,7 @@ mod local_fs;
 mod log_stream;
 mod mac_rounded_corners;
 mod metrics;
+mod net;
 mod ngrok;
 mod secrets;
 mod sftp;
@@ -243,6 +244,9 @@ pub fn run() {
             http_client::http_request,
             local_fs::fs_read_text,
             local_fs::fs_write_text,
+            net::net_ping,
+            net::net_speed_probe,
+            net::net_speed_sample,
             ngrok::ngrok_start,
             ngrok::ngrok_stop,
             ngrok::ngrok_list,
