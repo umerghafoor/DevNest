@@ -30,7 +30,6 @@ import {
 } from "../lib/master";
 import { useAgentsStore } from "../store/agents-store";
 import { useAppStore } from "../store/app-store";
-import { BTN_GROUP, SMALL_INPUT, TOOL_BTN } from "../lib/ui";
 import { toast } from "./Toast";
 import { Splitter } from "./Splitter";
 import {
@@ -43,6 +42,8 @@ import {
 } from "../panels/AgentPanel";
 
 const MIN_WIDTH = 300;
+const ICON_BTN =
+  "flex h-5 w-5 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)";
 const AGENT_KEY = "devnest.master.agent";
 
 const SUGGESTIONS = [
@@ -172,16 +173,21 @@ function MasterBody({ hostId }: { hostId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-xs">
-      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 select-none">
-        <span className="text-[10px] opacity-40">✧</span>
-        <span className="font-medium">Master</span>
+      <div className="flex h-7 shrink-0 items-center gap-1.5 border-b border-(--color-border) px-2 select-none">
         <StatusDot status={s.status} />
+        <span className="font-medium">Master</span>
+        <span className="opacity-40">·</span>
+        {/* Borderless picker: reads as text, opens the native menu. */}
         <select
           value={agentId}
           onChange={(e) => setAgentId(e.target.value)}
           disabled={running}
-          className={`${SMALL_INPUT} min-w-0 max-w-[140px] flex-1`}
-          title="Agent that powers the Master"
+          className="no-focus-ring min-w-0 max-w-[140px] cursor-pointer truncate bg-transparent text-(--color-fg-muted) outline-none hover:text-(--color-fg) disabled:cursor-default disabled:opacity-100"
+          title={
+            running
+              ? "Stop the agent to switch"
+              : "Agent that powers the Master"
+          }
         >
           {agents.map((a) => (
             <option key={a.id} value={a.id}>
@@ -189,10 +195,10 @@ function MasterBody({ hostId }: { hostId: string }) {
             </option>
           ))}
         </select>
-        <div className={`${BTN_GROUP} ml-auto`}>
+        <div className="ml-auto flex items-center gap-0.5">
           {s.status === "ready" && s.items.some((i) => i.kind === "user") && (
             <button
-              className={TOOL_BTN}
+              className={ICON_BTN}
               onClick={() => void newConversation(s)}
               title="New conversation"
             >
@@ -201,26 +207,32 @@ function MasterBody({ hostId }: { hostId: string }) {
           )}
           {running ? (
             <button
-              className={TOOL_BTN}
+              className={ICON_BTN}
               onClick={() => void stopAgent(s)}
-              title="Stop"
+              title="Stop agent"
             >
-              <Square size={11} />
+              <Square size={10} />
             </button>
           ) : (
-            <button className={TOOL_BTN} onClick={() => void start()}>
-              <Play size={11} /> Start
+            <button
+              className={ICON_BTN}
+              onClick={() => void start()}
+              title="Start agent"
+            >
+              <Play size={11} />
+            </button>
+          )}
+          {s.stderr.length > 0 && (
+            <button
+              className={`${ICON_BTN} ${showLogs ? "text-(--color-fg)" : ""}`}
+              onClick={() => setShowLogs((v) => !v)}
+              title="Agent stderr"
+            >
+              <ScrollText size={11} />
             </button>
           )}
           <button
-            className={TOOL_BTN}
-            onClick={() => setShowLogs((v) => !v)}
-            title="Agent stderr"
-          >
-            <ScrollText size={12} />
-          </button>
-          <button
-            className={TOOL_BTN}
+            className={ICON_BTN}
             onClick={() => setOpen(false)}
             title="Close"
           >
