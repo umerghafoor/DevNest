@@ -26,6 +26,8 @@ pub struct MetricsSnapshot {
     /// Cumulative network counters per interface (bytes + packets).
     pub net: Vec<NetInterface>,
     pub temperatures: Vec<ThermalZone>,
+    /// Empty when no supported GPU (NVIDIA, AMD, Apple Silicon) is found.
+    pub gpus: Vec<GpuInfo>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -114,6 +116,23 @@ pub struct ThermalZone {
     pub celsius: f32,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuInfo {
+    /// "nvidia" | "amd" | "apple"
+    pub vendor: String,
+    pub id: String,
+    pub name: String,
+    pub utilization_percent: Option<f32>,
+    pub memory_used_mb: Option<u64>,
+    /// None for unified memory (Apple Silicon).
+    pub memory_total_mb: Option<u64>,
+    pub temperature_c: Option<f32>,
+    pub power_w: Option<f32>,
+    /// Set when the GPU was detected but its stats couldn't be read.
+    pub error: Option<String>,
+}
+
 // ─── Static CPU info (one-shot) ──────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
@@ -146,7 +165,9 @@ pub struct DimmModule {
 
 /// Sentinels mark section boundaries in the combined shell output so we don't
 /// have to invoke six separate SSH commands per poll.
-const SECTIONS: &[&str] = &["STAT", "MEM", "LOAD", "UPTIME", "DF", "NET", "THERMAL"];
+const SECTIONS: &[&str] = &[
+    "STAT", "MEM", "LOAD", "UPTIME", "DF", "NET", "THERMAL", "PROCS", "GPU",
+];
 
 pub fn snapshot(pool: &SessionPool, device: &Device) -> AppResult<MetricsSnapshot> {
     // Build a single shell script. `for f in /sys/class/thermal/thermal_zone*` runs
@@ -165,6 +186,42 @@ for f in /sys/class/thermal/thermal_zone*; do
   m=$(cat "$f/temp" 2>/dev/null)
   [ -n "$t" ] && [ -n "$m" ] && echo "$t $m"
 done
+echo '##PROCS##'; set -- /proc/[0-9]*; echo $#
+echo '##GPU##'
+# One line per GPU: vendor|id|name|util%|memUsedMB|memTotalMB|tempC|powerW|error
+if command -v nvidia-smi >/dev/null 2>&1; then
+  if smi=$(nvidia-smi --query-gpu=index,name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw \
+      --format=csv,noheader,nounits 2>&1); then
+    printf '%s\n' "$smi" | awk -F', *' '$1 ~ /^[0-9]+$/ {print "nvidia|"$1"|"$2"|"$3"|"$4"|"$5"|"$6"|"$7"|"}'
+  else
+    # Driver present but broken (e.g. NVML driver/library version mismatch):
+    # still report the GPU so the UI can show why stats are missing.
+    echo "nvidia|0|NVIDIA GPU||||||$(printf '%s' "$smi" | head -n1 | tr '|' '/')"
+  fi
+fi
+for d in /sys/class/drm/card[0-9]*/device; do
+  [ -r "$d/gpu_busy_percent" ] || continue
+  card=$(basename "$(dirname "$d")")
+  name=$(cat "$d/product_name" 2>/dev/null)
+  used=$(cat "$d/mem_info_vram_used" 2>/dev/null)
+  total=$(cat "$d/mem_info_vram_total" 2>/dev/null)
+  temp=$(cat "$d"/hwmon/hwmon*/temp1_input 2>/dev/null | head -n1)
+  power=$(cat "$d"/hwmon/hwmon*/power1_average 2>/dev/null | head -n1)
+  echo "amd|$card|${name:-AMD GPU}|$(cat "$d/gpu_busy_percent")|${used:+$((used / 1048576))}|${total:+$((total / 1048576))}|${temp:+$((temp / 1000))}|${power:+$((power / 1000000))}|"
+done
+if command -v ioreg >/dev/null 2>&1; then
+  ioreg -r -d 1 -w 0 -c IOAccelerator 2>/dev/null | awk '
+    /"model" = / { m = $0; sub(/.*"model" = "/, "", m); sub(/".*/, "", m) }
+    /"PerformanceStatistics" = / {
+      u = $0; sub(/.*"Device Utilization %"=/, "", u); sub(/[,}].*/, "", u)
+      mem = ""
+      if ($0 ~ /"In use system memory"=/) {
+        mem = $0; sub(/.*"In use system memory"=/, "", mem); sub(/[,}].*/, "", mem)
+        mem = int(mem / 1048576)
+      }
+    }
+    END { if (u != "") print "apple|0|" m "|" u "|" mem "||||" }'
+fi
 "#;
     // /proc reads don't need sudo — ignore the device's sudo flag so polling
     // doesn't repeatedly trigger SudoPasswordRequired.
@@ -186,13 +243,23 @@ done
     let net_s = sections.get("NET").copied().unwrap_or("");
     let thermal_s = sections.get("THERMAL").copied().unwrap_or("");
 
-    let (cpu_aggregate, cpu_cores, procs) = parse_proc_stat(stat_s);
+    let (cpu_aggregate, cpu_cores, mut procs) = parse_proc_stat(stat_s);
+    // /proc/stat's "processes" is forks since boot, not a live count; use the
+    // number of /proc/<pid> entries instead when available.
+    if let Some(n) = sections
+        .get("PROCS")
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|&n| n > 1)
+    {
+        procs.total = n;
+    }
     let (mem, swap) = parse_meminfo(mem_s);
     let load = parse_loadavg(load_s);
     let uptime_seconds = parse_uptime(uptime_s);
     let disks = parse_df(df_s);
     let net = parse_net_dev(net_s);
     let temperatures = parse_thermal(thermal_s);
+    let gpus = parse_gpus(sections.get("GPU").copied().unwrap_or(""));
 
     // We don't have a "previous" snapshot to compute a real CPU% — the frontend
     // does that from per-core counters. As a courtesy, return idle-vs-total
@@ -221,6 +288,7 @@ done
         disks,
         net,
         temperatures,
+        gpus,
     })
 }
 
@@ -253,18 +321,121 @@ echo '##ARCH##'; uname -m
 
 pub fn dimms(pool: &SessionPool, device: &Device) -> AppResult<Vec<DimmModule>> {
     // dmidecode requires root. The frontend gates this behind device.use_sudo
-    // and our ssh::run_command already handles sudo wrapping.
-    let out = ssh::run_command(pool, device, "dmidecode -t memory")?;
+    // and our ssh::run_command already handles sudo wrapping. It usually lives
+    // in sbin, which a non-login PATH may not include, so check there too.
+    let cmd = r#"
+for b in "$(command -v dmidecode 2>/dev/null)" /usr/sbin/dmidecode /sbin/dmidecode /usr/local/sbin/dmidecode; do
+  [ -n "$b" ] && [ -x "$b" ] && exec "$b" -t memory
+done
+echo "dmidecode not found" >&2
+exit 127
+"#;
+    let out = ssh::run_command(pool, device, cmd)?;
+    if out.exit_code == 127 {
+        return Err(AppError::Invalid(
+            "dmidecode is not installed on this device. Install it (e.g. \
+             `sudo apt install dmidecode`, `sudo dnf install dmidecode` or \
+             `sudo pacman -S dmidecode`) and try again."
+                .into(),
+        ));
+    }
     if out.exit_code != 0 {
         return Err(AppError::Invalid(format!(
-            "dmidecode failed (needs sudo): {}",
+            "dmidecode failed: {}",
             out.stderr.trim()
         )));
     }
     Ok(parse_dmidecode_memory(&out.stdout))
 }
 
+// ─── System info (one-shot) ──────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemInfo {
+    pub hostname: String,
+    pub user: String,
+    pub os: String,
+    pub distro: String,
+    pub kernel: String,
+    pub architecture: String,
+    pub cpu_model: String,
+    pub cores: Option<u32>,
+    pub memory_bytes: Option<u64>,
+    pub timezone: String,
+    pub uptime_seconds: Option<u64>,
+    pub shell: String,
+}
+
+/// Host details for the System Info panel. Plain POSIX sh so it works on both
+/// Linux and macOS; every probe is best-effort and prints `key=value`.
+pub fn system_info(pool: &SessionPool, device: &Device) -> AppResult<SystemInfo> {
+    let cmd = r#"
+echo "hostname=$(hostname 2>/dev/null)"
+echo "user=$(id -un 2>/dev/null)"
+echo "os=$(uname -s 2>/dev/null)"
+echo "kernel=$(uname -r 2>/dev/null)"
+echo "arch=$(uname -m 2>/dev/null)"
+echo "shell=$SHELL"
+if [ -r /etc/os-release ]; then
+  echo "distro=$(. /etc/os-release; echo "$PRETTY_NAME")"
+elif command -v sw_vers >/dev/null 2>&1; then
+  echo "distro=$(sw_vers -productName) $(sw_vers -productVersion)"
+fi
+if [ -r /proc/cpuinfo ]; then
+  echo "cpu=$(grep -m1 -E 'model name|Model' /proc/cpuinfo | cut -d: -f2-)"
+  echo "mem=$(awk '/^MemTotal:/ {print $2 * 1024}' /proc/meminfo)"
+  echo "uptime=$(cut -d. -f1 /proc/uptime)"
+else
+  echo "cpu=$(sysctl -n machdep.cpu.brand_string 2>/dev/null)"
+  echo "mem=$(sysctl -n hw.memsize 2>/dev/null)"
+  boot=$(sysctl -n kern.boottime 2>/dev/null | sed -n 's/^{ sec = \([0-9]*\),.*/\1/p')
+  [ -n "$boot" ] && echo "uptime=$(( $(date +%s) - boot ))"
+fi
+echo "cores=$(getconf _NPROCESSORS_ONLN 2>/dev/null || nproc 2>/dev/null)"
+tz=$(readlink /etc/localtime 2>/dev/null | sed 's|.*zoneinfo/||')
+[ -z "$tz" ] && tz=$(cat /etc/timezone 2>/dev/null)
+[ -z "$tz" ] && tz=$(date +%Z)
+echo "tz=$tz"
+"#;
+    let out = ssh::run_command_no_sudo(pool, device, cmd)?;
+    if out.exit_code != 0 && out.stdout.trim().is_empty() {
+        return Err(AppError::Ssh(format!(
+            "system_info exit {}: {}",
+            out.exit_code,
+            out.stderr.trim()
+        )));
+    }
+    Ok(parse_system_info(&out.stdout))
+}
+
 // ─── Parsers ─────────────────────────────────────────────────────────────────
+
+fn parse_system_info(raw: &str) -> SystemInfo {
+    let mut info = SystemInfo::default();
+    for line in raw.lines() {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim().to_string();
+        match key {
+            "hostname" => info.hostname = value,
+            "user" => info.user = value,
+            "os" => info.os = value,
+            "distro" => info.distro = value,
+            "kernel" => info.kernel = value,
+            "arch" => info.architecture = value,
+            "cpu" => info.cpu_model = value,
+            "cores" => info.cores = value.parse().ok(),
+            "mem" => info.memory_bytes = value.parse().ok(),
+            "tz" => info.timezone = value,
+            "uptime" => info.uptime_seconds = value.parse().ok(),
+            "shell" => info.shell = value,
+            _ => {}
+        }
+    }
+    info
+}
 
 fn split_named_sections<'a>(
     s: &'a str,
@@ -469,6 +640,30 @@ fn parse_net_dev(s: &str) -> Vec<NetInterface> {
     out
 }
 
+fn parse_gpus(s: &str) -> Vec<GpuInfo> {
+    s.lines()
+        .filter_map(|line| {
+            let f: Vec<&str> = line.split('|').map(str::trim).collect();
+            if f.len() < 8 || f[0].is_empty() {
+                return None;
+            }
+            // nvidia-smi prints "[N/A]" / "[Not Supported]"; those fail to
+            // parse and become None.
+            Some(GpuInfo {
+                vendor: f[0].to_string(),
+                id: f[1].to_string(),
+                name: f[2].to_string(),
+                utilization_percent: f[3].parse().ok(),
+                memory_used_mb: f[4].parse().ok(),
+                memory_total_mb: f[5].parse().ok(),
+                temperature_c: f[6].parse().ok(),
+                power_w: f[7].parse().ok(),
+                error: f.get(8).filter(|e| !e.is_empty()).map(|e| e.to_string()),
+            })
+        })
+        .collect()
+}
+
 fn parse_thermal(s: &str) -> Vec<ThermalZone> {
     let mut out = Vec::new();
     for line in s.lines() {
@@ -646,6 +841,33 @@ fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_gpus() {
+        let raw = "nvidia|0|NVIDIA GeForce RTX 3080|42|2048|10240|61|[N/A]\n\
+                   amd|card1|AMD GPU|7|512|8176|48|35\n\
+                   apple|0|Apple M1|21|456|||\n\
+                   nvidia|0|NVIDIA GPU||||||Failed to initialize NVML: Driver/library version mismatch\n\
+                   garbage line\n";
+        let g = parse_gpus(raw);
+        assert_eq!(g.len(), 4);
+        assert_eq!(g[0].error, None);
+        assert_eq!(g[3].utilization_percent, None);
+        assert_eq!(
+            g[3].error.as_deref(),
+            Some("Failed to initialize NVML: Driver/library version mismatch")
+        );
+        assert_eq!(g[0].name, "NVIDIA GeForce RTX 3080");
+        assert_eq!(g[0].utilization_percent, Some(42.0));
+        assert_eq!(g[0].memory_total_mb, Some(10240));
+        assert_eq!(g[0].power_w, None);
+        assert_eq!(g[1].id, "card1");
+        assert_eq!(g[1].power_w, Some(35.0));
+        assert_eq!(g[2].vendor, "apple");
+        assert_eq!(g[2].memory_used_mb, Some(456));
+        assert_eq!(g[2].memory_total_mb, None);
+        assert_eq!(g[2].temperature_c, None);
+    }
 
     #[test]
     fn parses_proc_stat() {

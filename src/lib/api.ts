@@ -88,6 +88,15 @@ async function call<T>(
   }
 }
 
+/**
+ * `invoke` with the same sudo handling as the `api` helpers: prompts for the
+ * sudo password (or offers to enable sudo) and retries. Use it for commands
+ * that may run under sudo (`run_remote_command`, tailscale, …). Don't use it
+ * for SFTP or log streams — they never use sudo, and a "permission denied"
+ * there would wrongly offer to enable it.
+ */
+export const invokeWithSudo = call;
+
 export type AuthType = "key" | "password" | "localhost";
 
 export interface Device {
@@ -269,6 +278,21 @@ export interface MetricsSnapshot {
   disks: DiskUsage[];
   net: NetInterface[];
   temperatures: ThermalZone[];
+  gpus: GpuInfo[];
+}
+
+export interface GpuInfo {
+  vendor: "nvidia" | "amd" | "apple" | string;
+  id: string;
+  name: string;
+  utilizationPercent: number | null;
+  memoryUsedMb: number | null;
+  /** null for unified memory (Apple Silicon). */
+  memoryTotalMb: number | null;
+  temperatureC: number | null;
+  powerW: number | null;
+  /** Set when the GPU was detected but its stats couldn't be read. */
+  error: string | null;
 }
 
 export interface CpuInfo {
@@ -280,6 +304,21 @@ export interface CpuInfo {
   cacheKb: number;
   governor: string | null;
   architecture: string;
+}
+
+export interface SystemInfo {
+  hostname: string;
+  user: string;
+  os: string;
+  distro: string;
+  kernel: string;
+  architecture: string;
+  cpuModel: string;
+  cores: number | null;
+  memoryBytes: number | null;
+  timezone: string;
+  uptimeSeconds: number | null;
+  shell: string;
 }
 
 export interface DimmModule {
@@ -376,6 +415,8 @@ export const api = {
   metricsSnapshot: (deviceId: string) =>
     call<MetricsSnapshot>("metrics_snapshot", { deviceId }),
   cpuInfo: (deviceId: string) => call<CpuInfo>("cpu_info", { deviceId }),
+  systemInfo: (deviceId: string) =>
+    call<SystemInfo>("system_info", { deviceId }),
   dimmInfo: (deviceId: string) => call<DimmModule[]>("dimm_info", { deviceId }),
 
   gitIsRepo: (deviceId: string, path: string) =>
@@ -394,6 +435,28 @@ export const api = {
     call<GitCommitDetail>("git_show", { deviceId, path, hash }),
   gitDiff: (deviceId: string, path: string, hash: string, filePath: string) =>
     call<string>("git_diff", { deviceId, path, hash, filePath }),
+  gitStatus: (deviceId: string, path: string) =>
+    call<GitStatus>("git_status", { deviceId, path }),
+  gitWorkingDiff: (
+    deviceId: string,
+    path: string,
+    filePath: string,
+    staged: boolean,
+    untracked: boolean,
+  ) =>
+    call<string>("git_working_diff", {
+      deviceId,
+      path,
+      filePath,
+      staged,
+      untracked,
+    }),
+  gitStage: (deviceId: string, path: string, files: string[]) =>
+    call<void>("git_stage", { deviceId, path, files }),
+  gitUnstage: (deviceId: string, path: string, files: string[]) =>
+    call<void>("git_unstage", { deviceId, path, files }),
+  gitCommit: (deviceId: string, path: string, message: string, amend = false) =>
+    call<string>("git_commit", { deviceId, path, message, amend }),
 
   fsReadText: (path: string) => call<string>("fs_read_text", { path }),
   fsWriteText: (path: string, content: string) =>
@@ -535,6 +598,25 @@ export interface GitTag {
 export interface GitChangedFile {
   status: string;
   path: string;
+}
+
+export interface GitStatusFile {
+  path: string;
+  origPath: string | null;
+  /** Staged status letter ("M", "A", "D", "R"…), "." when unchanged. */
+  index: string;
+  /** Unstaged status letter, "." when unchanged, "?" when untracked. */
+  worktree: string;
+  untracked: boolean;
+  conflicted: boolean;
+}
+
+export interface GitStatus {
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  files: GitStatusFile[];
 }
 
 export interface GitCommitDetail {

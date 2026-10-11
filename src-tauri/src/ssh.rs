@@ -326,7 +326,7 @@ fn run_local(cmd: &str, stdin: Option<&str>) -> AppResult<CommandOutput> {
 }
 
 /// Wrap a string in POSIX-safe single quotes. `'` becomes `'\''`.
-fn shell_single_quote(s: &str) -> String {
+pub(crate) fn shell_single_quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('\'');
     for ch in s.chars() {

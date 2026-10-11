@@ -23,7 +23,8 @@ export type PanelKind =
   | "systemd"
   | "http"
   | "sql"
-  | "markdown";
+  | "markdown"
+  | "netmon";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 

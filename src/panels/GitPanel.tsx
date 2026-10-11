@@ -8,6 +8,18 @@ import { confirm } from "../components/ConfirmDialog";
 import { getGithubClientId } from "./SettingsPanel";
 import { useAppStore } from "../store/app-store";
 import { iconForDeviceId } from "../lib/device-icon";
+import { BTN_GROUP, SMALL_INPUT, TOOL_BTN } from "../lib/ui";
+import {
+  Download,
+  FolderOpen,
+  FolderPlus,
+  GitBranch,
+  GitGraph,
+  Lock,
+  LogOut,
+  RefreshCw,
+  X,
+} from "lucide-react";
 
 interface FolderBookmark {
   id: string;
@@ -179,82 +191,73 @@ export function GitPanel() {
 
   return (
     <div className="fade-up flex h-full flex-col overflow-hidden">
-      <div className="shrink-0 border-b border-(--color-border) bg-(--color-surface) px-4 py-2">
-        <h2 className="text-sm font-semibold">Git</h2>
-        <p className="text-xs text-(--color-fg-muted)">
-          Track git folders across your devices and clone from GitHub.
-        </p>
-      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <FoldersSection
+          folders={folders}
+          devices={devices.map((d) => ({
+            id: d.id,
+            name: d.name,
+            isLocalhost: d.isLocalhost,
+          }))}
+          defaultDeviceId={activeDeviceId ?? "local"}
+          onPickLocal={pickLocalFolder}
+          onAddRemote={addBookmark}
+          onRemove={removeFolder}
+          onOpen={(b) => openGraph(b.deviceId, b.path)}
+          onOpenInFileManager={openInFileManager}
+          onRefresh={() => void refreshBranches(folders)}
+        />
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <div className="mx-auto max-w-3xl space-y-6">
-          <FoldersSection
-            folders={folders}
-            devices={devices.map((d) => ({
-              id: d.id,
-              name: d.name,
-              isLocalhost: d.isLocalhost,
-            }))}
-            defaultDeviceId={activeDeviceId ?? "local"}
-            onPickLocal={pickLocalFolder}
-            onAddRemote={addBookmark}
-            onRemove={removeFolder}
-            onOpen={(b) => openGraph(b.deviceId, b.path)}
-            onOpenInFileManager={openInFileManager}
-            onRefresh={() => void refreshBranches(folders)}
-          />
-
-          <GitHubSection
-            signedIn={signedIn}
-            user={user}
-            repos={repos}
-            reposLoading={reposLoading}
-            onSignedInChange={setSignedIn}
-            onLoadRepos={async () => {
-              setReposLoading(true);
-              try {
-                const list = await api.githubListRepos();
-                setRepos(list);
-              } catch (e) {
-                toast.error(`Load repos: ${errorMessage(e)}`);
-              } finally {
-                setReposLoading(false);
-              }
-            }}
-            onClone={async (repo) => {
-              const parent = await openDialog({
-                directory: true,
-                multiple: false,
-              });
-              if (typeof parent !== "string") return;
-              try {
-                toast.info(`Cloning ${repo.full_name}…`);
-                const cloned = await api.gitClone(
-                  repo.clone_url,
-                  parent,
-                  repo.name,
-                );
-                const branch = await api
-                  .gitBranch("local", cloned)
-                  .catch(() => null);
-                const next: FolderBookmark[] = [
-                  ...folders,
-                  {
-                    id: Math.random().toString(36).slice(2, 10),
-                    deviceId: "local",
-                    path: cloned,
-                    branch,
-                  },
-                ];
-                setFolders(next);
-                persistFolders(next);
-                toast.success(`Cloned to ${cloned}`);
-              } catch (e) {
-                toast.error(`Clone failed: ${errorMessage(e)}`);
-              }
-            }}
-          />
-        </div>
+        <GitHubSection
+          signedIn={signedIn}
+          user={user}
+          repos={repos}
+          reposLoading={reposLoading}
+          onSignedInChange={setSignedIn}
+          onLoadRepos={async () => {
+            setReposLoading(true);
+            try {
+              const list = await api.githubListRepos();
+              setRepos(list);
+            } catch (e) {
+              toast.error(`Load repos: ${errorMessage(e)}`);
+            } finally {
+              setReposLoading(false);
+            }
+          }}
+          onClone={async (repo) => {
+            const parent = await openDialog({
+              directory: true,
+              multiple: false,
+            });
+            if (typeof parent !== "string") return;
+            try {
+              toast.info(`Cloning ${repo.full_name}…`);
+              const cloned = await api.gitClone(
+                repo.clone_url,
+                parent,
+                repo.name,
+              );
+              const branch = await api
+                .gitBranch("local", cloned)
+                .catch(() => null);
+              const next: FolderBookmark[] = [
+                ...folders,
+                {
+                  id: Math.random().toString(36).slice(2, 10),
+                  deviceId: "local",
+                  path: cloned,
+                  branch,
+                },
+              ];
+              setFolders(next);
+              persistFolders(next);
+              toast.success(`Cloned to ${cloned}`);
+            } catch (e) {
+              toast.error(`Clone failed: ${errorMessage(e)}`);
+            }
+          }}
+        />
       </div>
     </div>
   );
@@ -264,6 +267,31 @@ interface DeviceLite {
   id: string;
   name: string;
   isLocalhost: boolean;
+}
+
+/** "/home/beetle/projects/very/deep/EdgeVision_Core" → "/home/beetle/…/EdgeVision_Core" */
+function shortPath(path: string, max = 44): string {
+  if (path.length <= max) return path;
+  const parts = path.split("/");
+  const tail = parts.slice(-2).join("/");
+  const head = parts.slice(0, 3).join("/");
+  const s = `${head}/…/${tail}`;
+  return s.length < path.length ? s : `…${path.slice(-max)}`;
+}
+
+function SectionHeader({
+  title,
+  children,
+}: {
+  title: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="sticky top-0 z-10 flex min-h-8 flex-wrap items-center gap-1.5 border-b border-(--color-border) bg-(--color-bg) px-2 py-1 text-xs">
+      <span className="font-semibold">{title}</span>
+      {children}
+    </div>
+  );
 }
 
 function FoldersSection({
@@ -305,53 +333,44 @@ function FoldersSection({
 
   return (
     <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
-          Bookmarked folders
-        </h3>
-        <button
-          onClick={onRefresh}
-          className="rounded px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-        >
-          ↻ Refresh
-        </button>
-      </div>
-
-      {/* Add-bookmark form */}
-      <div className="mb-3 flex flex-col gap-2 rounded-lg border border-(--color-border) bg-(--color-surface) p-2">
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-(--color-fg-muted)">Device</span>
-          <div className="flex flex-wrap gap-1.5">
-            {devices.map((d) => {
-              const Icon = iconForDeviceId(d.id);
-              const active = d.id === deviceId;
-              return (
-                <button
-                  key={d.id}
-                  type="button"
-                  onClick={() => setDeviceId(d.id)}
-                  className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
-                    active
-                      ? "border-(--color-accent) bg-(--color-accent)/15 text-(--color-accent)"
-                      : "border-(--color-border) text-(--color-fg-muted) hover:border-(--color-accent)/50 hover:text-(--color-fg)"
-                  }`}
-                >
-                  <Icon size={12} strokeWidth={1.75} />
-                  {d.name}
-                  {d.isLocalhost ? " (local)" : ""}
-                </button>
-              );
-            })}
+      <SectionHeader title="Repositories">
+        <span className="tabular-nums text-(--color-fg-muted)">
+          {folders.length}
+        </span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <select
+            value={deviceId}
+            onChange={(e) => setDeviceId(e.target.value)}
+            className={`${SMALL_INPUT} max-w-36`}
+            title="Device to add a folder from"
+          >
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+                {d.isLocalhost ? " (local)" : ""}
+              </option>
+            ))}
+          </select>
+          <div className={BTN_GROUP}>
+            <button
+              onClick={isLocal ? onPickLocal : () => setShowRemotePicker(true)}
+              disabled={adding}
+              className={`${TOOL_BTN} text-(--color-accent)`}
+              title={`Bookmark a git folder on ${selectedDevice?.name ?? "device"}`}
+            >
+              <FolderPlus size={13} />
+              {adding ? "Checking…" : "Add folder"}
+            </button>
+            <button
+              onClick={onRefresh}
+              className={TOOL_BTN}
+              title="Refresh branches"
+            >
+              <RefreshCw size={12} />
+            </button>
           </div>
         </div>
-        <button
-          onClick={isLocal ? onPickLocal : () => setShowRemotePicker(true)}
-          disabled={adding}
-          className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
-        >
-          {adding ? "Checking…" : "Pick folder…"}
-        </button>
-      </div>
+      </SectionHeader>
 
       {showRemotePicker && (
         <RemoteFilePicker
@@ -363,72 +382,90 @@ function FoldersSection({
       )}
 
       {folders.length === 0 ? (
-        <div className="rounded-lg bg-(--color-surface) px-4 py-6 text-center text-xs text-(--color-fg-muted)">
-          No repositories bookmarked. Pick a device above and add one.
+        <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted)">
+          No repositories yet. Choose a device above and click{" "}
+          <span className="text-(--color-fg)">Add folder</span>.
         </div>
       ) : (
-        <ul className="space-y-2">
+        <ul>
           {folders.map((f) => {
             const dev = devices.find((d) => d.id === f.deviceId);
-            const isLocalhost = dev?.isLocalhost ?? false;
+            const DevIcon = iconForDeviceId(f.deviceId);
             return (
               <li
                 key={f.id}
-                className="row-animate flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2"
+                className="group flex items-center gap-2 border-b border-(--color-border) px-3 py-1.5 text-xs hover:bg-(--color-surface)"
               >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-sm font-medium">
-                      {folderName(f.path)}
-                    </span>
-                    {f.branch && (
-                      <span className="rounded bg-(--color-surface-2) px-1.5 py-0.5 font-mono text-[10px] text-(--color-fg-muted)">
-                        {f.branch}
-                      </span>
-                    )}
-                    <span className="rounded bg-(--color-accent)/15 px-1.5 py-0.5 text-[10px] text-(--color-accent)">
-                      {dev?.name ?? "unknown device"}
-                    </span>
-                  </div>
-                  <div
-                    className="truncate font-mono text-[11px] text-(--color-fg-muted)"
-                    title={f.path}
-                  >
-                    {f.path}
-                  </div>
-                </div>
                 <button
                   onClick={() => onOpen(f)}
-                  title="Open Git Graph"
-                  className="rounded bg-(--color-accent) px-2 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
+                  className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  title={`Open Git Graph for ${f.path}`}
                 >
-                  Graph
+                  <GitBranch
+                    size={15}
+                    className="shrink-0 text-(--color-fg-muted)"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-medium">
+                        {folderName(f.path)}
+                      </span>
+                      {f.branch && (
+                        <span className="min-w-0 truncate rounded bg-(--color-accent)/12 px-1.5 font-mono text-[11px] text-(--color-accent)">
+                          {f.branch}
+                        </span>
+                      )}
+                    </span>
+                    <span className="flex min-w-0 items-center gap-1 text-[11px] text-(--color-fg-muted)">
+                      <DevIcon size={11} className="shrink-0" />
+                      <span
+                        className={`shrink-0 ${dev ? "" : "text-(--color-warn)"}`}
+                        title={
+                          dev
+                            ? undefined
+                            : `Device ${f.deviceId} no longer exists`
+                        }
+                      >
+                        {dev?.name ?? "missing device"}
+                      </span>
+                      <span className="shrink-0">·</span>
+                      <span className="truncate font-mono" title={f.path}>
+                        {shortPath(f.path)}
+                      </span>
+                    </span>
+                  </span>
                 </button>
-                {isLocalhost && (
+                <div className={`${BTN_GROUP} shrink-0`}>
                   <button
-                    onClick={() => onOpenInFileManager(f.path)}
-                    title="Open in file manager"
-                    aria-label="Open in file manager"
-                    className="rounded border border-(--color-border) px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+                    onClick={() => onOpen(f)}
+                    className={TOOL_BTN}
+                    title="Open Git Graph"
                   >
-                    ⎘
+                    <GitGraph size={13} />
                   </button>
-                )}
-                <button
-                  onClick={async () => {
-                    const ok = await confirm(
-                      `Remove "${folderName(f.path)}"?`,
-                      {
-                        title: "Remove bookmark",
-                      },
-                    );
-                    if (ok) onRemove(f.id);
-                  }}
-                  className="rounded px-1.5 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error)"
-                  aria-label="Remove"
-                >
-                  ×
-                </button>
+                  {dev?.isLocalhost && (
+                    <button
+                      onClick={() => onOpenInFileManager(f.path)}
+                      className={TOOL_BTN}
+                      title="Open in file manager"
+                    >
+                      <FolderOpen size={13} />
+                    </button>
+                  )}
+                  <button
+                    onClick={async () => {
+                      const ok = await confirm(
+                        `Remove "${folderName(f.path)}" from the list? The folder itself isn't touched.`,
+                        { title: "Remove bookmark" },
+                      );
+                      if (ok) onRemove(f.id);
+                    }}
+                    className={`${TOOL_BTN} hover:text-(--color-error)`}
+                    title="Remove bookmark"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
               </li>
             );
           })}
@@ -462,106 +499,101 @@ function GitHubSection({
     ) ?? [];
 
   return (
-    <section>
-      <div className="mb-2 flex items-center justify-between">
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-(--color-fg-muted)">
-          GitHub
-        </h3>
-        {signedIn ? (
-          <button
-            onClick={async () => {
-              const ok = await confirm("Sign out of GitHub?", {
-                title: "Sign out",
-              });
-              if (!ok) return;
-              await api.githubSignOut().catch(() => undefined);
-              onSignedInChange(false);
-            }}
-            className="rounded border border-(--color-border) px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-          >
-            Sign out
-          </button>
-        ) : null}
-      </div>
-
-      {!signedIn ? (
-        <SignInCard onSignedIn={() => onSignedInChange(true)} />
-      ) : (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 py-2">
-            {user && (
-              <img
-                src={user.avatar_url}
-                alt={user.login}
-                className="h-8 w-8 rounded-full"
-              />
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-medium">
-                {user?.name ?? user?.login ?? "Signed in"}
-              </div>
-              <div className="truncate text-xs text-(--color-fg-muted)">
-                @{user?.login ?? "—"}
-              </div>
-            </div>
-            <button
-              onClick={onLoadRepos}
-              disabled={reposLoading}
-              className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
-            >
-              {reposLoading
-                ? "Loading…"
-                : repos
-                  ? "Reload repos"
-                  : "Load my repos"}
-            </button>
-          </div>
-
-          {repos && (
-            <>
+    <section className="mt-3">
+      <SectionHeader title="GitHub">
+        {signedIn && user && (
+          <span className="flex min-w-0 items-center gap-1.5 text-(--color-fg-muted)">
+            <img
+              src={user.avatar_url}
+              alt=""
+              className="h-4 w-4 shrink-0 rounded-full"
+            />
+            <span className="truncate">@{user.login}</span>
+          </span>
+        )}
+        {signedIn && (
+          <div className="ml-auto flex items-center gap-1.5">
+            {repos && (
               <input
-                className="input"
+                className={`${SMALL_INPUT} w-36`}
                 placeholder={`Filter ${repos.length} repos…`}
                 value={filter}
                 onChange={(e) => setFilter(e.target.value)}
               />
-              <ul className="space-y-1.5">
-                {filtered.slice(0, 200).map((r) => (
-                  <li
-                    key={r.id}
-                    className="flex items-center gap-3 rounded-md border border-(--color-border) bg-(--color-surface) px-3 py-1.5"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-sm">{r.full_name}</span>
-                        {r.private && (
-                          <span className="rounded bg-(--color-surface-2) px-1 text-[9px] uppercase text-(--color-fg-muted)">
-                            private
-                          </span>
-                        )}
-                      </div>
-                      {r.description && (
-                        <div className="truncate text-[11px] text-(--color-fg-muted)">
-                          {r.description}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => onClone(r)}
-                      className="rounded border border-(--color-border) px-2 py-1 text-xs hover:bg-(--color-surface-2)"
-                    >
-                      Clone
-                    </button>
-                  </li>
-                ))}
-                {filtered.length > 200 && (
-                  <li className="text-center text-xs text-(--color-fg-muted)">
-                    {filtered.length - 200} more — narrow the filter.
-                  </li>
+            )}
+            <div className={BTN_GROUP}>
+              <button
+                onClick={onLoadRepos}
+                disabled={reposLoading}
+                className={TOOL_BTN}
+              >
+                {reposLoading ? "Loading…" : repos ? "Reload" : "Load repos"}
+              </button>
+              <button
+                onClick={async () => {
+                  const ok = await confirm("Sign out of GitHub?", {
+                    title: "Sign out",
+                  });
+                  if (!ok) return;
+                  await api.githubSignOut().catch(() => undefined);
+                  onSignedInChange(false);
+                }}
+                className={TOOL_BTN}
+                title="Sign out"
+              >
+                <LogOut size={12} />
+              </button>
+            </div>
+          </div>
+        )}
+      </SectionHeader>
+
+      {!signedIn ? (
+        <SignInCard onSignedIn={() => onSignedInChange(true)} />
+      ) : repos ? (
+        <ul>
+          {filtered.slice(0, 200).map((r) => (
+            <li
+              key={r.id}
+              className="flex h-9 items-center gap-2 border-b border-(--color-border) px-3 text-xs hover:bg-(--color-surface)"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5">
+                  <span className="truncate">{r.full_name}</span>
+                  {r.private && (
+                    <Lock
+                      size={11}
+                      className="shrink-0 text-(--color-fg-muted)"
+                    />
+                  )}
+                </span>
+                {r.description && (
+                  <span className="block truncate text-[11px] text-(--color-fg-muted)">
+                    {r.description}
+                  </span>
                 )}
-              </ul>
-            </>
+              </span>
+              <div className={`${BTN_GROUP} shrink-0`}>
+                <button
+                  onClick={() => onClone(r)}
+                  className={TOOL_BTN}
+                  title="Clone to a folder on this computer"
+                >
+                  <Download size={12} />
+                  Clone
+                </button>
+              </div>
+            </li>
+          ))}
+          {filtered.length > 200 && (
+            <li className="py-2 text-center text-xs text-(--color-fg-muted)">
+              {filtered.length - 200} more — narrow the filter.
+            </li>
           )}
+        </ul>
+      ) : (
+        <div className="px-3 py-3 text-xs text-(--color-fg-muted)">
+          Load your repositories to clone one.
         </div>
       )}
     </section>
@@ -644,24 +676,25 @@ function SignInCard({ onSignedIn }: { onSignedIn: () => void }) {
   };
 
   return (
-    <div className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+    <div className="px-3 py-2 text-xs">
       {!state ? (
         <>
-          <div className="text-sm">Not signed in to GitHub.</div>
-          <p className="mt-1 text-xs text-(--color-fg-muted)">
-            Sign in to list and clone your repositories. Uses device-code OAuth;
-            tokens are stored in your OS keychain.
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-(--color-fg-muted)">
+              Sign in to list and clone your repositories.
+            </span>
+            <button
+              onClick={start}
+              disabled={starting}
+              className="rounded bg-(--color-accent) px-2.5 py-1 font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
+            >
+              {starting ? "Starting…" : "Sign in to GitHub"}
+            </button>
+          </div>
+          <p className="mt-1 text-[11px] text-(--color-fg-muted)/80">
+            Uses device-code OAuth; the token is stored in your OS keychain.
           </p>
-          {error && (
-            <div className="mt-2 text-xs text-(--color-error)">{error}</div>
-          )}
-          <button
-            onClick={start}
-            disabled={starting}
-            className="mt-3 rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
-          >
-            {starting ? "Starting…" : "Sign in to GitHub"}
-          </button>
+          {error && <div className="mt-1 text-(--color-error)">{error}</div>}
         </>
       ) : (
         <>

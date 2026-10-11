@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { errorMessage } from "../lib/api";
+import { errorMessage, invokeWithSudo } from "../lib/api";
 import { usePaneSettings } from "../store/pane-settings-store";
 import {
   useResizableColumns,
@@ -154,7 +153,7 @@ export function PortsPanel({ deviceId, paneId }: Props) {
       // Use -tulnp: tcp + udp + listening + numeric + processes. -p only
       // populates the process column when run as root; without sudo we
       // still get every listening socket, just without process names.
-      const out = await invoke<{ stdout: string; exitCode: number }>(
+      const out = await invokeWithSudo<{ stdout: string; exitCode: number }>(
         "run_remote_command",
         {
           deviceId,

@@ -3,7 +3,7 @@ use tauri::State;
 use crate::devices::{self, Device, DeviceUpdate, NewDevice};
 use crate::docker::{self, ContainerSummary};
 use crate::error::{AppError, AppResult};
-use crate::metrics::{self, CpuInfo, DimmModule, MetricsSnapshot};
+use crate::metrics::{self, CpuInfo, DimmModule, MetricsSnapshot, SystemInfo};
 use crate::secrets;
 use crate::sql::{ConnectConfig, QueryResult, SqlEngine};
 use crate::ssh::{self, CommandOutput};
@@ -222,6 +222,12 @@ pub fn metrics_snapshot(
 pub fn cpu_info(state: State<'_, AppState>, device_id: String) -> AppResult<CpuInfo> {
     let device = require_device(&state, &device_id)?;
     metrics::cpu_info(&state.pool, &device)
+}
+
+#[tauri::command(async)]
+pub fn system_info(state: State<'_, AppState>, device_id: String) -> AppResult<SystemInfo> {
+    let device = require_device(&state, &device_id)?;
+    metrics::system_info(&state.pool, &device)
 }
 
 #[tauri::command(async)]

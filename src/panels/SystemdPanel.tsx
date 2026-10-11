@@ -5,6 +5,7 @@ import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { SkeletonCard } from "../components/Skeleton";
 import { CodeEditor } from "../components/CodeEditor";
+import { BTN_GROUP, SMALL_INPUT, TOOL_BTN, segBtn } from "../lib/ui";
 
 interface Props {
   deviceId: string;
@@ -16,6 +17,7 @@ export function SystemdPanel({ deviceId }: Props) {
   const [units, setUnits] = useState<SystemdUnit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [stateFilter, setStateFilter] = useState<StateFilter>("all");
   const [view, setView] = useState<View>({ kind: "list" });
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -38,13 +40,27 @@ export function SystemdPanel({ deviceId }: Props) {
   const filtered = useMemo(() => {
     if (!units) return [];
     const q = filter.trim().toLowerCase();
-    if (!q) return units;
     return units.filter(
       (u) =>
-        u.name.toLowerCase().includes(q) ||
-        u.description.toLowerCase().includes(q),
+        matchesState(u, stateFilter) &&
+        (!q ||
+          u.name.toLowerCase().includes(q) ||
+          u.description.toLowerCase().includes(q)),
     );
-  }, [units, filter]);
+  }, [units, filter, stateFilter]);
+
+  const counts = useMemo(() => {
+    const c: Record<StateFilter, number> = {
+      all: 0,
+      running: 0,
+      failed: 0,
+      enabled: 0,
+    };
+    for (const u of units ?? []) {
+      for (const f of STATE_FILTERS) if (matchesState(u, f.key)) c[f.key]++;
+    }
+    return c;
+  }, [units]);
 
   const doAction = async (
     u: SystemdUnit,
@@ -98,35 +114,52 @@ export function SystemdPanel({ deviceId }: Props) {
 
   return (
     <div className="fade-up flex h-full flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-2">
-        <h2 className="text-sm font-semibold">systemd</h2>
-        <span className="text-xs text-(--color-fg-muted)">
-          {units.length} units
-        </span>
+      {/* Toolbar — same slim style as Logs */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-(--color-border) px-2 py-1 text-xs">
+        <div className={BTN_GROUP}>
+          {STATE_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setStateFilter(f.key)}
+              className={segBtn(stateFilter === f.key)}
+            >
+              {f.label}
+              <span className="ml-1 tabular-nums opacity-70">
+                {counts[f.key]}
+              </span>
+            </button>
+          ))}
+        </div>
         <input
-          className="input ml-3 max-w-xs"
-          placeholder="Filter…"
+          className={`${SMALL_INPUT} w-44`}
+          placeholder="Filter units…"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
         />
         <div className="ml-auto flex items-center gap-1.5">
-          <button
-            onClick={() => void reload()}
-            className="rounded border border-(--color-border) px-2 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-            title="Reload"
-          >
-            ↻
-          </button>
-          <button
-            onClick={() =>
-              setView({ kind: "edit", name: "new.service", isNew: true })
-            }
-            className="rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90"
-          >
-            New service
-          </button>
+          <div className={BTN_GROUP}>
+            <button
+              onClick={() => void reload()}
+              className={TOOL_BTN}
+              title="Reload"
+            >
+              ↻
+            </button>
+            <button
+              onClick={() =>
+                setView({ kind: "edit", name: "new.service", isNew: true })
+              }
+              className={`${TOOL_BTN} text-(--color-accent)`}
+            >
+              + New service
+            </button>
+          </div>
         </div>
       </div>
+
+      {error && (
+        <div className="px-3 py-1 text-xs text-(--color-error)">{error}</div>
+      )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {filtered.length === 0 ? (
@@ -153,6 +186,32 @@ export function SystemdPanel({ deviceId }: Props) {
   );
 }
 
+type StateFilter = "all" | "running" | "failed" | "enabled";
+
+const STATE_FILTERS: { key: StateFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "running", label: "Running" },
+  { key: "failed", label: "Failed" },
+  { key: "enabled", label: "Enabled" },
+];
+
+function unitState(u: SystemdUnit) {
+  const failed = u.active === "failed" || u.sub === "failed";
+  return {
+    failed,
+    // "running" = a live process; "active" also covers one-shot units that
+    // finished successfully (active/exited), which can still be stopped.
+    running: !failed && u.sub === "running",
+    active: !failed && u.active === "active",
+    enabled: u.unitFileState === "enabled",
+  };
+}
+
+function matchesState(u: SystemdUnit, f: StateFilter): boolean {
+  const s = unitState(u);
+  return f === "all" || s[f];
+}
+
 function UnitRow({
   unit,
   busy,
@@ -164,43 +223,41 @@ function UnitRow({
   onAction: (a: "start" | "stop" | "restart" | "enable" | "disable") => void;
   onEdit: () => void;
 }) {
-  const isActive = unit.active === "active" || unit.sub === "running";
-  const isFailed = unit.active === "failed" || unit.sub === "failed";
-  const dot = isFailed
-    ? "bg-(--color-error)"
-    : isActive
-      ? "bg-(--color-online)"
-      : "bg-(--color-offline)";
-  const isEnabled = unit.unitFileState === "enabled";
+  const { failed, running, active, enabled } = unitState(unit);
+  const tone = failed
+    ? { dot: "bg-(--color-error)", text: "text-(--color-error)" }
+    : running
+      ? { dot: "bg-(--color-online)", text: "text-(--color-online)" }
+      : active
+        ? { dot: "bg-(--color-online)/50", text: "text-(--color-fg-muted)" }
+        : { dot: "bg-(--color-offline)", text: "text-(--color-fg-muted)" };
   const actionBusy = (a: string) => busy === `${unit.name}:${a}`;
 
   return (
-    <li className="row-animate flex items-center gap-3 border-b border-(--color-border) px-3 py-1.5 text-sm hover:bg-(--color-surface-2)/40">
-      <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+    <li className="group flex h-8 items-center gap-2 border-b border-(--color-border) px-3 text-xs hover:bg-(--color-surface)">
+      <span className={`h-2 w-2 shrink-0 rounded-full ${tone.dot}`} />
       <button
         onClick={onEdit}
-        className="min-w-0 flex-1 text-left"
-        title="View / edit unit file"
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        title={`${unit.name} — ${unit.load} ${unit.active} ${unit.sub}\n${unit.description}\nClick to view / edit the unit file`}
       >
-        <div className="flex items-center gap-2">
-          <span className="truncate font-mono text-[12px]">{unit.name}</span>
-          <span className="rounded bg-(--color-surface-2) px-1.5 py-0.5 text-[10px] text-(--color-fg-muted)">
-            {unit.active}/{unit.sub}
-          </span>
-          {isEnabled && (
-            <span className="rounded bg-(--color-accent)/15 px-1.5 py-0.5 text-[10px] text-(--color-accent)">
-              enabled
-            </span>
-          )}
-        </div>
-        {unit.description && (
-          <div className="truncate text-[11px] text-(--color-fg-muted)">
-            {unit.description}
-          </div>
-        )}
+        <span className="w-56 shrink-0 truncate font-mono">
+          {unit.name.replace(/\.service$/, "")}
+        </span>
+        <span className={`w-16 shrink-0 ${tone.text}`}>
+          {unit.sub || unit.active}
+        </span>
+        <span
+          className={`w-14 shrink-0 ${enabled ? "text-(--color-accent)" : "text-(--color-fg-muted)/60"}`}
+        >
+          {unit.unitFileState ?? ""}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-(--color-fg-muted)">
+          {unit.description}
+        </span>
       </button>
-      <div className="flex shrink-0 items-center gap-1">
-        {isActive ? (
+      <div className={`${BTN_GROUP} shrink-0`}>
+        {active ? (
           <ActionBtn onClick={() => onAction("stop")} busy={actionBusy("stop")}>
             Stop
           </ActionBtn>
@@ -219,12 +276,16 @@ function UnitRow({
           Restart
         </ActionBtn>
         <ActionBtn
-          onClick={() =>
-            onAction(unit.unitFileState === "enabled" ? "disable" : "enable")
-          }
+          onClick={() => onAction(enabled ? "disable" : "enable")}
           busy={actionBusy("enable") || actionBusy("disable")}
+          // static / generated / masked units can't be enabled or disabled.
+          disabledReason={
+            enabled || unit.unitFileState === "disabled"
+              ? undefined
+              : `Can't enable or disable a ${unit.unitFileState ?? "transient"} unit`
+          }
         >
-          {unit.unitFileState === "enabled" ? "Disable" : "Enable"}
+          {enabled ? "Disable" : "Enable"}
         </ActionBtn>
       </div>
     </li>
@@ -234,17 +295,20 @@ function UnitRow({
 function ActionBtn({
   onClick,
   busy,
+  disabledReason,
   children,
 }: {
   onClick: () => void;
   busy: boolean;
+  disabledReason?: string;
   children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
-      disabled={busy}
-      className="rounded border border-(--color-border) bg-(--color-bg) px-2 py-0.5 text-[11px] hover:bg-(--color-surface-2) disabled:opacity-40"
+      disabled={busy || !!disabledReason}
+      title={disabledReason}
+      className={TOOL_BTN}
     >
       {busy ? "…" : children}
     </button>

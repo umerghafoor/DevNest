@@ -10,6 +10,7 @@ mod local_fs;
 mod log_stream;
 mod mac_rounded_corners;
 mod metrics;
+mod net;
 mod ngrok;
 mod secrets;
 mod sftp;
@@ -195,6 +196,7 @@ pub fn run() {
             commands::docker_logs,
             commands::metrics_snapshot,
             commands::cpu_info,
+            commands::system_info,
             commands::dimm_info,
             commands::sql_set_password,
             commands::sql_clear_password,
@@ -228,6 +230,11 @@ pub fn run() {
             git::git_tags,
             git::git_show,
             git::git_diff,
+            git::git_status,
+            git::git_working_diff,
+            git::git_stage,
+            git::git_unstage,
+            git::git_commit,
             github::github_device_start,
             github::github_device_poll,
             github::github_signed_in,
@@ -237,6 +244,9 @@ pub fn run() {
             http_client::http_request,
             local_fs::fs_read_text,
             local_fs::fs_write_text,
+            net::net_ping,
+            net::net_speed_probe,
+            net::net_speed_sample,
             ngrok::ngrok_start,
             ngrok::ngrok_stop,
             ngrok::ngrok_list,

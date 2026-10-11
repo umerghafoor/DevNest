@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 interface Props {
@@ -12,21 +12,19 @@ interface Props {
 export function Modal({ open, onClose, title, children, footer }: Props) {
   const [visible, setVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const prevOpen = useRef(false);
 
+  // No "already opened" ref here: StrictMode runs effect → cleanup → effect,
+  // and a ref set on the first run would skip re-scheduling the fade-in after
+  // the cleanup cancelled it, leaving an invisible modal that eats clicks.
   useEffect(() => {
-    if (open && !prevOpen.current) {
+    if (open) {
       setMounted(true);
       const frame = requestAnimationFrame(() => setVisible(true));
-      prevOpen.current = true;
       return () => cancelAnimationFrame(frame);
     }
-    if (!open && prevOpen.current) {
-      setVisible(false);
-      prevOpen.current = false;
-      const t = setTimeout(() => setMounted(false), 220);
-      return () => clearTimeout(t);
-    }
+    setVisible(false);
+    const t = setTimeout(() => setMounted(false), 220);
+    return () => clearTimeout(t);
   }, [open]);
 
   useEffect(() => {

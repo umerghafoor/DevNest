@@ -29,6 +29,7 @@ import { GitPanel } from "../panels/GitPanel";
 import { GitGraphPanel } from "../panels/GitGraphPanel";
 import { SystemdPanel } from "../panels/SystemdPanel";
 import { HttpPanel } from "../panels/HttpPanel";
+import { NetworkPanel } from "../panels/NetworkPanel";
 import type { PanelKind } from "../store/app-store";
 
 // SqlPanel pulls in Monaco (~3 MB). Lazy-load it so the rest of the app
@@ -59,6 +60,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   http: "⇨",
   sql: "◰",
   markdown: "◧",
+  netmon: "⇅",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -83,11 +85,12 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   http: "HTTP Client",
   sql: "SQL Client",
   markdown: "Markdown",
+  netmon: "Ping & Speed",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   dashboard: "Quick overview of devices and panels",
-  sysinfo: "Browser-side host info",
+  sysinfo: "Host OS, CPU, memory and uptime",
   terminal: "Interactive shell session",
   files: "Browse and edit files",
   processes: "Top processes by CPU and memory",
@@ -107,6 +110,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   http: "Send HTTP requests, save collections",
   sql: "Connect to Postgres / MySQL / SQLite",
   markdown: "Write and preview Markdown with live rendering",
+  netmon: "Ping monitor and internet speed test",
 };
 
 export type PanelCategory =
@@ -141,6 +145,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   http: "network",
   sql: "code",
   markdown: "code",
+  netmon: "network",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -172,7 +177,7 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   containers: ["docker"],
   observability: ["metrics", "logs"],
   services: ["systemd", "services", "cron"],
-  network: ["http", "tailscale", "ngrok"],
+  network: ["netmon", "http", "tailscale", "ngrok"],
   code: ["git", "gitGraph", "editor", "markdown", "sql"],
   app: ["settings"],
 };
@@ -182,7 +187,7 @@ export function PanelContent({ pane }: { pane: Pane }) {
     case "docker":
       return <DockerPanel deviceId={pane.deviceId} />;
     case "metrics":
-      return <MetricsPanel deviceId={pane.deviceId} />;
+      return <MetricsPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "terminal":
       return (
         <TerminalPanel deviceId={pane.deviceId} instanceId={pane.instanceId} />
@@ -208,7 +213,7 @@ export function PanelContent({ pane }: { pane: Pane }) {
     case "ngrok":
       return <NgrokPanel deviceId={pane.deviceId} />;
     case "sysinfo":
-      return <SysInfoPanel />;
+      return <SysInfoPanel deviceId={pane.deviceId} />;
     case "editor":
       return <EditorPanel deviceId={pane.deviceId} />;
     case "markdown":
@@ -223,6 +228,8 @@ export function PanelContent({ pane }: { pane: Pane }) {
           paneId={pane.id}
         />
       );
+    case "netmon":
+      return <NetworkPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "systemd":
       return <SystemdPanel deviceId={pane.deviceId} />;
     case "http":

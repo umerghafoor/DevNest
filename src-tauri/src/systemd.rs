@@ -48,24 +48,9 @@ pub fn list_units(pool: &SessionPool, device: &Device) -> AppResult<Vec<SystemdU
         if trimmed.is_empty() {
             continue;
         }
-        // Format: NAME LOAD ACTIVE SUB DESCRIPTION...
-        let mut parts = trimmed.splitn(5, char::is_whitespace).peekable();
-        let name = parts.next().unwrap_or("").to_string();
-        let load = parts.next().unwrap_or("").to_string();
-        let active = parts.next().unwrap_or("").to_string();
-        let sub = parts.next().unwrap_or("").to_string();
-        let description = parts.next().unwrap_or("").trim().to_string();
-        if name.is_empty() || !name.ends_with(".service") {
-            continue;
+        if let Some(unit) = parse_list_units_line(trimmed) {
+            units.push(unit);
         }
-        units.push(SystemdUnit {
-            name,
-            load,
-            active,
-            sub,
-            description,
-            unit_file_state: None,
-        });
     }
 
     // Enrich with enable-state from list-unit-files (cheap, one extra call).
@@ -339,4 +324,59 @@ pub fn systemd_delete_unit(
     let device =
         crate::devices::get(&state.db, &device_id)?.ok_or(AppError::NotFound(device_id))?;
     delete_unit_file(&state.pool, &device, &name)
+}
+
+/// Parse one `systemctl list-units --plain --no-legend` line:
+/// `NAME LOAD ACTIVE SUB DESCRIPTION…`. Columns are padded with runs of
+/// spaces, so split on whitespace runs (not single spaces) for the first four
+/// fields; the description is everything after.
+fn parse_list_units_line(line: &str) -> Option<SystemdUnit> {
+    // Some systemd versions prefix failed units with a "●" marker.
+    let mut rest = line.trim_start_matches('●').trim_start();
+    let mut fields = [""; 4];
+    for f in fields.iter_mut() {
+        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+        *f = &rest[..end];
+        rest = rest[end..].trim_start();
+    }
+    let [name, load, active, sub] = fields;
+    if name.is_empty() || !name.ends_with(".service") {
+        return None;
+    }
+    Some(SystemdUnit {
+        name: name.to_string(),
+        load: load.to_string(),
+        active: active.to_string(),
+        sub: sub.to_string(),
+        description: rest.trim().to_string(),
+        unit_file_state: None,
+    })
+}
+
+#[cfg(test)]
+mod list_units_tests {
+    use super::*;
+
+    #[test]
+    fn parses_padded_columns() {
+        let u = parse_list_units_line(
+            "accounts-daemon.service      loaded    active   running Accounts Service",
+        )
+        .unwrap();
+        assert_eq!(u.name, "accounts-daemon.service");
+        assert_eq!(u.load, "loaded");
+        assert_eq!(u.active, "active");
+        assert_eq!(u.sub, "running");
+        assert_eq!(u.description, "Accounts Service");
+    }
+
+    #[test]
+    fn handles_failed_marker_and_skips_non_services() {
+        let u =
+            parse_list_units_line("● foo.service  loaded failed failed Foo daemon (with spaces)")
+                .unwrap();
+        assert_eq!(u.active, "failed");
+        assert_eq!(u.description, "Foo daemon (with spaces)");
+        assert!(parse_list_units_line("dev-sda1.device loaded active plugged x").is_none());
+    }
 }
