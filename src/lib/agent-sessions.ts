@@ -25,6 +25,12 @@ import {
   type ToolCall,
 } from "./acp";
 import type { AgentDef } from "../store/agents-store";
+import {
+  chatTitle,
+  compactItems,
+  useChatsStore,
+  type ChatRecord,
+} from "./agent-chats";
 import { collectPanes, useAppStore } from "../store/app-store";
 
 /** One entry in the conversation transcript. */
@@ -92,6 +98,14 @@ export interface AgentSession {
   elicitation: PendingElicitation | null;
   /** MCP servers handed to the agent with every new session. */
   mcpServers: McpServer[];
+  /** Saved-chat scope: "pane", or the session key for app-wide agents. */
+  scope: string;
+  /** Saved chat this conversation is stored as (once it has a prompt). */
+  chatId: string | null;
+  /** Agent supports `session/load`, so past chats can be resumed. */
+  canLoad: boolean;
+  /** A `session/load` is replaying history we already show; ignore it. */
+  replaying: boolean;
   processId: string | null;
   sessionId: string | null;
   conn: AcpConnection | null;
@@ -152,6 +166,10 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
       permission: null,
       elicitation: null,
       mcpServers: [],
+      scope: key.startsWith("__") ? key : "pane",
+      chatId: null,
+      canLoad: false,
+      replaying: false,
       processId: null,
       sessionId: null,
       conn: null,
@@ -209,6 +227,7 @@ function appendChunk(
 }
 
 function applyUpdate(s: AgentSession, u: SessionUpdate) {
+  if (s.replaying) return;
   switch (u.sessionUpdate) {
     case "agent_message_chunk":
     case "agent_thought_chunk": {
@@ -303,6 +322,8 @@ export async function startAgent(
   s.modes = null;
   s.config = [];
   s.mcpServers = [];
+  s.chatId = null;
+  s.canLoad = false;
   s.status = "starting";
   const processId = uid();
   s.processId = processId;
@@ -387,6 +408,7 @@ export async function startAgent(
     const init = await withTimeout(conn.initialize(), INIT_TIMEOUT_MS);
     s.authMethods = init.authMethods ?? [];
     s.canLogout = !!init.agentCapabilities?.auth?.logout;
+    s.canLoad = !!init.agentCapabilities?.loadSession;
     if (opts.mcpServers) s.mcpServers = await opts.mcpServers(init);
     await openSession(s);
   } catch (e) {
@@ -397,7 +419,7 @@ export async function startAgent(
   }
 }
 
-async function openSession(s: AgentSession) {
+async function openSession(s: AgentSession, quiet = false) {
   if (!s.conn) return;
   try {
     const { sessionId, modes, configOptions } = await s.conn.newSession(
@@ -408,7 +430,8 @@ async function openSession(s: AgentSession) {
     s.modes = modes?.availableModes?.length ? modes : null;
     s.config = configOptions ?? [];
     s.status = "ready";
-    system(s, `${s.agent?.name ?? "Agent"} ready.`);
+    if (quiet) notify(s);
+    else system(s, `${s.agent?.name ?? "Agent"} ready.`);
   } catch (e) {
     if (
       e instanceof AcpError &&
@@ -560,13 +583,86 @@ export async function sendPrompt(s: AgentSession, text: string) {
       system(s, `Prompt failed: ${describe(e)}`, true);
   } finally {
     if (s.status === "prompting") s.status = "ready";
+    saveChat(s);
     notify(s);
+  }
+}
+
+// ─── Saved chats ──────────────────────────────────────────────────────────────
+
+/** Store the conversation in the chat history (once it has a prompt). */
+export function saveChat(s: AgentSession) {
+  if (!s.agent || !s.items.some((i) => i.kind === "user")) return;
+  const now = Date.now();
+  const prev = s.chatId
+    ? useChatsStore.getState().chats.find((c) => c.id === s.chatId)
+    : undefined;
+  s.chatId ??= uid();
+  useChatsStore.getState().upsert({
+    id: s.chatId,
+    scope: s.scope,
+    agentId: s.agent.id,
+    deviceId: s.deviceId,
+    cwd: s.cwd,
+    sessionId: s.sessionId,
+    title: prev?.title ?? chatTitle(s.items),
+    createdAt: prev?.createdAt ?? now,
+    updatedAt: now,
+    items: compactItems(s.items),
+  });
+}
+
+/**
+ * Switch to a saved chat. The agent must be running (same agent). Resumes
+ * the agent's own session when it supports `session/load`; otherwise shows
+ * the old transcript and continues in a fresh session.
+ */
+export async function openChat(s: AgentSession, chat: ChatRecord) {
+  if (!s.conn || s.status === "prompting" || s.chatId === chat.id) return;
+  saveChat(s);
+  s.items = chat.items;
+  s.chatId = chat.id;
+  s.cwd = chat.cwd;
+  s.sessionId = null;
+  s.status = "starting";
+  notify(s);
+  if (s.canLoad && chat.sessionId) {
+    s.replaying = true;
+    try {
+      const r = await s.conn.loadSession(
+        chat.sessionId,
+        chat.cwd,
+        s.mcpServers,
+      );
+      s.sessionId = chat.sessionId;
+      if (r?.modes?.availableModes?.length) s.modes = r.modes;
+      if (r?.configOptions) s.config = r.configOptions;
+      s.status = "ready";
+      system(s, "Resumed this chat.");
+      return;
+    } catch (e) {
+      system(s, `Couldn't resume this chat: ${describe(e)}`, true);
+    } finally {
+      s.replaying = false;
+    }
+  }
+  try {
+    await openSession(s, true);
+    system(
+      s,
+      "This agent can't resume past chats, so it doesn't remember the messages above. New messages start a fresh conversation.",
+    );
+  } catch (e) {
+    s.status = "ready";
+    system(s, `Couldn't open a session: ${describe(e)}`, true);
   }
 }
 
 /** Drop the transcript and start a fresh session on the same agent. */
 export async function newConversation(s: AgentSession) {
   if (!s.conn || s.status === "prompting") return;
+  saveChat(s);
+  s.chatId = null;
   s.items = [];
   s.sessionId = null;
   s.status = "starting";
@@ -660,6 +756,7 @@ export function answerPermission(s: AgentSession, outcome: PermissionOutcome) {
 }
 
 export async function stopAgent(s: AgentSession, status: AgentStatus = "idle") {
+  saveChat(s);
   const pid = s.processId;
   s.processId = null;
   for (const fn of s.unlisten) fn();

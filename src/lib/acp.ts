@@ -222,6 +222,8 @@ export interface InitializeResult {
   agentCapabilities?: {
     auth?: { logout?: unknown };
     mcpCapabilities?: { http?: boolean; sse?: boolean };
+    /** Supports `session/load` (resume a past conversation). */
+    loadSession?: boolean;
   } & Record<string, unknown>;
   authMethods?: AuthMethod[];
 }
@@ -379,6 +381,14 @@ export class AcpConnection {
       cwd,
       mcpServers,
     });
+  }
+
+  /** Resume a past session; the agent replays it as session updates. */
+  loadSession(sessionId: string, cwd: string, mcpServers: McpServer[] = []) {
+    return this.request<{
+      modes?: SessionModeState | null;
+      configOptions?: ConfigOption[] | null;
+    } | null>("session/load", { sessionId, cwd, mcpServers });
   }
 
   /** Returns the agent's full, updated option list. */

@@ -9,6 +9,8 @@ import {
   installAgent,
   isAgentInstalled,
   logout,
+  newConversation,
+  openChat,
   retryAfterLogin,
   sendPrompt,
   setConfig,
@@ -42,6 +44,8 @@ import {
   type MenuCommand,
 } from "../lib/agent-local-commands";
 import { QuestionForm } from "./agent/QuestionForm";
+import { ChatHistoryButton } from "./agent/ChatHistory";
+import { chatsFor, useChatsStore, type ChatRecord } from "../lib/agent-chats";
 import { promptHistory, pushPrompt, stepHistory } from "../lib/prompt-history";
 import { MasterWidget } from "../components/MasterWidgets";
 import {
@@ -154,6 +158,27 @@ export function AgentPanel({
 
   const installRun = s.install?.agentId === agent?.id ? s.install : null;
 
+  const allChats = useChatsStore((st) => st.chats);
+  const removeChat = useChatsStore((st) => st.remove);
+  const chats = chatsFor(allChats, "pane", agentId, deviceId);
+
+  /** Open a saved chat, starting its agent in its folder if needed. */
+  const resume = async (c: ChatRecord) => {
+    if (!running || s.agent?.id !== c.agentId) {
+      const a = agents.find((x) => x.id === c.agentId);
+      if (!a) return toast.error("That chat's agent no longer exists.");
+      setAgentId(a.id);
+      setCwd(c.cwd);
+      setLast(a.id, deviceId, c.cwd);
+      await startAgent(s, a, c.cwd);
+    }
+    if (getAgentSession(paneId, deviceId).status === "ready") {
+      await openChat(s, c);
+    } else {
+      toast.error("Start the agent first, then open the chat.");
+    }
+  };
+
   return (
     <div className="fade-up flex h-full flex-col text-xs">
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5">
@@ -213,6 +238,16 @@ export function AgentPanel({
           </div>
         )}
         <div className={BTN_GROUP}>
+          <ChatHistoryButton
+            chats={chats}
+            currentId={s.chatId}
+            showCwd
+            onNew={
+              s.status === "ready" ? () => void newConversation(s) : undefined
+            }
+            onOpen={(c) => void resume(c)}
+            onDelete={(c) => removeChat(c.id)}
+          />
           {canTerminal && (
             <button
               className={TOOL_BTN}

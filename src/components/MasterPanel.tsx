@@ -3,7 +3,6 @@ import { homeDir } from "@tauri-apps/api/path";
 import {
   MoreHorizontal,
   Play,
-  RotateCcw,
   ScrollText,
   ShieldAlert,
   Sparkles,
@@ -14,6 +13,7 @@ import {
   installAgent,
   isAgentInstalled,
   newConversation,
+  openChat,
   sendPrompt,
   stopAgent,
   stopInstall,
@@ -25,6 +25,7 @@ import {
   answerApproval,
   canAlwaysAllow,
   getMasterSession,
+  MASTER_KEY,
   startMaster,
   useMasterStore,
   type Approval,
@@ -33,6 +34,8 @@ import { useAgentsStore } from "../store/agents-store";
 import { useAppStore } from "../store/app-store";
 import { toast } from "./Toast";
 import { Splitter } from "./Splitter";
+import { ChatList } from "../panels/agent/ChatHistory";
+import { chatsFor, useChatsStore, type ChatRecord } from "../lib/agent-chats";
 import {
   AuthBar,
   Composer,
@@ -167,6 +170,22 @@ function MasterBody({ hostId }: { hostId: string }) {
       extra: { initialCommand: cmd },
     });
   };
+  /** Open a saved Master chat, starting its agent if needed. */
+  const resume = async (c: ChatRecord) => {
+    if (!running || s.agent?.id !== c.agentId) {
+      const a = agents.find((x) => x.id === c.agentId);
+      if (!a) return toast.error("That chat's agent no longer exists.");
+      setAgentId(a.id);
+      try {
+        await startMaster(s, a, c.cwd || (await homeDir()));
+      } catch (e) {
+        return toast.error(`Couldn't start the Master agent: ${String(e)}`);
+      }
+    }
+    if (getMasterSession(hostId).status === "ready") await openChat(s, c);
+    else toast.error("Start the agent first, then open the chat.");
+  };
+
   const canTerminal = running && !!s.agent?.terminal;
   const installRun = s.install?.agentId === agent?.id ? s.install : null;
 
@@ -198,6 +217,7 @@ function MasterBody({ hostId }: { hostId: string }) {
           showLogs={showLogs}
           onLogs={() => setShowLogs((v) => !v)}
           onStart={() => void start()}
+          onResume={(c) => void resume(c)}
           onClose={() => setOpen(false)}
         />
         <Transcript
@@ -228,6 +248,7 @@ function MasterMenu({
   showLogs,
   onLogs,
   onStart,
+  onResume,
   onClose,
 }: {
   s: AgentSession;
@@ -237,9 +258,13 @@ function MasterMenu({
   showLogs: boolean;
   onLogs: () => void;
   onStart: () => void;
+  onResume: (c: ChatRecord) => void;
   onClose: () => void;
 }) {
   const agents = useAgentsStore((st) => st.agents);
+  const allChats = useChatsStore((st) => st.chats);
+  const removeChat = useChatsStore((st) => st.remove);
+  const chats = chatsFor(allChats, MASTER_KEY, agentId, s.deviceId);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -262,6 +287,7 @@ function MasterMenu({
     fn();
   };
   const canNew = s.status === "ready" && s.items.some((i) => i.kind === "user");
+  const busy = s.status === "prompting" || s.status === "starting";
 
   return (
     <div ref={ref} className="absolute top-1.5 right-2 z-20">
@@ -276,7 +302,7 @@ function MasterMenu({
         </span>
       </button>
       {open && (
-        <div className="modal-content absolute top-full right-0 mt-1 w-56 overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-xl">
+        <div className="modal-content absolute top-full right-0 mt-1 w-64 overflow-hidden rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-xl">
           <div className="flex items-center gap-2 px-3 py-1.5">
             <StatusDot status={s.status} />
             <span className="font-medium">Master</span>
@@ -301,14 +327,21 @@ function MasterMenu({
             </select>
           </label>
           <div className="my-1 h-px bg-(--color-border)" />
-          {canNew && (
-            <MenuItem
-              icon={<RotateCcw size={12} />}
-              onClick={act(() => void newConversation(s))}
-            >
-              New conversation
-            </MenuItem>
-          )}
+          <div className="px-3 pt-0.5 pb-1 text-[11px] font-semibold tracking-wide text-(--color-fg-muted) uppercase">
+            Chats
+          </div>
+          <ChatList
+            chats={chats}
+            currentId={s.chatId}
+            onNew={canNew ? act(() => void newConversation(s)) : undefined}
+            onOpen={(c) => {
+              if (busy) return;
+              setOpen(false);
+              onResume(c);
+            }}
+            onDelete={(c) => removeChat(c.id)}
+          />
+          <div className="my-1 h-px bg-(--color-border)" />
           {running ? (
             <MenuItem
               icon={<Square size={11} />}
