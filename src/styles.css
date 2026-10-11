@@ -149,6 +149,12 @@ select:focus-visible {
   outline-offset: 1px;
 }
 
+/* Opt-out for fields inside a container that draws its own focus state
+ * (e.g. the agent composer), so they don't get a second ring. */
+.no-focus-ring:focus-visible {
+  outline: none;
+}
+
 button {
   cursor: pointer;
 }

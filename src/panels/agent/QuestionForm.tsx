@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Square } from "lucide-react";
 import type {
   ElicitationField,
   ElicitationRequest,
@@ -8,29 +9,40 @@ import type {
 
 /**
  * Renders an agent's form elicitation — e.g. Claude Code's AskUserQuestion —
- * as clickable options. Handles the flat JSON Schema subset ACP allows:
- * single choice (`oneOf` / `enum`), multi choice (array of `anyOf` / `enum`),
- * free text, numbers and booleans.
+ * as compact clickable options in place of the composer. Handles the flat
+ * JSON Schema subset ACP allows: single choice (`oneOf` / `enum`), multi
+ * choice (array of `anyOf` / `enum`), free text, numbers and booleans.
+ *
+ * Keyboard: 1–9 picks an option of the first choice field, Enter submits,
+ * Esc skips.
  */
 export function QuestionForm({
   req,
   onAnswer,
+  onStop,
 }: {
   req: ElicitationRequest;
   onAnswer: (r: ElicitationResponse) => void;
+  onStop: () => void;
 }) {
   const props = req.requestedSchema?.properties ?? {};
+  const entries = Object.entries(props);
   const required = new Set(req.requestedSchema?.required ?? []);
   const [values, setValues] = useState<Record<string, unknown>>(() => {
     const init: Record<string, unknown> = {};
-    for (const [k, f] of Object.entries(props)) {
+    for (const [k, f] of entries) {
       if (f.default !== undefined) init[k] = f.default;
     }
     return init;
   });
+  const formRef = useRef<React.ComponentRef<"form">>(null);
 
   const set = (k: string, v: unknown) => setValues((p) => ({ ...p, [k]: v }));
   const missing = [...required].some((k) => isEmpty(values[k]));
+
+  // With a single question, its title chip goes in the header row.
+  const choiceFields = entries.filter(([, f]) => choicesOf(f));
+  const singleQuestion = choiceFields.length === 1;
 
   const submit = () => {
     if (missing) return;
@@ -41,125 +53,177 @@ export function QuestionForm({
     onAnswer({ action: "accept", content });
   };
 
+  // Focus the card so number keys work straight away.
+  useEffect(() => {
+    formRef.current?.focus();
+  }, []);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const typing = (e.target as HTMLElement).tagName === "INPUT";
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onAnswer({ action: "decline" });
+    } else if (!typing && /^[1-9]$/.test(e.key) && choiceFields[0]) {
+      const [key, field] = choiceFields[0];
+      const opt = choicesOf(field)![Number(e.key) - 1];
+      if (!opt) return;
+      e.preventDefault();
+      set(
+        key,
+        field.type === "array" ? toggle(values[key], opt.const) : opt.const,
+      );
+    }
+  };
+
   return (
-    <div className="shrink-0 border-t border-(--color-border) px-4 pt-3">
-      <form
-        className="mx-auto max-w-3xl rounded-xl border border-(--color-accent)/50 bg-(--color-surface) p-3"
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <div className="mb-2.5 text-[13px] font-medium">{req.message}</div>
-        <div className="max-h-[45vh] space-y-3 overflow-y-auto">
-          {Object.entries(props).map(([key, field]) => (
-            <Field
-              key={key}
-              field={field}
-              required={required.has(key)}
-              value={values[key]}
-              onChange={(v) => set(key, v)}
-            />
-          ))}
-        </div>
-        <div className="mt-3 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            className="rounded-md px-3 py-1 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-            onClick={() => onAnswer({ action: "decline" })}
-            title="Answer nothing and let the agent continue"
-          >
-            Skip
-          </button>
-          <button
-            type="submit"
-            disabled={missing}
-            className="rounded-md bg-(--color-accent) px-3 py-1 font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
-          >
-            Submit
-          </button>
-        </div>
-      </form>
-    </div>
+    <form
+      ref={formRef}
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+      className="no-focus-ring rounded-xl border border-(--color-accent)/60 bg-(--color-surface) p-2 outline-none"
+    >
+      <div className="mb-1.5 flex items-baseline gap-2 px-1">
+        {singleQuestion && choiceFields[0][1].title && (
+          <span className="shrink-0 rounded bg-(--color-accent)/15 px-1.5 text-[10px] font-semibold tracking-wide text-(--color-accent) uppercase">
+            {choiceFields[0][1].title}
+          </span>
+        )}
+        <span className="text-[13px] font-medium">{req.message}</span>
+      </div>
+
+      <div className="max-h-[40vh] space-y-2 overflow-y-auto">
+        {entries.map(([key, field]) => (
+          <Field
+            key={key}
+            field={field}
+            showTitle={!singleQuestion}
+            required={required.has(key)}
+            value={values[key]}
+            onChange={(v) => set(key, v)}
+          />
+        ))}
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5 px-1">
+        <span className="flex-1 truncate text-[11px] text-(--color-fg-muted)">
+          {choiceFields.length > 0 && "1–9 to pick · "}Enter to submit · Esc to
+          skip
+        </span>
+        <button
+          type="button"
+          className="h-6 rounded-md px-2.5 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+          onClick={() => onAnswer({ action: "decline" })}
+          title="Don't answer; let the agent continue"
+        >
+          Skip
+        </button>
+        <button
+          type="submit"
+          disabled={missing}
+          className="h-6 rounded-md bg-(--color-accent) px-3 font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
+        >
+          Submit
+        </button>
+        <button
+          type="button"
+          onClick={onStop}
+          title="Stop this turn"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+        >
+          <Square size={10} fill="currentColor" />
+        </button>
+      </div>
+    </form>
   );
 }
 
 function Field({
   field,
+  showTitle,
   required,
   value,
   onChange,
 }: {
   field: ElicitationField;
+  showTitle: boolean;
   required: boolean;
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
-  const label = field.title ?? "";
-  const single = choices(field.oneOf, field.enum);
-  const multi =
-    field.type === "array"
-      ? choices(field.items?.anyOf, field.items?.enum)
-      : null;
+  const options = choicesOf(field);
 
-  const heading = (label || field.description) && (
-    <div className="mb-1">
-      {label && (
-        <span className="mr-2 rounded bg-(--color-surface-2) px-1.5 py-0.5 text-[11px] font-medium text-(--color-fg-muted)">
-          {label}
-          {required && " *"}
-        </span>
-      )}
-      {field.description && (
-        <span className="text-[12px]">{field.description}</span>
-      )}
-    </div>
-  );
-
-  if (single) {
+  if (options) {
+    const multi = field.type === "array";
     return (
       <div>
-        {heading}
-        <OptionList
-          options={single}
-          isOn={(c) => value === c}
-          onToggle={(c) => onChange(value === c ? undefined : c)}
-          kind="radio"
-        />
-      </div>
-    );
-  }
-
-  if (multi) {
-    const picked = Array.isArray(value) ? (value as string[]) : [];
-    return (
-      <div>
-        {heading}
-        <OptionList
-          options={multi}
-          isOn={(c) => picked.includes(c)}
-          onToggle={(c) =>
-            onChange(
-              picked.includes(c)
-                ? picked.filter((x) => x !== c)
-                : [...picked, c],
-            )
-          }
-          kind="checkbox"
-        />
+        {(showTitle || field.description) && (
+          <div className="mb-1 px-1 text-[12px]">
+            {showTitle && field.title && (
+              <span className="mr-1.5 font-semibold">
+                {field.title}
+                {required && " *"}
+              </span>
+            )}
+            {field.description && (
+              <span className="text-(--color-fg-muted)">
+                {field.description}
+              </span>
+            )}
+          </div>
+        )}
+        <div className="overflow-hidden rounded-lg border border-(--color-border)">
+          {options.map((o, i) => {
+            const on = multi
+              ? Array.isArray(value) && value.includes(o.const)
+              : value === o.const;
+            return (
+              <button
+                key={o.const}
+                type="button"
+                onClick={() =>
+                  onChange(
+                    multi ? toggle(value, o.const) : on ? undefined : o.const,
+                  )
+                }
+                title={o.description}
+                className={`flex w-full items-center gap-2 border-t border-(--color-border) px-2 py-1 text-left first:border-t-0 ${
+                  on ? "bg-(--color-accent)/12" : "hover:bg-(--color-surface-2)"
+                }`}
+              >
+                <Mark on={on} round={!multi} />
+                <span className="w-3 shrink-0 text-right text-[11px] text-(--color-fg-muted) tabular-nums">
+                  {i + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-medium">{o.title ?? o.const}</span>
+                  {o.description && (
+                    <span className="text-(--color-fg-muted)">
+                      {"  "}
+                      {o.description}
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   }
 
   if (field.type === "boolean") {
     return (
-      <label className="flex cursor-pointer items-center gap-2">
+      <label className="flex cursor-pointer items-center gap-2 px-1">
         <input
           type="checkbox"
           checked={value === true}
           onChange={(e) => onChange(e.target.checked)}
         />
-        {label || field.description}
+        {field.title ?? field.description}
       </label>
     );
   }
@@ -179,84 +243,42 @@ function Field({
             : e.target.value,
         )
       }
-      // Claude's per-question "Other" box arrives as a titled text field.
-      placeholder={
-        [label, field.description].filter(Boolean).join(" — ") || "Answer"
-      }
+      // Claude's per-question "Other" box arrives as a text field titled
+      // "Other" with a long description — keep the placeholder short.
+      placeholder={field.title ? `${field.title}…` : "Answer…"}
       title={field.description}
-      className="h-7 w-full rounded-md border border-(--color-border) bg-(--color-bg) px-2 text-xs outline-none placeholder:text-(--color-fg-muted) focus:border-(--color-accent)"
+      className="no-focus-ring h-6 w-full rounded-md border border-(--color-border) bg-(--color-bg) px-2 text-xs outline-none placeholder:text-(--color-fg-muted) focus:border-(--color-accent)"
     />
   );
 }
 
-function OptionList({
-  options,
-  isOn,
-  onToggle,
-  kind,
-}: {
-  options: EnumOption[];
-  isOn: (c: string) => boolean;
-  onToggle: (c: string) => void;
-  kind: "radio" | "checkbox";
-}) {
+function Mark({ on, round }: { on: boolean; round: boolean }) {
   return (
-    <div className="space-y-1">
-      {options.map((o, i) => {
-        const on = isOn(o.const);
-        return (
-          <button
-            key={o.const}
-            type="button"
-            onClick={() => onToggle(o.const)}
-            className={`flex w-full items-start gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition-colors ${
-              on
-                ? "border-(--color-accent) bg-(--color-accent)/10"
-                : "border-(--color-border) hover:bg-(--color-surface-2)"
-            }`}
-          >
-            <span
-              className={`mt-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center border ${
-                kind === "radio" ? "rounded-full" : "rounded-sm"
-              } ${
-                on
-                  ? "border-(--color-accent) bg-(--color-accent)"
-                  : "border-(--color-fg-muted)"
-              }`}
-            >
-              {on && (
-                <span
-                  className={`h-1.5 w-1.5 bg-(--color-accent-fg) ${
-                    kind === "radio" ? "rounded-full" : "rounded-[1px]"
-                  }`}
-                />
-              )}
-            </span>
-            <span className="min-w-0">
-              <span className="font-medium">
-                <span className="mr-1.5 text-(--color-fg-muted)">{i + 1}.</span>
-                {o.title ?? o.const}
-              </span>
-              {o.description && (
-                <span className="block text-(--color-fg-muted)">
-                  {o.description}
-                </span>
-              )}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+    <span
+      className={`inline-flex h-3 w-3 shrink-0 items-center justify-center border ${
+        round ? "rounded-full" : "rounded-sm"
+      } ${on ? "border-(--color-accent) bg-(--color-accent)" : "border-(--color-fg-muted)"}`}
+    >
+      {on && (
+        <span
+          className={`h-1 w-1 bg-(--color-accent-fg) ${round ? "rounded-full" : ""}`}
+        />
+      )}
+    </span>
   );
 }
 
-function choices(
-  labeled: EnumOption[] | undefined,
-  bare: string[] | undefined,
-): EnumOption[] | null {
+function choicesOf(f: ElicitationField): EnumOption[] | null {
+  const labeled = f.type === "array" ? f.items?.anyOf : f.oneOf;
+  const bare = f.type === "array" ? f.items?.enum : f.enum;
   if (labeled?.length) return labeled;
   if (bare?.length) return bare.map((v) => ({ const: v }));
   return null;
+}
+
+function toggle(value: unknown, c: string): string[] {
+  const picked = Array.isArray(value) ? (value as string[]) : [];
+  return picked.includes(c) ? picked.filter((x) => x !== c) : [...picked, c];
 }
 
 function isEmpty(v: unknown) {

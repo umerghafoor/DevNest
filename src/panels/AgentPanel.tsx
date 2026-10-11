@@ -33,6 +33,7 @@ import { SafeMarkdown } from "../components/SafeMarkdown";
 import { QuestionForm } from "./agent/QuestionForm";
 import {
   ArrowUp,
+  ChevronDown,
   FolderOpen,
   Play,
   ScrollText,
@@ -239,15 +240,6 @@ export function AgentPanel({
       )}
 
       {s.permission && <PermissionCard s={s} />}
-
-      {s.elicitation && (
-        <QuestionForm
-          // Fresh form state per question.
-          key={s.elicitation.req.toolCallId ?? s.elicitation.req.message}
-          req={s.elicitation.req}
-          onAnswer={(r) => answerElicitation(s, r)}
-        />
-      )}
 
       <Composer s={s} />
     </div>
@@ -655,100 +647,120 @@ function Composer({ s }: { s: AgentSession }) {
     return cmd?.input?.hint ?? null;
   })();
 
+  const currentMode = s.modes?.availableModes.find(
+    (m) => m.id === s.modes?.currentModeId,
+  );
+
   return (
-    <div className="shrink-0 border-t border-(--color-border) px-4 py-3">
+    <div className="shrink-0 border-t border-(--color-border) px-4 py-2.5">
       <div className="relative mx-auto max-w-3xl">
-        {suggestions.length > 0 && (
-          <ul className="absolute right-0 bottom-full left-0 mb-1.5 max-h-64 overflow-y-auto rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-lg">
-            {suggestions.map((c, i) => (
-              <li key={c.name}>
-                <button
-                  className={`flex w-full items-baseline gap-3 px-3 py-1.5 text-left ${
-                    i === active
-                      ? "bg-(--color-accent)/15"
-                      : "hover:bg-(--color-surface-2)"
-                  }`}
-                  onMouseEnter={() => setSel(i)}
-                  onMouseDown={(e) => {
-                    e.preventDefault(); // keep focus in the textarea
-                    pick(c);
-                  }}
-                >
-                  <span className="shrink-0 font-mono">/{c.name}</span>
-                  <span className="truncate text-(--color-fg-muted)">
-                    {c.description}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div className="flex items-end gap-2 rounded-xl border border-(--color-border) bg-(--color-surface) py-1.5 pr-1.5 pl-3 focus-within:border-(--color-accent)">
-          <textarea
-            ref={ref}
-            rows={1}
-            className="max-h-40 min-h-[1.75rem] flex-1 resize-none bg-transparent py-1 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-60"
-            placeholder={
-              ready
-                ? s.commands.length
-                  ? "Ask the agent…  ( / for commands )"
-                  : "Ask the agent…"
-                : busy
-                  ? "Agent is working…"
-                  : "Start an agent to chat"
-            }
-            value={text}
-            disabled={!ready && !busy}
-            onChange={(e) => edit(e.target.value)}
-            onKeyDown={onKeyDown}
+        {s.elicitation ? (
+          // A pending question replaces the input: answering it is the only
+          // thing the agent is waiting on.
+          <QuestionForm
+            key={s.elicitation.req.toolCallId ?? s.elicitation.req.message}
+            req={s.elicitation.req}
+            onAnswer={(r) => answerElicitation(s, r)}
+            onStop={() => cancelTurn(s)}
           />
-          {busy ? (
-            <button
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
-              onClick={() => cancelTurn(s)}
-              title="Stop this turn"
-            >
-              <Square size={12} fill="currentColor" />
-            </button>
-          ) : (
-            <button
-              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
-              onClick={submit}
-              disabled={!ready || !text.trim()}
-              title="Send (Enter) · Newline (Shift+Enter)"
-            >
-              <ArrowUp size={15} />
-            </button>
-          )}
-        </div>
-
-        {(s.modes || hint) && (
-          <div className="mt-1.5 flex items-center gap-3 px-1 text-[11px] text-(--color-fg-muted)">
-            {s.modes && (
-              <label className="flex items-center gap-1.5">
-                Mode
-                <select
-                  value={s.modes.currentModeId}
-                  onChange={(e) => void setMode(s, e.target.value)}
-                  disabled={!s.sessionId}
-                  className="rounded bg-transparent text-(--color-fg) outline-none hover:bg-(--color-surface-2)"
-                  title={
-                    s.modes.availableModes.find(
-                      (m) => m.id === s.modes?.currentModeId,
-                    )?.description ?? undefined
-                  }
-                >
-                  {s.modes.availableModes.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+        ) : (
+          <>
+            {suggestions.length > 0 && (
+              <ul className="absolute right-0 bottom-full left-0 mb-1.5 max-h-64 overflow-y-auto rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-lg">
+                {suggestions.map((c, i) => (
+                  <li key={c.name}>
+                    <button
+                      className={`flex w-full items-baseline gap-3 px-3 py-1 text-left ${
+                        i === active
+                          ? "bg-(--color-accent)/15"
+                          : "hover:bg-(--color-surface-2)"
+                      }`}
+                      onMouseEnter={() => setSel(i)}
+                      onMouseDown={(e) => {
+                        e.preventDefault(); // keep focus in the textarea
+                        pick(c);
+                      }}
+                    >
+                      <span className="shrink-0 font-mono">/{c.name}</span>
+                      <span className="truncate text-(--color-fg-muted)">
+                        {c.description}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-            {hint && <span className="truncate">Argument: {hint}</span>}
-          </div>
+
+            <div className="flex items-end gap-1.5 rounded-xl border border-(--color-border) bg-(--color-surface) p-1 pl-3 transition-colors focus-within:border-(--color-accent)">
+              <textarea
+                ref={ref}
+                rows={1}
+                className="no-focus-ring max-h-40 min-h-7 flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
+                placeholder={
+                  ready
+                    ? s.commands.length
+                      ? "Ask the agent… / for commands"
+                      : "Ask the agent…"
+                    : busy
+                      ? "Agent is working…"
+                      : "Start an agent to chat"
+                }
+                value={text}
+                disabled={!ready && !busy}
+                onChange={(e) => edit(e.target.value)}
+                onKeyDown={onKeyDown}
+              />
+              {s.modes && (
+                <label
+                  className="relative mb-0.5 flex h-6 shrink-0 items-center rounded-md px-1.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+                  title={currentMode?.description ?? "Agent mode"}
+                >
+                  <span className="pointer-events-none flex items-center gap-0.5">
+                    {currentMode?.name ?? "Mode"}
+                    <ChevronDown size={11} />
+                  </span>
+                  {/* Invisible native select on top: native menu, compact look. */}
+                  <select
+                    value={s.modes.currentModeId}
+                    onChange={(e) => void setMode(s, e.target.value)}
+                    disabled={!s.sessionId}
+                    aria-label="Agent mode"
+                    className="no-focus-ring absolute inset-0 cursor-pointer opacity-0"
+                  >
+                    {s.modes.availableModes.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {busy ? (
+                <button
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
+                  onClick={() => cancelTurn(s)}
+                  title="Stop this turn"
+                >
+                  <Square size={11} fill="currentColor" />
+                </button>
+              ) : (
+                <button
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
+                  onClick={submit}
+                  disabled={!ready || !text.trim()}
+                  title="Send (Enter) · Newline (Shift+Enter)"
+                >
+                  <ArrowUp size={15} />
+                </button>
+              )}
+            </div>
+
+            {hint && (
+              <div className="mt-1 truncate px-1 text-[11px] text-(--color-fg-muted)">
+                Argument: {hint}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
