@@ -25,6 +25,12 @@ import {
 import { useAppStore } from "../store/app-store";
 import { useThemeStore } from "../store/theme-store";
 import { usePaneSettings } from "../store/pane-settings-store";
+import {
+  EMPTY_SESSION,
+  useCachedState,
+  useSqlSessionStore,
+  type SqlConnState,
+} from "../store/sql-session-store";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { Modal } from "../components/Modal";
@@ -60,9 +66,12 @@ const ENGINE_DEFAULT_PORTS: Record<SqlEngine, number> = {
 
 const TUNNEL_PREFIX = "sql:";
 
+/** In-flight column lookups, keyed `${connId}:${table}`, shared across panes. */
+const columnsLoading = new Set<string>();
+
 const DEFAULT_LAYOUT = { sqlSidebarW: 260, sqlEditorFrac: 0.4 };
 
-type ConnState = "disconnected" | "connecting" | "connected" | "error";
+type ConnState = SqlConnState;
 type EditorMode = "sql" | "builder";
 type RailTab = "tables" | "saved";
 
@@ -100,39 +109,57 @@ export function SqlPanel({ paneId }: { paneId?: string } = {}) {
   const [editing, setEditing] = useState<SavedSqlConnection | "new" | null>(
     null,
   );
-  const [connState, setConnState] = useState<ConnState>("disconnected");
-  const [connError, setConnError] = useState<string | null>(null);
-  const [tables, setTables] = useState<string[]>([]);
-  const [columnsByTable, setColumnsByTable] = useState<
-    Record<string, TableColumn[]>
-  >({});
-  const [sql, setSql] = useState("SELECT 1;");
-  const [mode, setMode] = useState<EditorMode>("sql");
-  const [builder, setBuilder] = useState<BuilderState>(EMPTY_BUILDER);
-  const [result, setResult] = useState<SqlQueryResult | null>(null);
-  const [queryErr, setQueryErr] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const [currentQueryId, setCurrentQueryId] = useState<string | null>(null);
-  const [saveDialog, setSaveDialog] = useState<"new" | null>(null);
-  const tunnelIdRef = useRef<string | null>(null);
-  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
-  const columnsLoading = useRef(new Set<string>());
+  // Which connection this pane shows. Per pane, so two SQL panes can talk to
+  // different databases; new panes start on the last-used connection.
+  const [paneConn, updatePaneConn] = usePaneSettings<{ sqlConnId?: string }>(
+    paneId,
+    {},
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(
+    paneConn.sqlConnId ?? activeId,
+  );
+  const active = saved.find((c) => c.id === selectedId) ?? null;
 
-  const active = saved.find((c) => c.id === activeId) ?? null;
+  const session = useSqlSessionStore((s) =>
+    active ? (s.sessions[active.id] ?? EMPTY_SESSION) : EMPTY_SESSION,
+  );
+  const patchSession = useSqlSessionStore((s) => s.patch);
+  const setSessionColumns = useSqlSessionStore((s) => s.setColumns);
+  const connState: ConnState = session.state;
+  const connError = session.error;
+  const tables = session.tables;
+  const columnsByTable = session.columns;
+
+  const cacheKey = (k: string) => (paneId ? `${paneId}:${k}` : null);
+  const [sql, setSql] = useCachedState(cacheKey("sql"), "SELECT 1;");
+  const [mode, setMode] = useCachedState<EditorMode>(cacheKey("mode"), "sql");
+  const [builder, setBuilder] = useCachedState<BuilderState>(
+    cacheKey("builder"),
+    EMPTY_BUILDER,
+  );
+  const [result, setResult] = useCachedState<SqlQueryResult | null>(
+    cacheKey("result"),
+    null,
+  );
+  const [queryErr, setQueryErr] = useCachedState<string | null>(
+    cacheKey("error"),
+    null,
+  );
+  const [currentQueryId, setCurrentQueryId] = useCachedState<string | null>(
+    cacheKey("queryId"),
+    null,
+  );
+  const [running, setRunning] = useState(false);
+  const [saveDialog, setSaveDialog] = useState<"new" | null>(null);
+  const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
+
   const engine: SqlEngine = active?.engine ?? "postgres";
   const currentQuery = queries.find((q) => q.id === currentQueryId) ?? null;
   const dirty = !!currentQuery && currentQuery.sql !== sql;
 
-  // Close any open tunnel when the active connection changes or panel unmounts.
-  useEffect(() => {
-    return () => {
-      const tid = tunnelIdRef.current;
-      if (tid) {
-        void api.sqlCloseTunnel(tid);
-        tunnelIdRef.current = null;
-      }
-    };
-  }, []);
+  // The pool and SSH tunnel deliberately outlive this component: panels
+  // remount on workspace switches and layout changes. Only an explicit
+  // Disconnect (or deleting the connection) tears them down.
 
   useEffect(() => {
     setCompletionSchema({ tables, columns: columnsByTable });
@@ -140,8 +167,10 @@ export function SqlPanel({ paneId }: { paneId?: string } = {}) {
 
   const loadColumns = useCallback(
     async (table: string) => {
-      if (!active || columnsLoading.current.has(table)) return;
-      columnsLoading.current.add(table);
+      if (!active) return;
+      const key = `${active.id}:${table}`;
+      if (columnsLoading.has(key)) return;
+      columnsLoading.add(key);
       try {
         const r = await api.sqlQuery(
           active.id,
@@ -151,41 +180,35 @@ export function SqlPanel({ paneId }: { paneId?: string } = {}) {
           name: String(row[0] ?? ""),
           dataType: String(row[1] ?? ""),
         }));
-        setColumnsByTable((prev) => ({ ...prev, [table]: cols }));
+        setSessionColumns(active.id, table, cols);
       } catch {
-        setColumnsByTable((prev) => ({ ...prev, [table]: [] }));
+        setSessionColumns(active.id, table, []);
       } finally {
-        columnsLoading.current.delete(table);
+        columnsLoading.delete(key);
       }
     },
-    [active],
+    [active, setSessionColumns],
   );
 
-  const resetSchema = () => {
-    setTables([]);
-    setColumnsByTable({});
-    columnsLoading.current.clear();
-  };
-
   const connect = async (conn: SavedSqlConnection) => {
-    setConnError(null);
-    setConnState("connecting");
+    patchSession(conn.id, {
+      state: "connecting",
+      error: null,
+      tables: [],
+      columns: {},
+    });
+    const tunnelId = TUNNEL_PREFIX + conn.id;
     try {
       let host = conn.host;
       let port = conn.port;
       if (conn.viaDeviceId) {
-        const tunnelId = TUNNEL_PREFIX + conn.id;
-        if (tunnelIdRef.current) {
-          await api.sqlCloseTunnel(tunnelIdRef.current);
-          tunnelIdRef.current = null;
-        }
+        await api.sqlCloseTunnel(tunnelId).catch(() => {});
         const localPort = await api.sqlOpenTunnel(
           tunnelId,
           conn.viaDeviceId,
           conn.host,
           conn.port,
         );
-        tunnelIdRef.current = tunnelId;
         host = "127.0.0.1";
         port = localPort;
       }
@@ -198,42 +221,36 @@ export function SqlPanel({ paneId }: { paneId?: string } = {}) {
         username: conn.username,
         database: conn.database || null,
       });
-      setConnState("connected");
-      resetSchema();
+      patchSession(conn.id, { state: "connected" });
       const t = await api.sqlListTables(conn.id).catch(() => [] as string[]);
-      setTables(t);
+      patchSession(conn.id, { tables: t });
     } catch (e) {
-      setConnState("error");
-      setConnError(errorMessage(e));
-      if (tunnelIdRef.current) {
-        await api.sqlCloseTunnel(tunnelIdRef.current).catch(() => {});
-        tunnelIdRef.current = null;
+      patchSession(conn.id, { state: "error", error: errorMessage(e) });
+      if (conn.viaDeviceId) {
+        await api.sqlCloseTunnel(tunnelId).catch(() => {});
       }
     }
   };
 
-  const disconnect = async (id: string) => {
-    await api.sqlDisconnect(id).catch(() => {});
-    if (tunnelIdRef.current) {
-      await api.sqlCloseTunnel(tunnelIdRef.current).catch(() => {});
-      tunnelIdRef.current = null;
+  const disconnect = async (conn: SavedSqlConnection) => {
+    await api.sqlDisconnect(conn.id).catch(() => {});
+    if (conn.viaDeviceId) {
+      await api.sqlCloseTunnel(TUNNEL_PREFIX + conn.id).catch(() => {});
     }
-    setConnState("disconnected");
-    resetSchema();
+    patchSession(conn.id, { ...EMPTY_SESSION });
     setResult(null);
     setQueryErr(null);
   };
 
-  const onSelect = async (conn: SavedSqlConnection) => {
-    if (active && active.id !== conn.id && connState === "connected") {
-      await disconnect(active.id);
-    }
+  // Switching only changes what this pane shows; other connections stay open.
+  const onSelect = (conn: SavedSqlConnection) => {
+    if (active?.id === conn.id) return;
+    setSelectedId(conn.id);
+    updatePaneConn({ sqlConnId: conn.id });
     setActive(conn.id);
     setResult(null);
     setQueryErr(null);
-    resetSchema();
     setBuilder(EMPTY_BUILDER);
-    setConnState("disconnected");
   };
 
   const onRun = async (text?: string) => {
@@ -373,12 +390,12 @@ export function SqlPanel({ paneId }: { paneId?: string } = {}) {
                 destructive: true,
               });
               if (!ok) return;
-              if (active?.id === c.id) await disconnect(c.id);
+              await disconnect(c);
               await api.sqlClearPassword(c.id).catch(() => {});
               removeConn(c.id);
             }}
             onConnect={connect}
-            onDisconnect={(c) => disconnect(c.id)}
+            onDisconnect={(c) => void disconnect(c)}
             onOpenTable={openTable}
             onBuildTable={buildFromTable}
             onExpandTable={(t) => void loadColumns(t)}
@@ -435,7 +452,7 @@ export function SqlPanel({ paneId }: { paneId?: string } = {}) {
             onSaveAs={() => setSaveDialog("new")}
             onRun={() => void onRun()}
             onConnect={() => active && void connect(active)}
-            onDisconnect={() => active && void disconnect(active.id)}
+            onDisconnect={() => active && void disconnect(active)}
           />
           <div
             className="flex min-h-0 shrink-0 flex-col"
