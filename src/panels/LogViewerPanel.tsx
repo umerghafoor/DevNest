@@ -1,7 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
-import { errorMessage } from "../lib/api";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  destroyLogSession,
+  getLogSession,
+  startLogStream,
+  stopLogStream,
+  subscribeLogSession,
+  updateLogSession,
+} from "../lib/log-sessions";
 import { usePaneSettings } from "../store/pane-settings-store";
 
 interface Props {
@@ -22,22 +34,41 @@ const PRESETS = [
   { label: "dmesg", cmd: "dmesg -w 2>/dev/null || dmesg | tail -n 50" },
 ];
 
-const MAX_LINES = 2000;
-
-function uid() {
-  return Math.random().toString(36).slice(2, 10);
-}
+// Compact controls. Not using the shared `.input` class: it's unlayered CSS,
+// so its large padding / font size would override these utilities.
+const SMALL_INPUT =
+  "h-6 rounded-md border border-transparent bg-(--color-surface) px-2 text-xs text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) focus:border-(--color-accent)";
+const TOOL_BTN =
+  "h-6 rounded px-2 hover:bg-(--color-surface-2) disabled:opacity-40";
 
 export function LogViewerPanel({ deviceId, paneId }: Props) {
   const [settings, updateSettings] = usePaneSettings(paneId, { filter: "" });
-  const [lines, setLines] = useState<string[]>([]);
   const filter = settings.filter;
   const setFilter = (v: string) => updateSettings({ filter: v });
-  const [paused, setPaused] = useState(false);
-  const [cmd, setCmd] = useState(PRESETS[0].cmd);
-  const [customCmd, setCustomCmd] = useState("");
-  const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  // The stream and its lines live in a registry keyed by pane, so they keep
+  // going when this panel unmounts (tab switch, adding a pane). Without a
+  // pane id there's nothing stable to key on; fall back to one per mount.
+  const transientKey = useRef(
+    `transient-${Math.random().toString(36).slice(2, 10)}`,
+  );
+  const sessionKey = paneId ?? transientKey.current;
+  const session = getLogSession(sessionKey, deviceId, PRESETS[0].cmd);
+  const subscribe = useCallback(
+    (fn: () => void) => subscribeLogSession(session, fn),
+    [session],
+  );
+  useSyncExternalStore(subscribe, () => session.version);
+  const { lines, paused, cmd, customCmd, running, error } = session;
+  const setCmd = (v: string) => updateLogSession(session, { cmd: v });
+  const setCustomCmd = (v: string) =>
+    updateLogSession(session, { customCmd: v });
+
+  useEffect(() => {
+    if (paneId) return;
+    return () => destroyLogSession(sessionKey);
+  }, [paneId, sessionKey]);
+
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [matchIndex, setMatchIndex] = useState(0);
@@ -45,69 +76,6 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const pausedRef = useRef(false);
-  const streamIdRef = useRef<string | null>(null);
-  const unlistenRef = useRef<(() => void) | null>(null);
-
-  pausedRef.current = paused;
-
-  const appendLine = useCallback((line: string) => {
-    if (pausedRef.current) return;
-    if (line.startsWith("[error]")) {
-      setError(line.slice(7).trim());
-      return;
-    }
-    setLines((prev) => {
-      const next = [...prev, line];
-      return next.length > MAX_LINES ? next.slice(-MAX_LINES) : next;
-    });
-  }, []);
-
-  const stopStream = useCallback(async () => {
-    if (streamIdRef.current) {
-      await invoke("log_stream_stop", { streamId: streamIdRef.current }).catch(
-        () => {},
-      );
-      streamIdRef.current = null;
-    }
-    unlistenRef.current?.();
-    unlistenRef.current = null;
-    setRunning(false);
-  }, []);
-
-  const startStream = useCallback(
-    async (command: string) => {
-      await stopStream();
-      setLines([]);
-      setError(null);
-
-      const streamId = uid();
-      streamIdRef.current = streamId;
-
-      // Subscribe to events before invoking to avoid race
-      unlistenRef.current = await listen<string>(`log:${streamId}`, (evt) => {
-        appendLine(evt.payload);
-      });
-
-      try {
-        await invoke("log_stream_start", { deviceId, streamId, cmd: command });
-        setRunning(true);
-      } catch (e) {
-        unlistenRef.current?.();
-        unlistenRef.current = null;
-        streamIdRef.current = null;
-        setError(errorMessage(e));
-      }
-    },
-    [deviceId, stopStream, appendLine],
-  );
-
-  // Stop stream on unmount
-  useEffect(() => {
-    return () => {
-      void stopStream();
-    };
-  }, [stopStream]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -192,18 +160,18 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
       tabIndex={0}
       className="flex h-full flex-col outline-none"
     >
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-(--color-border) px-3 py-2 text-xs">
-        {/* Presets */}
-        <div className="flex gap-1">
+      {/* Toolbar — one slim row */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-(--color-border) px-2 py-1 text-xs">
+        {/* Presets as a segmented control */}
+        <div className="flex items-center rounded-md bg-(--color-surface) p-0.5">
           {PRESETS.map((p) => (
             <button
               key={p.label}
               onClick={() => setCmd(p.cmd)}
-              className={`rounded border px-2 py-0.5 transition-colors ${
+              className={`h-6 rounded px-2 transition-colors ${
                 cmd === p.cmd
-                  ? "border-(--color-accent) bg-(--color-accent) text-(--color-accent-fg)"
-                  : "border-(--color-border) hover:bg-(--color-surface-2)"
+                  ? "bg-(--color-accent) text-(--color-accent-fg)"
+                  : "text-(--color-fg-muted) hover:text-(--color-fg)"
               }`}
             >
               {p.label}
@@ -211,10 +179,10 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
           ))}
           <button
             onClick={() => setCmd(customCmd || "")}
-            className={`rounded border px-2 py-0.5 transition-colors ${
+            className={`h-6 rounded px-2 transition-colors ${
               isCustom
-                ? "border-(--color-accent) bg-(--color-accent) text-(--color-accent-fg)"
-                : "border-(--color-border) hover:bg-(--color-surface-2)"
+                ? "bg-(--color-accent) text-(--color-accent-fg)"
+                : "text-(--color-fg-muted) hover:text-(--color-fg)"
             }`}
           >
             Custom
@@ -229,49 +197,55 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
               setCmd(e.target.value);
             }}
             placeholder="journalctl -u nginx -f"
-            className="input flex-1 py-1 text-xs"
+            className={`${SMALL_INPUT} min-w-40 flex-1 font-mono`}
           />
         )}
 
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter…"
-            className="input w-36 py-1 text-xs"
+            className={`${SMALL_INPUT} w-36`}
           />
-          {running ? (
+          <div className="flex items-center rounded-md bg-(--color-surface) p-0.5">
+            {running ? (
+              <button
+                onClick={() => void stopLogStream(session)}
+                className={TOOL_BTN}
+                title="Stop streaming"
+              >
+                ■ Stop
+              </button>
+            ) : (
+              <button
+                onClick={() => void startLogStream(session, cmd)}
+                disabled={!cmd.trim()}
+                className={`${TOOL_BTN} text-(--color-accent)`}
+                title="Start streaming"
+              >
+                ▶ Start
+              </button>
+            )}
             <button
-              onClick={() => void stopStream()}
-              className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
+              onClick={() => updateLogSession(session, { paused: !paused })}
+              className={`${TOOL_BTN} ${paused ? "text-(--color-warn)" : ""}`}
+              title={
+                paused
+                  ? "Resume"
+                  : "Pause (keeps streaming, stops adding lines)"
+              }
             >
-              Stop
+              {paused ? "Resume" : "Pause"}
             </button>
-          ) : (
             <button
-              onClick={() => void startStream(cmd)}
-              disabled={!cmd.trim()}
-              className="rounded bg-(--color-accent) px-2 py-0.5 text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
+              onClick={() => updateLogSession(session, { lines: [] })}
+              className={TOOL_BTN}
+              title="Clear output"
             >
-              Start
+              Clear
             </button>
-          )}
-          <button
-            onClick={() => setPaused((p) => !p)}
-            className={`rounded px-2 py-0.5 transition-colors ${
-              paused
-                ? "bg-(--color-warn)/15 text-(--color-warn)"
-                : "hover:bg-(--color-surface-2)"
-            }`}
-          >
-            {paused ? "Resume" : "Pause"}
-          </button>
-          <button
-            onClick={() => setLines([])}
-            className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2)"
-          >
-            Clear
-          </button>
+          </div>
         </div>
       </div>
 
@@ -358,6 +332,88 @@ export function LogViewerPanel({ deviceId, paneId }: Props) {
   );
 }
 
+// ─── Line coloring ──────────────────────────────────────────────────────────
+
+const C = {
+  time: "text-sky-700 dark:text-sky-400",
+  host: "text-(--color-fg-muted)",
+  proc: "text-violet-700 dark:text-violet-400",
+  pid: "text-(--color-fg-muted)",
+  module: "text-teal-700 dark:text-teal-400",
+  ip: "text-fuchsia-700 dark:text-fuchsia-400",
+  error: "font-semibold text-(--color-error)",
+  warn: "font-semibold text-(--color-warn)",
+  info: "font-semibold text-(--color-online)",
+  debug: "font-semibold text-(--color-fg-muted)",
+};
+
+interface Seg {
+  text: string;
+  cls: string;
+}
+
+// "Oct 11 13:41:10 host proc[123]: " (syslog / journalctl)
+const SYSLOG_PREFIX =
+  /^([A-Z][a-z]{2}\s+\d{1,2}\s\d{2}:\d{2}:\d{2})(\s+)(\S+)(\s+)([^\s[:]+)(\[\d+\])?(:\s?)/;
+// "2026-10-11 13:41:21,397" / "2026-10-11T13:41:21.397Z" at the start
+const ISO_PREFIX =
+  /^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/;
+// "[   12.345678]" (dmesg)
+const DMESG_PREFIX = /^(\[\s*\d+\.\d+\])/;
+
+// Tokens inside the message body, in priority order.
+const INLINE =
+  /(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:[.,]\d+)?)|\b(ERROR|ERR|CRITICAL|CRIT|FATAL|EMERG|ALERT|FAIL(?:ED)?)\b|\b(WARNING|WARN)\b|\b(INFO|NOTICE)\b|\b(DEBUG|TRACE)\b|\b(\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?)\b|\b([a-z_][\w]*(?:\.[a-z_][\w]*){2,})\b/g;
+
+function tokenize(line: string, base: string): Seg[] {
+  const segs: Seg[] = [];
+  let rest = line;
+
+  const sys = SYSLOG_PREFIX.exec(rest);
+  if (sys) {
+    const [all, time, s1, host, s2, proc, pid, colon] = sys;
+    segs.push(
+      { text: time, cls: C.time },
+      { text: s1, cls: "" },
+      { text: host, cls: C.host },
+      { text: s2, cls: "" },
+      { text: proc, cls: C.proc },
+    );
+    if (pid) segs.push({ text: pid, cls: C.pid });
+    segs.push({ text: colon, cls: C.pid });
+    rest = rest.slice(all.length);
+  } else {
+    const pre = ISO_PREFIX.exec(rest) ?? DMESG_PREFIX.exec(rest);
+    if (pre) {
+      segs.push({ text: pre[1], cls: C.time });
+      rest = rest.slice(pre[1].length);
+    }
+  }
+
+  let last = 0;
+  for (const m of rest.matchAll(INLINE)) {
+    const i = m.index ?? 0;
+    if (i > last) segs.push({ text: rest.slice(last, i), cls: base });
+    const cls = m[1]
+      ? C.time
+      : m[2]
+        ? C.error
+        : m[3]
+          ? C.warn
+          : m[4]
+            ? C.info
+            : m[5]
+              ? C.debug
+              : m[6]
+                ? C.ip
+                : C.module;
+    segs.push({ text: m[0], cls });
+    last = i + m[0].length;
+  }
+  if (last < rest.length) segs.push({ text: rest.slice(last), cls: base });
+  return segs;
+}
+
 function LogLine({
   index,
   line,
@@ -371,9 +427,11 @@ function LogLine({
   search: string;
   isActiveMatch: boolean;
 }) {
-  const color = line.match(/\b(error|crit|alert|emerg|fail)\b/i)
+  // Message text keeps a tint on error / warning lines; tokens get their own
+  // colors on top.
+  const base = /\b(error|crit|alert|emerg|fail(ed)?)\b/i.test(line)
     ? "text-(--color-error)"
-    : line.match(/\b(warn|warning)\b/i)
+    : /\b(warn|warning)\b/i.test(line)
       ? "text-(--color-warn)"
       : "";
 
@@ -381,45 +439,45 @@ function LogLine({
     ? "bg-(--color-accent)/10 ring-1 ring-(--color-accent)/40 rounded"
     : "";
 
-  const needle = search || filter;
-  const lower = line.toLowerCase();
-  const needleLower = needle.toLowerCase();
-
-  const segments: Array<{ text: string; hit: boolean }> = [];
-  if (needle) {
-    let cursor = 0;
-    while (cursor < line.length) {
-      const idx = lower.indexOf(needleLower, cursor);
-      if (idx === -1) {
-        segments.push({ text: line.slice(cursor), hit: false });
-        break;
-      }
-      if (idx > cursor)
-        segments.push({ text: line.slice(cursor, idx), hit: false });
-      segments.push({ text: line.slice(idx, idx + needle.length), hit: true });
-      cursor = idx + needle.length;
-    }
-  } else {
-    segments.push({ text: line, hit: false });
-  }
+  const needle = (search || filter).toLowerCase();
+  const segs = tokenize(line, base);
 
   return (
     <div
       data-log-line={index}
-      className={`whitespace-pre-wrap leading-5 ${color} ${activeRing}`}
+      className={`whitespace-pre-wrap leading-5 ${activeRing}`}
     >
-      {segments.map((seg, i) =>
-        seg.hit ? (
-          <mark
-            key={i}
-            className="rounded bg-(--color-warn)/30 text-(--color-warn)"
-          >
-            {seg.text}
-          </mark>
-        ) : (
-          <span key={i}>{seg.text}</span>
-        ),
-      )}
+      {segs.map((seg, i) => (
+        <span key={i} className={seg.cls}>
+          {needle ? highlight(seg.text, needle) : seg.text}
+        </span>
+      ))}
     </div>
   );
+}
+
+/** Wrap filter / search hits inside one colored segment. */
+function highlight(text: string, needle: string): React.ReactNode {
+  const lower = text.toLowerCase();
+  if (!lower.includes(needle)) return text;
+  const out: React.ReactNode[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    const idx = lower.indexOf(needle, cursor);
+    if (idx === -1) {
+      out.push(text.slice(cursor));
+      break;
+    }
+    if (idx > cursor) out.push(text.slice(cursor, idx));
+    out.push(
+      <mark
+        key={idx}
+        className="rounded bg-(--color-warn)/30 text-(--color-fg)"
+      >
+        {text.slice(idx, idx + needle.length)}
+      </mark>,
+    );
+    cursor = idx + needle.length;
+  }
+  return out;
 }
