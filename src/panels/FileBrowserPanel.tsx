@@ -70,6 +70,10 @@ export function FileBrowserPanel({ deviceId }: Props) {
   const [transferring, setTransferring] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Quick filter
+  const [filter, setFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement>(null);
+
   const load = useCallback(
     async (path: string) => {
       setLoading(true);
@@ -80,6 +84,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
           path,
         });
         setEntries(list);
+        setFilter("");
         setCwd(path);
         saveCwd(deviceId, path);
       } catch (e) {
@@ -97,6 +102,36 @@ export function FileBrowserPanel({ deviceId }: Props) {
 
   const navigate = (entry: FileEntry) => {
     if (entry.isDir) void load(entry.path);
+  };
+
+  const q = filter.trim().toLowerCase();
+  const visible = q
+    ? entries.filter((e) => e.name.toLowerCase().includes(q))
+    : entries;
+
+  const openFirstMatch = () => {
+    const first = visible[0];
+    if (!first) return;
+    if (first.isDir) void load(first.path);
+    else void openEditor(first);
+  };
+
+  // Type anywhere in the panel to start filtering; Ctrl/Cmd+F focuses the box.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (viewMode !== "files") return;
+    const t = e.target as HTMLElement;
+    if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      filterRef.current?.focus();
+      filterRef.current?.select();
+      return;
+    }
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      setFilter((f) => f + e.key);
+      filterRef.current?.focus();
+    }
   };
 
   const goUp = () => {
@@ -335,7 +370,9 @@ export function FileBrowserPanel({ deviceId }: Props) {
 
   return (
     <div
-      className="relative flex h-full flex-col select-none overflow-hidden"
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      className="relative flex h-full flex-col select-none overflow-hidden outline-none"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -403,6 +440,38 @@ export function FileBrowserPanel({ deviceId }: Props) {
         {/* Action Buttons */}
         <div className="ml-auto flex items-center gap-2">
           {viewMode === "files" && (
+            <div className="relative">
+              <input
+                ref={filterRef}
+                value={filter}
+                onChange={(ev) => setFilter(ev.target.value)}
+                onKeyDown={(ev) => {
+                  if (ev.key === "Escape") {
+                    setFilter("");
+                    ev.currentTarget.blur();
+                  } else if (ev.key === "Enter") {
+                    openFirstMatch();
+                  }
+                }}
+                placeholder="Filter… (type to search)"
+                spellCheck={false}
+                className="w-44 rounded border border-(--color-border) bg-(--color-bg) py-0.5 pl-2 pr-5 text-xs outline-none focus:border-(--color-accent) select-text"
+              />
+              {filter && (
+                <button
+                  onClick={() => {
+                    setFilter("");
+                    filterRef.current?.focus();
+                  }}
+                  title="Clear filter"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-(--color-fg-muted) hover:text-(--color-fg)"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          )}
+          {viewMode === "files" && (
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={transferring}
@@ -456,7 +525,17 @@ export function FileBrowserPanel({ deviceId }: Props) {
               </tr>
             </thead>
             <tbody>
-              {entries.map((e, i) => (
+              {visible.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="px-3 py-6 text-center text-(--color-fg-muted)"
+                  >
+                    {q ? `No files match "${filter}"` : "Empty directory"}
+                  </td>
+                </tr>
+              )}
+              {visible.map((e, i) => (
                 <tr
                   key={e.path}
                   draggable
