@@ -384,7 +384,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
                 : "text-(--color-fg-muted) hover:text-(--color-fg)"
             }`}
           >
-            Disk Usage 📊
+            Disk Usage
           </button>
         </div>
 
