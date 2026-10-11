@@ -115,6 +115,162 @@ fn sftp_delete(
 }
 
 #[tauri::command(async)]
+fn sftp_disk_usage(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+    max_depth: Option<u32>,
+) -> error::AppResult<sftp::DiskUsageNode> {
+    let depth = max_depth.unwrap_or(4);
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::disk_usage(&path, depth);
+    }
+
+    // Run `du` over SSH and parse the flat output into a tree.
+    let cmd = format!(
+        "du -b --max-depth={depth} {path} 2>/dev/null || du -k --max-depth={depth} {path} 2>/dev/null",
+        depth = depth,
+        path = path,
+    );
+    let out = ssh::run_command(&state.pool, &device, &cmd)?;
+
+    // Parse lines: each is "{size}\t{path}"
+    let mut entries: Vec<(u64, String)> = Vec::new();
+    for line in out.stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.splitn(2, '\t');
+        let size_str = match parts.next() {
+            Some(s) => s.trim(),
+            None => continue,
+        };
+        let entry_path = match parts.next() {
+            Some(p) => p.trim().to_string(),
+            None => continue,
+        };
+        let size: u64 = size_str.parse().unwrap_or(0);
+        entries.push((size, entry_path));
+    }
+
+    // The last line of `du` output is the root directory itself.
+    // Build a tree from the flat list by inserting children under their parent.
+    if entries.is_empty() {
+        return Ok(sftp::DiskUsageNode {
+            name: path
+                .rsplit('/')
+                .next()
+                .unwrap_or(&path)
+                .to_string(),
+            path: path.clone(),
+            size: 0,
+            children: Vec::new(),
+        });
+    }
+
+    fn build_tree(entries: &[(u64, String)], root_path: &str) -> sftp::DiskUsageNode {
+        use std::collections::HashMap;
+        let mut nodes: HashMap<&str, sftp::DiskUsageNode> = HashMap::new();
+
+        // Create a node for every entry.
+        for (size, p) in entries {
+            let name = p.rsplit('/').next().unwrap_or(p).to_string();
+            nodes.insert(
+                p.as_str(),
+                sftp::DiskUsageNode {
+                    name,
+                    path: p.clone(),
+                    size: *size,
+                    children: Vec::new(),
+                },
+            );
+        }
+
+        // Sort entries by path depth (deepest first) so children are attached
+        // before their parents.
+        let mut sorted_paths: Vec<&str> = nodes.keys().copied().collect();
+        sorted_paths.sort_by(|a, b| b.matches('/').count().cmp(&a.matches('/').count()));
+
+        for p in &sorted_paths {
+            if *p == root_path {
+                continue;
+            }
+            // Find the parent path.
+            let parent = match p.rfind('/') {
+                Some(idx) => {
+                    let candidate = &p[..idx];
+                    if candidate.is_empty() { "/" } else { candidate }
+                }
+                None => continue,
+            };
+            if nodes.contains_key(parent) {
+                let child = nodes.remove(p).unwrap();
+                if let Some(parent_node) = nodes.get_mut(parent) {
+                    parent_node.children.push(child);
+                }
+            }
+        }
+
+        // Sort children by size descending in every node.
+        fn sort_children(node: &mut sftp::DiskUsageNode) {
+            node.children.sort_by(|a, b| b.size.cmp(&a.size));
+            for child in &mut node.children {
+                sort_children(child);
+            }
+        }
+
+        let mut root = nodes
+            .remove(root_path)
+            .unwrap_or_else(|| sftp::DiskUsageNode {
+                name: root_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(root_path)
+                    .to_string(),
+                path: root_path.to_string(),
+                size: 0,
+                children: Vec::new(),
+            });
+        sort_children(&mut root);
+        root
+    }
+
+    Ok(build_tree(&entries, &path))
+}
+
+#[tauri::command(async)]
+fn sftp_download_file_bytes(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+) -> error::AppResult<Vec<u8>> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::download_file_bytes(&path);
+    }
+    sftp::download_file_bytes(&device, &path)
+}
+
+#[tauri::command(async)]
+fn sftp_upload_file_bytes(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+    data: Vec<u8>,
+) -> error::AppResult<()> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return local_fs::upload_file_bytes(&path, &data);
+    }
+    sftp::upload_file_bytes(&device, &path, &data)
+}
+
+#[tauri::command(async)]
 fn tailscale_status(
     state: tauri::State<'_, AppState>,
     device_id: String,
@@ -218,6 +374,9 @@ pub fn run() {
             sftp_mkdir,
             sftp_rename,
             sftp_delete,
+            sftp_disk_usage,
+            sftp_download_file_bytes,
+            sftp_upload_file_bytes,
             tailscale_status,
             tailscale_set_exit_node,
             log_stream::log_stream_start,

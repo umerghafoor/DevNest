@@ -154,3 +154,39 @@ pub fn delete(device: &Device, path: &str, is_dir: bool) -> AppResult<()> {
     }
     Ok(())
 }
+
+// ─── Disk usage & raw byte transfer ─────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskUsageNode {
+    pub name: String,
+    pub path: String,
+    pub size: u64,
+    pub children: Vec<DiskUsageNode>,
+}
+
+pub fn download_file_bytes(device: &Device, path: &str) -> AppResult<Vec<u8>> {
+    let sftp = open_sftp(device)?;
+    let mut f = sftp
+        .open(std::path::Path::new(path))
+        .map_err(|e| AppError::Ssh(format!("open {path}: {e}")))?;
+    let mut buf = Vec::new();
+    use std::io::Read;
+    f.read_to_end(&mut buf)
+        .map_err(|e| AppError::Ssh(format!("read {path}: {e}")))?;
+    if buf.len() > 100 * 1024 * 1024 {
+        return Err(AppError::Invalid("file too large (>100 MB)".into()));
+    }
+    Ok(buf)
+}
+
+pub fn upload_file_bytes(device: &Device, path: &str, data: &[u8]) -> AppResult<()> {
+    let sftp = open_sftp(device)?;
+    let mut f = sftp
+        .create(std::path::Path::new(path))
+        .map_err(|e| AppError::Ssh(format!("create {path}: {e}")))?;
+    use std::io::Write;
+    f.write_all(data)
+        .map_err(|e| AppError::Ssh(format!("write {path}: {e}")))
+}

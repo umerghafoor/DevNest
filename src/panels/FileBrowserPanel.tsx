@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { errorMessage } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { SkeletonTable } from "../components/Skeleton";
+import { DiskUsageTreemap } from "../components/DiskUsageTreemap";
 
 interface FileEntry {
   name: string;
@@ -31,6 +32,7 @@ function fmtDate(ts: number): string {
 }
 
 const CWD_PREFIX = "devnest.files.cwd.";
+const DEVNEST_FILE_DRAG = "application/x-devnest-file";
 
 function loadCwd(deviceId: string): string {
   try {
@@ -52,6 +54,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"files" | "diskUsage">("files");
   const [editing, setEditing] = useState<{
     path: string;
     content: string;
@@ -61,6 +64,11 @@ export function FileBrowserPanel({ deviceId }: Props) {
     entry: FileEntry;
     name: string;
   } | null>(null);
+
+  // Drag and drop states
+  const [dragOver, setDragOver] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
     async (path: string) => {
@@ -162,6 +170,127 @@ export function FileBrowserPanel({ deviceId }: Props) {
     }
   };
 
+  // Upload local files
+  const uploadLocalFile = async (file: File, targetDir: string) => {
+    const targetPath = targetDir.replace(/\/?$/, "/") + file.name;
+    const buffer = await file.arrayBuffer();
+    const data = Array.from(new Uint8Array(buffer));
+
+    await invoke("sftp_upload_file_bytes", {
+      deviceId,
+      path: targetPath,
+      data,
+    });
+  };
+
+  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setTransferring(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        toast.info(`Uploading ${f.name}…`);
+        await uploadLocalFile(f, cwd);
+      }
+      toast.success(`Uploaded ${files.length} file(s)`);
+      void load(cwd);
+    } catch (err) {
+      toast.error(`Upload failed: ${errorMessage(err)}`);
+    } finally {
+      setTransferring(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragOver) setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear if dragging out of currentTarget
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    // Case 1: Drop from another DevNest remote FileBrowserPanel
+    const remoteData = e.dataTransfer.getData(DEVNEST_FILE_DRAG);
+    if (remoteData) {
+      try {
+        const payload = JSON.parse(remoteData) as {
+          sourceDeviceId: string;
+          sourcePath: string;
+          name: string;
+          isDir: boolean;
+        };
+
+        if (payload.isDir) {
+          toast.warn("Folder transfer is currently not supported. Please transfer individual files.");
+          return;
+        }
+
+        if (payload.sourceDeviceId === deviceId && payload.sourcePath.startsWith(cwd)) {
+          toast.info("Source and destination are the same");
+          return;
+        }
+
+        setTransferring(true);
+        toast.info(`Transferring ${payload.name}…`);
+
+        // Download bytes from source device
+        const bytes = await invoke<number[]>("sftp_download_file_bytes", {
+          deviceId: payload.sourceDeviceId,
+          path: payload.sourcePath,
+        });
+
+        // Upload bytes to destination device
+        const targetPath = cwd.replace(/\/?$/, "/") + payload.name;
+        await invoke("sftp_upload_file_bytes", {
+          deviceId,
+          path: targetPath,
+          data: bytes,
+        });
+
+        toast.success(`Transferred ${payload.name} successfully`);
+        void load(cwd);
+      } catch (err) {
+        toast.error(`Transfer failed: ${errorMessage(err)}`);
+      } finally {
+        setTransferring(false);
+      }
+      return;
+    }
+
+    // Case 2: Drop from local operating system
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      setTransferring(true);
+      try {
+        for (const file of files) {
+          toast.info(`Uploading ${file.name}…`);
+          await uploadLocalFile(file, cwd);
+        }
+        toast.success(`Uploaded ${files.length} file(s)`);
+        void load(cwd);
+      } catch (err) {
+        toast.error(`Drop upload failed: ${errorMessage(err)}`);
+      } finally {
+        setTransferring(false);
+      }
+    }
+  };
+
   if (editing) {
     return (
       <div className="flex h-full flex-col fade-up">
@@ -198,9 +327,35 @@ export function FileBrowserPanel({ deviceId }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-2 text-xs">
-        {/* Up button stays enabled — clicking while loading queues the navigation */}
+    <div
+      className="relative flex h-full flex-col select-none overflow-hidden"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Hidden file input for Upload button */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileInputChange}
+        multiple
+        className="hidden"
+      />
+
+      {/* Drag & Drop Visual Overlay */}
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-(--color-accent) bg-(--color-bg)/90 backdrop-blur-xs">
+          <span className="text-3xl">📥</span>
+          <div className="text-sm font-semibold text-(--color-fg)">
+            Drop files here to upload to
+          </div>
+          <div className="font-mono text-xs text-(--color-accent)">{cwd}</div>
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-1.5 text-xs bg-(--color-surface)">
+        {/* Navigation Up */}
         <button
           onClick={goUp}
           disabled={cwd === "/"}
@@ -208,18 +363,71 @@ export function FileBrowserPanel({ deviceId }: Props) {
         >
           ↑ Up
         </button>
-        <span className="font-mono text-(--color-fg-muted) transition-all">
+
+        {/* View Switcher: Files vs Disk Usage */}
+        <div className="flex rounded border border-(--color-border) p-0.5 bg-(--color-bg)">
+          <button
+            onClick={() => setViewMode("files")}
+            className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
+              viewMode === "files"
+                ? "bg-(--color-accent) text-white font-medium"
+                : "text-(--color-fg-muted) hover:text-(--color-fg)"
+            }`}
+          >
+            Files
+          </button>
+          <button
+            onClick={() => setViewMode("diskUsage")}
+            className={`rounded px-2 py-0.5 text-[11px] transition-colors ${
+              viewMode === "diskUsage"
+                ? "bg-(--color-accent) text-white font-medium"
+                : "text-(--color-fg-muted) hover:text-(--color-fg)"
+            }`}
+          >
+            Disk Usage 📊
+          </button>
+        </div>
+
+        {/* CWD Display */}
+        <span className="font-mono text-(--color-fg-muted) truncate transition-all max-w-[280px]">
           {cwd}
         </span>
-        {/* Inline spinner — doesn't block the toolbar */}
-        {loading && (
-          <span className="ml-auto flex items-center gap-1.5 text-(--color-fg-muted)">
-            <span className="h-3 w-3 rounded-full border border-(--color-accent) border-t-transparent animate-spin" />
-          </span>
-        )}
+
+        {/* Action Buttons */}
+        <div className="ml-auto flex items-center gap-2">
+          {viewMode === "files" && (
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={transferring}
+              title="Upload files from your computer"
+              className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) transition-colors flex items-center gap-1"
+            >
+              <span>↑</span> Upload
+            </button>
+          )}
+
+          {/* Inline spinner */}
+          {(loading || transferring) && (
+            <span className="flex items-center gap-1.5 text-(--color-fg-muted)">
+              <span className="h-3 w-3 rounded-full border border-(--color-accent) border-t-transparent animate-spin" />
+            </span>
+          )}
+        </div>
       </div>
 
-      {loading && entries.length === 0 ? (
+      {/* Main View Area */}
+      {viewMode === "diskUsage" ? (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          <DiskUsageTreemap
+            deviceId={deviceId}
+            path={cwd}
+            onNavigate={(newPath) => {
+              void load(newPath);
+              setViewMode("files");
+            }}
+          />
+        </div>
+      ) : loading && entries.length === 0 ? (
         <SkeletonTable rows={8} cols={5} />
       ) : error ? (
         <div className="flex flex-1 items-center justify-center text-sm text-(--color-error) fade-up">
@@ -244,7 +452,20 @@ export function FileBrowserPanel({ deviceId }: Props) {
               {entries.map((e, i) => (
                 <tr
                   key={e.path}
-                  className="group border-b border-(--color-border) hover:bg-(--color-surface-2) row-animate"
+                  draggable
+                  onDragStart={(ev) => {
+                    ev.dataTransfer.setData(
+                      DEVNEST_FILE_DRAG,
+                      JSON.stringify({
+                        sourceDeviceId: deviceId,
+                        sourcePath: e.path,
+                        name: e.name,
+                        isDir: e.isDir,
+                      }),
+                    );
+                    ev.dataTransfer.effectAllowed = "copyMove";
+                  }}
+                  className="group border-b border-(--color-border) hover:bg-(--color-surface-2) row-animate cursor-grab active:cursor-grabbing"
                   style={{ animationDelay: `${i * 25}ms` }}
                 >
                   <td className="px-3 py-1.5 align-middle">
@@ -285,6 +506,19 @@ export function FileBrowserPanel({ deviceId }: Props) {
                   </td>
                   <td className="px-3 py-1.5 align-middle">
                     <div className="flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                      {e.isDir && (
+                        <button
+                          onClick={() => {
+                            setCwd(e.path);
+                            saveCwd(deviceId, e.path);
+                            setViewMode("diskUsage");
+                          }}
+                          title="View disk usage for this directory"
+                          className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface) transition-colors"
+                        >
+                          Scan
+                        </button>
+                      )}
                       {!e.isDir && (
                         <button
                           onClick={() => openEditor(e)}
