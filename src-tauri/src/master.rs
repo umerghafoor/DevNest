@@ -388,6 +388,13 @@ fn tool_defs() -> Value {
     for t in list.iter_mut() {
         t["inputSchema"] = with_device(t["inputSchema"].take());
     }
+    // A widget is always about one machine: make the agent say which, so it
+    // can't silently show the host when the user meant another device.
+    if let Some(w) = list.iter_mut().find(|t| t["name"] == "show_widget") {
+        w["inputSchema"]["required"] = json!(["widget", "device"]);
+        w["inputSchema"]["properties"]["device"]["description"] =
+            json!("Device name from list_devices, or \"host\" for this computer.");
+    }
     list.insert(
         0,
         json!({ "name": "list_devices", "description": "Devices the user has in DevNest: the host (this computer) and SSH machines.", "inputSchema": empty() }),
@@ -763,6 +770,9 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Result<String, String
                 .map_err(|e| e.to_string())
         }
         "show_widget" => {
+            if args.get("device").and_then(Value::as_str).is_none() {
+                return Err("Pass `device`: a name from list_devices, or \"host\".".into());
+            }
             let widget = str_arg(args, "widget")?;
             if !["system_monitor", "processes", "tailscale", "docker"].contains(&widget) {
                 return Err(format!("unknown widget: {widget}"));
@@ -779,7 +789,8 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Result<String, String
                 }),
             );
             Ok(format!(
-                "Showing the live {widget} widget for {on} to the user."
+                "Showing the live {widget} widget for {on} to the user. It keeps \
+updating by itself; don't call show_widget again for the same device and widget."
             ))
         }
         _ => Err(format!("unknown tool: {name}")),
@@ -1180,6 +1191,11 @@ disk=1000 400\nnet=123 456\nuptime=3600\nproc=42|12.5|1.0|/usr/bin/Google Chrome
             assert!(d["name"].is_string());
             assert_eq!(d["inputSchema"]["type"], "object", "{}", d["name"]);
         }
+        let widget = defs.iter().find(|d| d["name"] == "show_widget").unwrap();
+        assert_eq!(
+            widget["inputSchema"]["required"],
+            json!(["widget", "device"])
+        );
     }
 
     fn dev(name: &str, host: &str, local: bool) -> Device {

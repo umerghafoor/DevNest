@@ -190,13 +190,22 @@ function wire(s: AgentSession) {
     deviceName: string;
   }>("master:widget", (e) => {
     if (!wired) return;
-    addItem(wired, {
-      kind: "widget",
-      id: e.payload.id,
-      widget: e.payload.widget,
-      title: e.payload.title ?? undefined,
-      deviceId: e.payload.deviceId,
-      deviceName: e.payload.deviceName,
-    });
+    addItem(
+      wired,
+      {
+        kind: "widget",
+        id: e.payload.id,
+        widget: e.payload.widget,
+        title: e.payload.title ?? undefined,
+        deviceId: e.payload.deviceId,
+        deviceName: e.payload.deviceName,
+      },
+      // One live widget per device and kind: showing it again moves it
+      // down to the latest message instead of stacking duplicates.
+      (it) =>
+        it.kind === "widget" &&
+        it.widget === e.payload.widget &&
+        it.deviceId === e.payload.deviceId,
+    );
   });
 }

@@ -166,9 +166,17 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
   return s;
 }
 
-/** Append an item to the transcript (e.g. a widget the agent showed). */
-export function addItem(s: AgentSession, item: TranscriptItem) {
-  s.items = [...s.items, item];
+/**
+ * Append an item to the transcript (e.g. a widget the agent showed). Items
+ * matching `replaces` are removed first, so the new one takes their place.
+ */
+export function addItem(
+  s: AgentSession,
+  item: TranscriptItem,
+  replaces?: (it: TranscriptItem) => boolean,
+) {
+  const kept = replaces ? s.items.filter((it) => !replaces(it)) : s.items;
+  s.items = [...kept, item];
   notify(s);
 }
 
