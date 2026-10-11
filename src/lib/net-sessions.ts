@@ -293,7 +293,11 @@ export async function runSpeedTest(s: NetSession) {
         const est = speedEstimate(samples);
         set(
           dir === "download"
-            ? { down: [...samples], downMbps: est, bytes: s.speed.bytes + r.bytes }
+            ? {
+                down: [...samples],
+                downMbps: est,
+                bytes: s.speed.bytes + r.bytes,
+              }
             : { up: [...samples], upMbps: est, bytes: s.speed.bytes + r.bytes },
         );
         // Size the next round to take ~TARGET_SECONDS at the rate just seen.
@@ -334,7 +338,9 @@ export function readSpeedHistory(paneSettings: unknown): SpeedResult[] {
 function saveResult(paneId: string, r: SpeedResult) {
   const store = usePaneSettingsStore.getState();
   const prev = readSpeedHistory(store.byPaneId[paneId]);
-  store.patch(paneId, { speedHistory: [r, ...prev].slice(0, SPEED_HISTORY_MAX) });
+  store.patch(paneId, {
+    speedHistory: [r, ...prev].slice(0, SPEED_HISTORY_MAX),
+  });
 }
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────

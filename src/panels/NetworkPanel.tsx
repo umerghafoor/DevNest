@@ -120,7 +120,10 @@ export function NetworkPanel({ deviceId, paneId }: Props) {
   );
 
   return (
-    <div ref={measureRef} className="fade-up flex h-full flex-col overflow-hidden">
+    <div
+      ref={measureRef}
+      className="fade-up flex h-full flex-col overflow-hidden"
+    >
       {!measured ? null : split ? (
         <div className="flex min-h-0 flex-1">
           <div className="flex min-w-0 flex-1 flex-col">{ping}</div>
@@ -183,7 +186,10 @@ function TabSummary({ session, view }: { session: NetSession; view: View }) {
     <span className="ml-auto truncate text-[11px] text-(--color-fg-muted)">
       Ping {fmtMs(Math.min(...lastAll))}
       {worst > 0 && (
-        <span className="text-(--color-error)"> · {worst.toFixed(0)}% loss</span>
+        <span className="text-(--color-error)">
+          {" "}
+          · {worst.toFixed(0)}% loss
+        </span>
       )}
     </span>
   );
@@ -374,7 +380,9 @@ function PingRow({
         </button>
       </div>
       {narrow && (
-        <div className="mt-0.5 flex flex-wrap gap-x-3 pl-4 text-xs">{stats}</div>
+        <div className="mt-0.5 flex flex-wrap gap-x-3 pl-4 text-xs">
+          {stats}
+        </div>
       )}
       {series.error ? (
         <div className="mt-1 truncate pl-4 text-xs text-(--color-error)">
@@ -539,8 +547,10 @@ function SpeedView({
   const last = history[0];
   const down = run?.downMbps ?? (run ? null : (last?.downMbps ?? null));
   const up = run?.upMbps ?? (run ? null : (last?.upMbps ?? null));
-  const latency = run?.probe?.latencyMs ?? (run ? null : (last?.latencyMs ?? null));
-  const jitter = run?.probe?.jitterMs ?? (run ? null : (last?.jitterMs ?? null));
+  const latency =
+    run?.probe?.latencyMs ?? (run ? null : (last?.latencyMs ?? null));
+  const jitter =
+    run?.probe?.jitterMs ?? (run ? null : (last?.jitterMs ?? null));
   const colo = run?.probe?.colo ?? (run ? null : (last?.colo ?? null));
 
   const startStop = (
@@ -621,8 +631,8 @@ function SpeedView({
           title={run?.error ?? undefined}
         >
           {run
-            ? run.error ??
-              `${PHASE_LABEL[run.phase]}${run.bytes ? ` · ${fmtBytes(run.bytes)} used` : ""}`
+            ? (run.error ??
+              `${PHASE_LABEL[run.phase]}${run.bytes ? ` · ${fmtBytes(run.bytes)} used` : ""}`)
             : "Runs on this device with curl · uses ~100 MB+ on fast links"}
         </span>
       </div>
@@ -805,7 +815,10 @@ function fmtMs(v: number | null): string {
 function splitMbps(v: number | null): [string, string] {
   if (v === null) return ["—", "Mbps"];
   if (v >= 1000) return [(v / 1000).toFixed(2), "Gbps"];
-  return [v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2), "Mbps"];
+  return [
+    v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2),
+    "Mbps",
+  ];
 }
 
 function fmtMbps(v: number | null): string {

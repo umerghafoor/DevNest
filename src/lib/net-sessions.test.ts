@@ -23,7 +23,9 @@ describe("pingStats", () => {
 describe("speedEstimate", () => {
   it("ignores the warm-up sample and takes the 90th percentile", () => {
     expect(speedEstimate([5, 90, 100, 95])).toBe(100);
-    expect(speedEstimate([5, 90, 100, 95, 92, 91, 94, 93, 96, 97, 98])).toBe(100);
+    expect(speedEstimate([5, 90, 100, 95, 92, 91, 94, 93, 96, 97, 98])).toBe(
+      100,
+    );
   });
 
   it("uses every sample when there are few", () => {
