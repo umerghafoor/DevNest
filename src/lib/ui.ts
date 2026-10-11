@@ -15,7 +15,7 @@ export const BTN_GROUP =
 
 /** Button inside a BTN_GROUP. */
 export const TOOL_BTN =
-  "h-6 rounded px-2 hover:bg-(--color-surface-2) disabled:opacity-40";
+  "inline-flex h-6 items-center justify-center gap-1 rounded px-2 hover:bg-(--color-surface-2) disabled:opacity-40";
 
 /** Segmented-control option inside a BTN_GROUP; `active` highlights it. */
 export function segBtn(active: boolean): string {
