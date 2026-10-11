@@ -622,7 +622,9 @@ function matchCommands(text: string, commands: AvailableCommand[]) {
       (c.name.toLowerCase().includes(q) ||
         (c.description ?? "").toLowerCase().includes(q)),
   );
-  return [...starts, ...contains].slice(0, 8);
+  // No cap: agents can offer dozens (Claude Code sends 70+ incl. skills);
+  // the menu scrolls.
+  return [...starts, ...contains];
 }
 
 function Composer({ s }: { s: AgentSession }) {
@@ -635,6 +637,14 @@ function Composer({ s }: { s: AgentSession }) {
 
   const suggestions = dismissed ? [] : matchCommands(text, s.commands);
   const active = Math.min(sel, Math.max(0, suggestions.length - 1));
+  const menuRef = useRef<React.ComponentRef<"ul">>(null);
+
+  // Keep the highlighted command visible while arrowing through the list.
+  useEffect(() => {
+    menuRef.current
+      ?.querySelector(`[data-idx="${active}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [active]);
 
   // Grow with the content up to a cap, then scroll.
   useEffect(() => {
@@ -713,9 +723,12 @@ function Composer({ s }: { s: AgentSession }) {
         ) : (
           <>
             {suggestions.length > 0 && (
-              <ul className="absolute right-0 bottom-full left-0 mb-1.5 max-h-64 overflow-y-auto rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-lg">
+              <ul
+                ref={menuRef}
+                className="absolute right-0 bottom-full left-0 mb-1.5 max-h-72 overflow-y-auto rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-lg"
+              >
                 {suggestions.map((c, i) => (
-                  <li key={c.name}>
+                  <li key={c.name} data-idx={i}>
                     <button
                       className={`flex w-full items-baseline gap-3 px-3 py-1 text-left ${
                         i === active
