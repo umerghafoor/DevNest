@@ -181,23 +181,30 @@ export function AgentPanel({
 
   return (
     <div className="fade-up flex h-full flex-col text-xs">
-      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-1.5">
-        <StatusDot status={s.status} />
-        <select
-          value={agentId}
-          onChange={(e) => setAgentId(e.target.value)}
-          disabled={running}
-          className={`${SMALL_INPUT} max-w-[160px]`}
-        >
-          {agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-        <div className="flex h-6 min-w-[160px] flex-1 items-center rounded-md bg-(--color-surface-2)/60 pr-0.5 focus-within:ring-1 focus-within:ring-(--color-accent)">
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-(--color-border) px-2 py-1 text-xs">
+        <div className={`${BTN_GROUP} relative flex items-center gap-1.5 pl-2 pr-1.5`}>
+          <StatusDot status={s.status} />
+          <span className="pointer-events-none flex items-center gap-1 font-medium text-(--color-fg)">
+            {agent?.name ?? "Select agent"}
+            <ChevronDown size={10} className="text-(--color-fg-muted)" />
+          </span>
+          <select
+            value={agentId}
+            onChange={(e) => setAgentId(e.target.value)}
+            disabled={running}
+            aria-label="Select agent"
+            className="no-focus-ring absolute inset-0 cursor-pointer opacity-0 disabled:cursor-default"
+          >
+            {agents.map((a) => (
+              <option key={a.id} value={a.id} className="bg-(--color-surface) text-(--color-fg)">
+                {a.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className={`${BTN_GROUP} flex h-6 min-w-[130px] max-w-xs flex-1 items-center px-1 focus-within:ring-1 focus-within:ring-(--color-accent)`}>
           <input
-            className="h-6 min-w-0 flex-1 bg-transparent px-2 font-mono text-xs text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-70"
+            className="h-full min-w-0 flex-1 bg-transparent px-1 font-mono text-[11px] text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-60"
             placeholder={
               isLocal
                 ? "/path/to/project"
@@ -208,12 +215,12 @@ export function AgentPanel({
             disabled={running}
           />
           <button
-            className="inline-flex h-5 w-6 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-40"
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-40 transition-colors"
             onClick={() => void browse()}
             disabled={running}
             title="Choose folder"
           >
-            <FolderOpen size={13} />
+            <FolderOpen size={12} />
           </button>
         </div>
         {running && s.account && s.account.kind !== "none" && (
@@ -237,7 +244,7 @@ export function AgentPanel({
             )}
           </div>
         )}
-        <div className={BTN_GROUP}>
+        <div className={`${BTN_GROUP} ml-auto`}>
           <ChatHistoryButton
             chats={chats}
             currentId={s.chatId}
@@ -258,27 +265,39 @@ export function AgentPanel({
             </button>
           )}
           {running ? (
-            <button className={TOOL_BTN} onClick={() => void stopAgent(s)}>
-              <Square size={11} /> Stop
+            <button
+              className={`${TOOL_BTN} text-(--color-error) hover:bg-(--color-error)/15`}
+              onClick={() => void stopAgent(s)}
+              title="Stop agent"
+            >
+              <Square size={10} className="fill-current" />
+              <span>Stop</span>
             </button>
           ) : (
-            <button className={TOOL_BTN} onClick={start}>
-              <Play size={11} /> Start
+            <button
+              className={`${TOOL_BTN} text-(--color-online) hover:bg-(--color-online)/15`}
+              onClick={start}
+              title="Start agent"
+            >
+              <Play size={10} className="fill-current" />
+              <span>Start</span>
             </button>
           )}
           <button
-            className={TOOL_BTN}
+            className={`${TOOL_BTN} ${showLogs ? "bg-(--color-surface-2) text-(--color-fg)" : ""}`}
             onClick={() => setShowLogs((v) => !v)}
             title="Agent stderr"
           >
             <ScrollText size={12} />
-            Logs
+            <span>Logs</span>
             {s.stderr.length > 0 && (
-              <span className="text-(--color-fg-muted)">{s.stderr.length}</span>
+              <span className="rounded bg-(--color-surface-2) px-1 text-[10px] tabular-nums text-(--color-fg-muted)">
+                {s.stderr.length}
+              </span>
             )}
           </button>
           <button
-            className={TOOL_BTN}
+            className={`${TOOL_BTN} ${managing ? "bg-(--color-surface-2) text-(--color-fg)" : ""}`}
             onClick={() => setManaging((v) => !v)}
             title="Configure agents"
           >
