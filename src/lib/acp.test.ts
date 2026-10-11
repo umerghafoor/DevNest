@@ -181,6 +181,22 @@ describe("AcpConnection", () => {
     expect(sent[1].params).toEqual({ methodId: "oauth-personal" });
   });
 
+  it("logs out and forwards account status", () => {
+    const onAuthStatus = vi.fn();
+    const { conn, sent } = setup({ onAuthStatus });
+    void conn.logout();
+    expect(sent[0]).toMatchObject({ method: "logout", params: {} });
+    const status = { kind: "account", label: "Claude Pro" };
+    conn.feed(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        method: "_auth/status_update",
+        params: { authStatus: status },
+      }),
+    );
+    expect(onAuthStatus).toHaveBeenCalledWith(status);
+  });
+
   it("declines url-mode elicitation", async () => {
     const { conn, sent, flush } = setup();
     conn.feed(

@@ -8,16 +8,24 @@ import {
   getAgentSession,
   installAgent,
   isAgentInstalled,
+  logout,
+  retryAfterLogin,
   sendPrompt,
   setMode,
   startAgent,
   stopAgent,
   stopInstall,
   subscribeAgentSession,
+  terminalLoginCommand,
   type AgentSession,
   type TranscriptItem,
 } from "../lib/agent-sessions";
-import type { AvailableCommand, PermissionOption, ToolCall } from "../lib/acp";
+import type {
+  AuthMethod,
+  AvailableCommand,
+  PermissionOption,
+  ToolCall,
+} from "../lib/acp";
 import { contentText, wantsApiKey } from "../lib/acp";
 import {
   joinArgs,
@@ -35,6 +43,7 @@ import {
   ArrowUp,
   ChevronDown,
   FolderOpen,
+  LogOut,
   Play,
   ScrollText,
   Settings2,
@@ -159,6 +168,27 @@ export function AgentPanel({
             <FolderOpen size={13} />
           </button>
         </div>
+        {running && s.account && s.account.kind !== "none" && (
+          <div className={BTN_GROUP}>
+            <span
+              className="max-w-[180px] truncate px-1.5 text-(--color-fg-muted)"
+              title={[s.account.label, s.account.account?.email]
+                .filter(Boolean)
+                .join(" · ")}
+            >
+              {s.account.label}
+            </span>
+            {s.canLogout && (
+              <button
+                className={TOOL_BTN}
+                onClick={() => void logout(s)}
+                title="Sign out / switch account"
+              >
+                <LogOut size={12} />
+              </button>
+            )}
+          </div>
+        )}
         <div className={BTN_GROUP}>
           {running ? (
             <button className={TOOL_BTN} onClick={() => void stopAgent(s)}>
@@ -223,7 +253,9 @@ export function AgentPanel({
 
       <Transcript s={s} />
 
-      {s.status === "auth" && <AuthBar s={s} />}
+      {s.status === "auth" && (
+        <AuthBar s={s} paneId={paneId} deviceId={deviceId} />
+      )}
 
       {s.permission && <PermissionCard s={s} />}
 
@@ -309,11 +341,43 @@ function InstallBanner({
   );
 }
 
-function AuthBar({ s }: { s: AgentSession }) {
+function AuthBar({
+  s,
+  paneId,
+  deviceId,
+}: {
+  s: AgentSession;
+  paneId: string;
+  deviceId: string;
+}) {
   // Method whose API-key field is open.
   const [keyFor, setKeyFor] = useState<string | null>(null);
   const [key, setKey] = useState("");
+  // A terminal sign-in is in progress in a split pane.
+  const [termLogin, setTermLogin] = useState(false);
+  const splitPane = useAppStore((st) => st.splitPane);
   const method = s.authMethods.find((m) => m.id === keyFor);
+
+  const choose = (m: AuthMethod) => {
+    if (wantsApiKey(m)) return setKeyFor(m.id);
+    if (m.type === "terminal") {
+      const cmd = terminalLoginCommand(s, m);
+      if (!cmd) return;
+      // Interactive login (browser / device code) needs a real TTY: open a
+      // terminal beside the agent with the command typed in.
+      const id = Math.random().toString(36).slice(2, 10);
+      splitPane(paneId, "horizontal", {
+        id,
+        deviceId,
+        panel: "terminal",
+        instanceId: id,
+        extra: { initialCommand: cmd },
+      });
+      setTermLogin(true);
+      return;
+    }
+    void authenticate(s, m.id);
+  };
 
   return (
     <div className="shrink-0 border-t border-(--color-border) bg-(--color-warn)/10 px-4 py-2">
@@ -328,14 +392,28 @@ function AuthBar({ s }: { s: AgentSession }) {
                 : "bg-(--color-surface) hover:bg-(--color-surface-2)"
             }`}
             title={m.description ?? undefined}
-            onClick={() =>
-              wantsApiKey(m) ? setKeyFor(m.id) : void authenticate(s, m.id)
-            }
+            onClick={() => choose(m)}
           >
             {m.name}
           </button>
         ))}
       </div>
+      {termLogin && (
+        <div className="mx-auto mt-2 flex max-w-3xl items-center gap-2">
+          <span className="text-(--color-fg-muted)">
+            Finish signing in in the terminal beside this pane, then
+          </span>
+          <button
+            className="h-6 rounded-md bg-(--color-accent) px-3 font-medium text-(--color-accent-fg) hover:opacity-90"
+            onClick={() => {
+              setTermLogin(false);
+              void retryAfterLogin(s);
+            }}
+          >
+            Continue
+          </button>
+        </div>
+      )}
       {method && (
         <form
           className="mx-auto mt-2 flex max-w-3xl items-center gap-1.5"

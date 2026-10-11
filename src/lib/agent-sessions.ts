@@ -10,6 +10,7 @@ import {
   isInside,
   wantsApiKey,
   type AuthMethod,
+  type AuthStatus,
   type AvailableCommand,
   type ElicitationRequest,
   type ElicitationResponse,
@@ -63,6 +64,10 @@ export interface AgentSession {
   items: TranscriptItem[];
   stderr: string[];
   authMethods: AuthMethod[];
+  /** Signed-in account, when the agent reports it. */
+  account: AuthStatus | null;
+  /** Agent supports the `logout` request. */
+  canLogout: boolean;
   /** Slash commands the agent currently offers. */
   commands: AvailableCommand[];
   /** Agent modes, if it supports them. */
@@ -122,6 +127,8 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
       items: [],
       stderr: [],
       authMethods: [],
+      account: null,
+      canLogout: false,
       commands: [],
       modes: null,
       permission: null,
@@ -247,6 +254,8 @@ export async function startAgent(
   s.items = [];
   s.stderr = [];
   s.authMethods = [];
+  s.account = null;
+  s.canLogout = false;
   s.commands = [];
   s.modes = null;
   s.status = "starting";
@@ -257,6 +266,10 @@ export async function startAgent(
   const conn = new AcpConnection((line) => api.agentSend(processId, line), {
     onSessionUpdate: (sessionId, update) => {
       if (sessionId === s.sessionId) applyUpdate(s, update);
+    },
+    onAuthStatus: (status) => {
+      s.account = status;
+      notify(s);
     },
     requestPermission: (req) =>
       new Promise<PermissionOutcome>((resolve) => {
@@ -328,6 +341,7 @@ export async function startAgent(
     );
     const init = await withTimeout(conn.initialize(), INIT_TIMEOUT_MS);
     s.authMethods = init.authMethods ?? [];
+    s.canLogout = !!init.agentCapabilities?.auth?.logout;
     await openSession(s);
   } catch (e) {
     // The exit listener may have already reported the failure.
@@ -358,6 +372,46 @@ async function openSession(s: AgentSession) {
       return;
     }
     throw e;
+  }
+}
+
+/** Sign out of the agent's account; the auth bar then offers sign-in. */
+export async function logout(s: AgentSession) {
+  if (!s.conn || !s.canLogout) return;
+  if (s.status === "prompting") cancelTurn(s);
+  try {
+    await s.conn.logout();
+    // A logged-out session can't prompt; sign in again to get a new one.
+    s.sessionId = null;
+    s.modes = null;
+    s.commands = [];
+    s.status = "auth";
+    system(s, "Signed out. Sign in to continue.");
+  } catch (e) {
+    system(s, `Sign-out failed: ${describe(e)}`, true);
+  }
+}
+
+/** Shell command a "terminal" auth method wants the user to run. */
+export function terminalLoginCommand(s: AgentSession, m: AuthMethod) {
+  if (!s.agent) return null;
+  const q = (a: string) =>
+    /^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`;
+  const parts = [s.agent.command, ...s.agent.args, ...(m.args ?? [])];
+  const cd = s.cwd ? `cd ${q(s.cwd)} && ` : "";
+  return cd + parts.map(q).join(" ");
+}
+
+/** After a terminal sign-in finished: open the session the user was missing. */
+export async function retryAfterLogin(s: AgentSession) {
+  if (!s.conn) return;
+  s.status = "starting";
+  notify(s);
+  try {
+    await openSession(s);
+  } catch (e) {
+    s.status = "auth";
+    system(s, `Still not signed in: ${describe(e)}`, true);
   }
 }
 

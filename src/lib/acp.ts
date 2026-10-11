@@ -143,6 +143,19 @@ export interface AuthMethod {
   description?: string | null;
   /** `{"api-key": {...}}` marks a method that takes a key the user types. */
   _meta?: Record<string, unknown> | null;
+  /**
+   * "terminal": the user signs in by running the agent's own command with
+   * `args` appended in an interactive terminal, then the client retries.
+   */
+  type?: string;
+  args?: string[];
+}
+
+/** Account the agent is signed in as (Claude's `_auth/status_update`). */
+export interface AuthStatus {
+  kind: string;
+  label: string;
+  account?: { email?: string; plan?: string; organization?: string };
 }
 
 /** Does this auth method want an API key from the user? */
@@ -152,7 +165,7 @@ export function wantsApiKey(m: AuthMethod) {
 
 export interface InitializeResult {
   protocolVersion: number;
-  agentCapabilities?: Record<string, unknown>;
+  agentCapabilities?: { auth?: { logout?: unknown } } & Record<string, unknown>;
   authMethods?: AuthMethod[];
 }
 
@@ -166,6 +179,7 @@ export type StopReason =
 /** Callbacks the client side of the protocol must implement. */
 export interface AcpClientHandlers {
   onSessionUpdate(sessionId: string, update: SessionUpdate): void;
+  onAuthStatus?(status: AuthStatus): void;
   requestPermission(req: PermissionRequest): Promise<PermissionOutcome>;
   elicit(req: ElicitationRequest): Promise<ElicitationResponse>;
   readTextFile(path: string): Promise<string>;
@@ -274,6 +288,9 @@ export class AcpConnection {
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
         terminal: false,
+        // We can open a terminal for agents that sign in interactively
+        // (Claude Code's subscription / console login).
+        auth: { terminal: true },
         // Lets agents ask structured questions (Claude Code's AskUserQuestion
         // is disabled unless the client says it can render forms).
         elicitation: { form: {} },
@@ -287,6 +304,11 @@ export class AcpConnection {
       methodId,
       ...(apiKey ? { _meta: { "api-key": apiKey } } : {}),
     });
+  }
+
+  /** Sign out (agents advertising `agentCapabilities.auth.logout`). */
+  logout() {
+    return this.request<unknown>("logout", {});
   }
 
   newSession(cwd: string) {
@@ -324,6 +346,9 @@ export class AcpConnection {
     if (method === "session/update") {
       const p = params as { sessionId: string; update: SessionUpdate };
       if (p?.update) this.handlers.onSessionUpdate(p.sessionId, p.update);
+    } else if (method === "_auth/status_update") {
+      const p = params as { authStatus?: AuthStatus };
+      if (p?.authStatus) this.handlers.onAuthStatus?.(p.authStatus);
     }
   }
 

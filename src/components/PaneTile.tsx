@@ -198,7 +198,11 @@ export function PanelContent({ pane }: { pane: Pane }) {
       return <MetricsPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "terminal":
       return (
-        <TerminalPanel deviceId={pane.deviceId} instanceId={pane.instanceId} />
+        <TerminalPanel
+          deviceId={pane.deviceId}
+          instanceId={pane.instanceId}
+          initialCommand={pane.extra?.initialCommand}
+        />
       );
     case "tailscale":
       return <TailscalePanel deviceId={pane.deviceId} />;
