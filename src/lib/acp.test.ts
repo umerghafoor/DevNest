@@ -17,6 +17,10 @@ function setup(overrides: Partial<AcpClientHandlers> = {}) {
     })),
     readTextFile: vi.fn(async () => "a\nb\nc\nd"),
     writeTextFile: vi.fn(async () => {}),
+    elicit: vi.fn(async () => ({
+      action: "accept" as const,
+      content: { question_0: "B" },
+    })),
     ...overrides,
   };
   const conn = new AcpConnection(async (line) => {
@@ -137,6 +141,47 @@ describe("AcpConnection", () => {
       id: 3,
       error: { code: -32602, message: "refused" },
     });
+  });
+
+  it("advertises form elicitation and answers elicitation/create", async () => {
+    const { conn, sent, flush } = setup();
+    void conn.initialize();
+    expect(sent[0]).toMatchObject({
+      params: { clientCapabilities: { elicitation: { form: {} } } },
+    });
+    conn.feed(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 5,
+        method: "elicitation/create",
+        params: {
+          sessionId: "s1",
+          mode: "form",
+          message: "Pick one",
+          requestedSchema: { type: "object", properties: {} },
+        },
+      }),
+    );
+    await flush();
+    expect(sent[1]).toEqual({
+      jsonrpc: "2.0",
+      id: 5,
+      result: { action: "accept", content: { question_0: "B" } },
+    });
+  });
+
+  it("declines url-mode elicitation", async () => {
+    const { conn, sent, flush } = setup();
+    conn.feed(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 6,
+        method: "elicitation/create",
+        params: { sessionId: "s1", mode: "url", message: "", url: "x" },
+      }),
+    );
+    await flush();
+    expect(sent[0]).toMatchObject({ id: 6, result: { action: "decline" } });
   });
 
   it("rejects unknown agent→client methods", async () => {

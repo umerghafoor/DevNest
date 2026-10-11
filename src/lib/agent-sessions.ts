@@ -10,6 +10,8 @@ import {
   isInside,
   type AuthMethod,
   type AvailableCommand,
+  type ElicitationRequest,
+  type ElicitationResponse,
   type SessionModeState,
   type PermissionOutcome,
   type PermissionRequest,
@@ -37,6 +39,11 @@ export type AgentStatus =
   | "prompting" // turn in progress
   | "exited";
 
+export interface PendingElicitation {
+  req: ElicitationRequest;
+  resolve: (r: ElicitationResponse) => void;
+}
+
 export interface PendingPermission {
   req: PermissionRequest;
   resolve: (o: PermissionOutcome) => void;
@@ -60,6 +67,8 @@ export interface AgentSession {
   /** Agent modes, if it supports them. */
   modes: SessionModeState | null;
   permission: PendingPermission | null;
+  /** A question form the agent is waiting on. */
+  elicitation: PendingElicitation | null;
   processId: string | null;
   sessionId: string | null;
   conn: AcpConnection | null;
@@ -115,6 +124,7 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
       commands: [],
       modes: null,
       permission: null,
+      elicitation: null,
       processId: null,
       sessionId: null,
       conn: null,
@@ -253,6 +263,12 @@ export async function startAgent(
         s.permission = { req, resolve };
         notify(s);
       }),
+    elicit: (req) =>
+      new Promise<ElicitationResponse>((resolve) => {
+        s.elicitation?.resolve({ action: "cancel" });
+        s.elicitation = { req, resolve };
+        notify(s);
+      }),
     readTextFile: (path) => {
       if (!path.startsWith("/") && !/^[A-Za-z]:[\\/]/.test(path)) {
         throw new AcpError(`path must be absolute: ${path}`, -32602);
@@ -288,6 +304,8 @@ export async function startAgent(
       s.status = "exited";
       s.permission?.resolve({ outcome: "cancelled" });
       s.permission = null;
+      s.elicitation?.resolve({ action: "cancel" });
+      s.elicitation = null;
       const tail = s.stderr.slice(-3).join("\n");
       system(
         s,
@@ -387,7 +405,18 @@ export function cancelTurn(s: AgentSession) {
   if (!s.conn || !s.sessionId || s.status !== "prompting") return;
   s.permission?.resolve({ outcome: "cancelled" });
   s.permission = null;
+  s.elicitation?.resolve({ action: "cancel" });
+  s.elicitation = null;
   void s.conn.cancel(s.sessionId);
+  notify(s);
+}
+
+export function answerElicitation(
+  s: AgentSession,
+  response: ElicitationResponse,
+) {
+  s.elicitation?.resolve(response);
+  s.elicitation = null;
   notify(s);
 }
 
@@ -407,6 +436,8 @@ export async function stopAgent(s: AgentSession, status: AgentStatus = "idle") {
   s.sessionId = null;
   s.permission?.resolve({ outcome: "cancelled" });
   s.permission = null;
+  s.elicitation?.resolve({ action: "cancel" });
+  s.elicitation = null;
   if (s.status !== "idle") s.status = status;
   notify(s);
   if (pid) await api.agentKill(pid).catch(() => {});

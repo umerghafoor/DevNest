@@ -97,6 +97,46 @@ export interface SessionModeState {
   availableModes: SessionMode[];
 }
 
+// ── Elicitation: the agent asks the user to fill a form (e.g. Claude Code's
+// AskUserQuestion). Fields are a flat JSON Schema object. ──
+
+export interface EnumOption {
+  const: string;
+  title?: string;
+  description?: string;
+}
+
+export interface ElicitationField {
+  type: "string" | "number" | "integer" | "boolean" | "array";
+  title?: string;
+  description?: string;
+  /** Single choice with labels. */
+  oneOf?: EnumOption[];
+  /** Single choice, bare values. */
+  enum?: string[];
+  /** Multi choice. */
+  items?: { anyOf?: EnumOption[]; enum?: string[] };
+  default?: unknown;
+}
+
+export interface ElicitationRequest {
+  sessionId: string;
+  mode: "form" | "url" | string;
+  message: string;
+  toolCallId?: string;
+  requestedSchema?: {
+    type: "object";
+    properties: Record<string, ElicitationField>;
+    required?: string[];
+  };
+  url?: string;
+}
+
+export type ElicitationResponse =
+  | { action: "accept"; content: Record<string, unknown> }
+  | { action: "decline" }
+  | { action: "cancel" };
+
 export interface AuthMethod {
   id: string;
   name: string;
@@ -120,6 +160,7 @@ export type StopReason =
 export interface AcpClientHandlers {
   onSessionUpdate(sessionId: string, update: SessionUpdate): void;
   requestPermission(req: PermissionRequest): Promise<PermissionOutcome>;
+  elicit(req: ElicitationRequest): Promise<ElicitationResponse>;
   readTextFile(path: string): Promise<string>;
   writeTextFile(path: string, content: string): Promise<void>;
 }
@@ -226,6 +267,9 @@ export class AcpConnection {
       clientCapabilities: {
         fs: { readTextFile: true, writeTextFile: true },
         terminal: false,
+        // Lets agents ask structured questions (Claude Code's AskUserQuestion
+        // is disabled unless the client says it can render forms).
+        elicitation: { form: {} },
       },
     });
   }
@@ -293,6 +337,12 @@ export class AcpConnection {
           p as unknown as PermissionRequest,
         );
         return { outcome };
+      }
+      case "elicitation/create": {
+        const req = p as unknown as ElicitationRequest;
+        // We only advertise form mode.
+        if (req.mode !== "form") return { action: "decline" };
+        return this.handlers.elicit(req);
       }
       case "fs/read_text_file": {
         const text = await this.handlers.readTextFile(String(p.path));

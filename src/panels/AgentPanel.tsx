@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import {
+  answerElicitation,
   answerPermission,
   authenticate,
   cancelTurn,
@@ -29,6 +30,7 @@ import { BTN_GROUP, SMALL_INPUT, TOOL_BTN } from "../lib/ui";
 import { toast } from "../components/Toast";
 import { RemoteFilePicker } from "../components/RemoteFilePicker";
 import { SafeMarkdown } from "../components/SafeMarkdown";
+import { QuestionForm } from "./agent/QuestionForm";
 import {
   ArrowUp,
   FolderOpen,
@@ -237,6 +239,15 @@ export function AgentPanel({
       )}
 
       {s.permission && <PermissionCard s={s} />}
+
+      {s.elicitation && (
+        <QuestionForm
+          // Fresh form state per question.
+          key={s.elicitation.req.toolCallId ?? s.elicitation.req.message}
+          req={s.elicitation.req}
+          onAnswer={(r) => answerElicitation(s, r)}
+        />
+      )}
 
       <Composer s={s} />
     </div>
