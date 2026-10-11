@@ -1,3 +1,4 @@
+mod agent;
 mod commands;
 mod db;
 mod devices;
@@ -164,6 +165,7 @@ pub fn run() {
                 ngrok: ngrok::NgrokPool::new(),
                 tunnels: ssh_tunnel::TunnelPool::new(),
                 sql: sql::SqlPool::new(),
+                agents: agent::AgentPool::new(),
             });
             Ok(())
         })
@@ -171,6 +173,7 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<AppState>() {
                     state.ngrok.shutdown_all();
+                    state.agents.shutdown_all();
                 }
             }
         })
@@ -222,6 +225,10 @@ pub fn run() {
             tailscale_set_exit_node,
             log_stream::log_stream_start,
             log_stream::log_stream_stop,
+            agent::agent_spawn,
+            agent::agent_send,
+            agent::agent_kill,
+            agent::agent_command_exists,
             git::git_is_repo,
             git::git_branch,
             git::git_clone,

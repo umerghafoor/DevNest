@@ -24,7 +24,8 @@ export type PanelKind =
   | "http"
   | "sql"
   | "markdown"
-  | "netmon";
+  | "netmon"
+  | "agent";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 

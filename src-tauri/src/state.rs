@@ -1,3 +1,4 @@
+use crate::agent::AgentPool;
 use crate::db::Db;
 use crate::log_stream::LogStreamPool;
 use crate::ngrok::NgrokPool;
@@ -14,4 +15,5 @@ pub struct AppState {
     pub ngrok: NgrokPool,
     pub tunnels: TunnelPool,
     pub sql: SqlPool,
+    pub agents: AgentPool,
 }

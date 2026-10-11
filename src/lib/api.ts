@@ -474,6 +474,21 @@ export const api = {
   httpRequest: (spec: HttpRequestSpec) =>
     call<HttpResponse>("http_request", { spec }),
 
+  agentSpawn: (
+    deviceId: string,
+    agentId: string,
+    command: string,
+    args: string[],
+    cwd: string,
+    env?: Record<string, string>,
+  ) =>
+    call<void>("agent_spawn", { deviceId, agentId, command, args, cwd, env }),
+  agentCommandExists: (deviceId: string, command: string) =>
+    call<boolean>("agent_command_exists", { deviceId, command }),
+  agentSend: (agentId: string, line: string) =>
+    call<void>("agent_send", { agentId, line }),
+  agentKill: (agentId: string) => call<void>("agent_kill", { agentId }),
+
   ngrokAvailable: () => call<boolean>("ngrok_available"),
   ngrokList: () => call<NgrokTunnel[]>("ngrok_list"),
   ngrokStart: (port: number, proto: "http" | "tcp") =>
