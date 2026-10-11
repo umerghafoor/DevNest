@@ -10,6 +10,7 @@ mod http_client;
 mod local_fs;
 mod log_stream;
 mod mac_rounded_corners;
+mod master;
 mod metrics;
 mod net;
 mod ngrok;
@@ -166,6 +167,7 @@ pub fn run() {
                 tunnels: ssh_tunnel::TunnelPool::new(),
                 sql: sql::SqlPool::new(),
                 agents: agent::AgentPool::new(),
+                master: master::MasterHub::new(),
             });
             Ok(())
         })
@@ -232,6 +234,10 @@ pub fn run() {
             agent::agent_secret_set,
             agent::agent_secret_get,
             agent::agent_secret_delete,
+            master::master_start,
+            master::master_resolve,
+            master::master_deny_all,
+            master::host_stats,
             git::git_is_repo,
             git::git_branch,
             git::git_clone,
@@ -272,4 +278,14 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");
+}
+
+/// `devnest --mcp-bridge`: stdio relay for the Master agent's MCP server.
+/// Returns true if that mode ran (the app itself should not start).
+pub fn run_mcp_bridge_if_requested() -> bool {
+    if std::env::args().nth(1).as_deref() == Some(master::BRIDGE_FLAG) {
+        master::bridge();
+        return true;
+    }
+    false
 }

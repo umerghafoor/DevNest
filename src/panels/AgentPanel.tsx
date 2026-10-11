@@ -42,6 +42,7 @@ import {
   type MenuCommand,
 } from "../lib/agent-local-commands";
 import { QuestionForm } from "./agent/QuestionForm";
+import { MasterWidget } from "../components/MasterWidgets";
 import {
   ArrowUp,
   ChevronDown,
@@ -294,7 +295,7 @@ export function AgentPanel({
   );
 }
 
-function InstallBanner({
+export function InstallBanner({
   agent,
   deviceName,
   missing,
@@ -371,7 +372,7 @@ function InstallBanner({
   );
 }
 
-function AuthBar({
+export function AuthBar({
   s,
   paneId,
   deviceId,
@@ -386,6 +387,7 @@ function AuthBar({
   // A terminal sign-in is in progress in a split pane.
   const [termLogin, setTermLogin] = useState(false);
   const splitPane = useAppStore((st) => st.splitPane);
+  const openPane = useAppStore((st) => st.openPane);
   const method = s.authMethods.find((m) => m.id === keyFor);
 
   const choose = (m: AuthMethod) => {
@@ -396,13 +398,16 @@ function AuthBar({
       // Interactive login (browser / device code) needs a real TTY: open a
       // terminal beside the agent with the command typed in.
       const id = Math.random().toString(36).slice(2, 10);
-      splitPane(paneId, "horizontal", {
+      const pane = {
         id,
         deviceId,
-        panel: "terminal",
+        panel: "terminal" as const,
         instanceId: id,
         extra: { initialCommand: cmd },
-      });
+      };
+      // No pane to split beside (the Master panel): open one instead.
+      if (paneId) splitPane(paneId, "horizontal", pane);
+      else openPane(pane);
       setTermLogin(true);
       return;
     }
@@ -478,7 +483,7 @@ function AuthBar({
   );
 }
 
-function StatusDot({ status }: { status: AgentSession["status"] }) {
+export function StatusDot({ status }: { status: AgentSession["status"] }) {
   const cls =
     status === "ready"
       ? "bg-(--color-online)"
@@ -494,7 +499,14 @@ function StatusDot({ status }: { status: AgentSession["status"] }) {
 
 // ─── Transcript ───────────────────────────────────────────────────────────────
 
-function Transcript({ s }: { s: AgentSession }) {
+export function Transcript({
+  s,
+  empty,
+}: {
+  s: AgentSession;
+  /** Shown before the first message. */
+  empty?: React.ReactNode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
 
@@ -515,15 +527,20 @@ function Transcript({ s }: { s: AgentSession }) {
     >
       {s.items.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-(--color-fg-muted)">
-          <span>Pick an agent and a project folder, then Start.</span>
-          <span>
-            Any Agent Client Protocol agent works — add your own in settings.
-          </span>
+          {empty ?? (
+            <>
+              <span>Pick an agent and a project folder, then Start.</span>
+              <span>
+                Any Agent Client Protocol agent works — add your own in
+                settings.
+              </span>
+            </>
+          )}
         </div>
       ) : (
         <div className="mx-auto flex max-w-3xl flex-col gap-3">
           {s.items.map((it) => (
-            <Item key={it.id} item={it} />
+            <Item key={it.id} item={it} deviceId={s.deviceId} />
           ))}
         </div>
       )}
@@ -531,8 +548,17 @@ function Transcript({ s }: { s: AgentSession }) {
   );
 }
 
-function Item({ item }: { item: TranscriptItem }) {
+function Item({ item, deviceId }: { item: TranscriptItem; deviceId: string }) {
   switch (item.kind) {
+    case "widget":
+      return (
+        <MasterWidget
+          widget={item.widget}
+          title={item.title}
+          deviceId={item.deviceId ?? deviceId}
+          deviceName={item.deviceName}
+        />
+      );
     case "user":
       return (
         <div className="flex justify-end">
@@ -685,7 +711,7 @@ function simpleDiff(oldText: string, newText: string) {
 
 // ─── Permission prompt ────────────────────────────────────────────────────────
 
-function PermissionCard({ s }: { s: AgentSession }) {
+export function PermissionCard({ s }: { s: AgentSession }) {
   const { req } = s.permission!;
   const style = (o: PermissionOption) =>
     o.kind.startsWith("allow")
@@ -860,7 +886,7 @@ function matchCommands(text: string, commands: MenuCommand[]) {
   return [...starts, ...contains];
 }
 
-function Composer({
+export function Composer({
   s,
   onTerminal,
 }: {

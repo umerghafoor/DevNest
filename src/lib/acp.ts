@@ -202,9 +202,27 @@ export function wantsApiKey(m: AuthMethod) {
   return !!m._meta && "api-key" in m._meta;
 }
 
+/** An MCP server the client hands the agent in `session/new`. */
+export type McpServer =
+  | {
+      name: string;
+      command: string;
+      args: string[];
+      env: { name: string; value: string }[];
+    }
+  | {
+      type: "http";
+      name: string;
+      url: string;
+      headers: { name: string; value: string }[];
+    };
+
 export interface InitializeResult {
   protocolVersion: number;
-  agentCapabilities?: { auth?: { logout?: unknown } } & Record<string, unknown>;
+  agentCapabilities?: {
+    auth?: { logout?: unknown };
+    mcpCapabilities?: { http?: boolean; sse?: boolean };
+  } & Record<string, unknown>;
   authMethods?: AuthMethod[];
 }
 
@@ -352,14 +370,14 @@ export class AcpConnection {
     return this.request<unknown>("logout", {});
   }
 
-  newSession(cwd: string) {
+  newSession(cwd: string, mcpServers: McpServer[] = []) {
     return this.request<{
       sessionId: string;
       modes?: SessionModeState | null;
       configOptions?: ConfigOption[] | null;
     }>("session/new", {
       cwd,
-      mcpServers: [],
+      mcpServers,
     });
   }
 

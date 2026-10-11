@@ -9,6 +9,8 @@ import { ToastContainer } from "../components/Toast";
 import { ConfirmDialogHost } from "../components/ConfirmDialog";
 import { CommandPalette } from "../components/CommandPalette";
 import { FloatingPaneWindow } from "../components/FloatingPaneWindow";
+import { MasterPanel } from "../components/MasterPanel";
+import { useMasterStore } from "../lib/master";
 import { usePaletteStore } from "../store/palette-store";
 import { api } from "../lib/api";
 import {
@@ -48,6 +50,7 @@ export function App() {
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
   const getBinding = useShortcutsStore((s) => s.getBinding);
   const togglePalette = usePaletteStore((s) => s.toggle);
+  const toggleMaster = useMasterStore((s) => s.toggle);
 
   useDeviceHeartbeat();
 
@@ -161,6 +164,9 @@ export function App() {
       } else if (matches("openCommandPalette")) {
         e.preventDefault();
         togglePalette();
+      } else if (matches("toggleMaster")) {
+        e.preventDefault();
+        toggleMaster();
       }
     };
 
@@ -176,6 +182,7 @@ export function App() {
     addWorkspace,
     getBinding,
     togglePalette,
+    toggleMaster,
   ]);
 
   if (floatingPaneId) {
@@ -188,6 +195,7 @@ export function App() {
       <div className="flex flex-1 overflow-hidden min-h-0">
         <Sidebar />
         <MainPanel />
+        <MasterPanel />
       </div>
       <StatusBar />
       <SudoPasswordDialog />

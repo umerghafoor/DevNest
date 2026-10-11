@@ -6,6 +6,8 @@ import type { PanelKind, Pane } from "../store/app-store";
 import { useRecentsStore } from "../store/recents-store";
 import { usePaletteStore } from "../store/palette-store";
 import { useShortcutsStore, formatBinding } from "../store/shortcuts-store";
+import { useMasterStore } from "../lib/master";
+import { Sparkles } from "lucide-react";
 import {
   PANEL_ICONS,
   PANEL_LABELS,
@@ -515,6 +517,27 @@ function MenuRow({
 
 // ─── Command palette trigger ──────────────────────────────────────────────────
 
+function MasterButton() {
+  const open = useMasterStore((s) => s.open);
+  const toggle = useMasterStore((s) => s.toggle);
+  const pending = useMasterStore((s) => s.approvals.length);
+  const binding = useShortcutsStore((s) => s.getBinding("toggleMaster"));
+  return (
+    <button
+      onClick={toggle}
+      title={`Master agent (${formatBinding(binding)})`}
+      className={`relative flex h-full items-center gap-1.5 px-2.5 text-xs transition-colors hover:bg-(--color-surface-2) hover:text-(--color-fg) ${
+        open ? "text-(--color-accent)" : "text-(--color-fg-muted)"
+      }`}
+    >
+      <Sparkles size={13} />
+      {pending > 0 && (
+        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-(--color-warn)" />
+      )}
+    </button>
+  );
+}
+
 function PaletteButton() {
   const open = usePaletteStore((s) => s.show);
   const binding = useShortcutsStore((s) => s.getBinding("openCommandPalette"));
@@ -688,6 +711,7 @@ export function TitleBar() {
         <PaletteButton />
         <NewPanelMenu />
         <PaneActions />
+        <MasterButton />
       </div>
 
       {/* Linux/Windows window controls */}

@@ -1,6 +1,7 @@
 use crate::agent::AgentPool;
 use crate::db::Db;
 use crate::log_stream::LogStreamPool;
+use crate::master::MasterHub;
 use crate::ngrok::NgrokPool;
 use crate::sql::SqlPool;
 use crate::ssh::SessionPool;
@@ -16,4 +17,5 @@ pub struct AppState {
     pub tunnels: TunnelPool,
     pub sql: SqlPool,
     pub agents: AgentPool,
+    pub master: MasterHub,
 }

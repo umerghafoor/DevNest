@@ -15,6 +15,8 @@ import {
   type ConfigOption,
   type ElicitationRequest,
   type ElicitationResponse,
+  type InitializeResult,
+  type McpServer,
   type SessionModeState,
   type PermissionOutcome,
   type PermissionRequest,
@@ -32,7 +34,17 @@ export type TranscriptItem =
   | { kind: "thought"; id: string; text: string }
   | { kind: "tool"; id: string; call: ToolCall }
   | { kind: "plan"; id: string; entries: PlanEntry[] }
-  | { kind: "system"; id: string; text: string; error?: boolean };
+  | { kind: "system"; id: string; text: string; error?: boolean }
+  /** A live widget the Master agent asked to show. */
+  | {
+      kind: "widget";
+      id: string;
+      widget: string;
+      title?: string;
+      /** Device the widget watches; the session's device if unset. */
+      deviceId?: string;
+      deviceName?: string;
+    };
 
 export type AgentStatus =
   | "idle" // nothing launched
@@ -78,6 +90,8 @@ export interface AgentSession {
   permission: PendingPermission | null;
   /** A question form the agent is waiting on. */
   elicitation: PendingElicitation | null;
+  /** MCP servers handed to the agent with every new session. */
+  mcpServers: McpServer[];
   processId: string | null;
   sessionId: string | null;
   conn: AcpConnection | null;
@@ -137,6 +151,7 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
       config: [],
       permission: null,
       elicitation: null,
+      mcpServers: [],
       processId: null,
       sessionId: null,
       conn: null,
@@ -149,6 +164,12 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
     watchPanes();
   }
   return s;
+}
+
+/** Append an item to the transcript (e.g. a widget the agent showed). */
+export function addItem(s: AgentSession, item: TranscriptItem) {
+  s.items = [...s.items, item];
+  notify(s);
 }
 
 export function subscribeAgentSession(s: AgentSession, fn: () => void) {
@@ -251,10 +272,16 @@ function stripUndefined<T extends object>(o: T): Partial<T> {
 
 // ─── Lifecycle ────────────────────────────────────────────────────────────────
 
+export interface StartOptions {
+  /** MCP servers for the agent, chosen once its capabilities are known. */
+  mcpServers?: (init: InitializeResult) => McpServer[] | Promise<McpServer[]>;
+}
+
 export async function startAgent(
   s: AgentSession,
   agent: AgentDef,
   cwd: string,
+  opts: StartOptions = {},
 ) {
   await stopAgent(s);
   s.agent = agent;
@@ -267,6 +294,7 @@ export async function startAgent(
   s.commands = [];
   s.modes = null;
   s.config = [];
+  s.mcpServers = [];
   s.status = "starting";
   const processId = uid();
   s.processId = processId;
@@ -351,6 +379,7 @@ export async function startAgent(
     const init = await withTimeout(conn.initialize(), INIT_TIMEOUT_MS);
     s.authMethods = init.authMethods ?? [];
     s.canLogout = !!init.agentCapabilities?.auth?.logout;
+    if (opts.mcpServers) s.mcpServers = await opts.mcpServers(init);
     await openSession(s);
   } catch (e) {
     // The exit listener may have already reported the failure.
@@ -363,7 +392,10 @@ export async function startAgent(
 async function openSession(s: AgentSession) {
   if (!s.conn) return;
   try {
-    const { sessionId, modes, configOptions } = await s.conn.newSession(s.cwd);
+    const { sessionId, modes, configOptions } = await s.conn.newSession(
+      s.cwd,
+      s.mcpServers,
+    );
     s.sessionId = sessionId;
     s.modes = modes?.availableModes?.length ? modes : null;
     s.config = configOptions ?? [];
@@ -468,6 +500,7 @@ async function trySavedKey(s: AgentSession): Promise<boolean> {
       await s.conn.authenticate(m.id, key);
       const { sessionId, modes, configOptions } = await s.conn.newSession(
         s.cwd,
+        s.mcpServers,
       );
       s.sessionId = sessionId;
       s.modes = modes?.availableModes?.length ? modes : null;
@@ -737,7 +770,8 @@ function watchPanes() {
       for (const p of w.floatingPanes) live.add(p.id);
     }
     for (const key of [...sessions.keys()]) {
-      if (!live.has(key)) destroyAgentSession(key);
+      // "__"-prefixed sessions (the Master agent) aren't tied to a pane.
+      if (!key.startsWith("__") && !live.has(key)) destroyAgentSession(key);
     }
   });
 }

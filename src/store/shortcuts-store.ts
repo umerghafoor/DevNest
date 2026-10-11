@@ -7,7 +7,8 @@ export type ShortcutId =
   | "newWorkspace"
   | "openSettings"
   | "openDashboard"
-  | "openCommandPalette";
+  | "openCommandPalette"
+  | "toggleMaster";
 
 export interface ShortcutDef {
   id: ShortcutId;
@@ -30,6 +31,11 @@ export const SHORTCUTS: ShortcutDef[] = [
     id: "openCommandPalette",
     label: "Open command palette",
     defaultBinding: "Mod+K",
+  },
+  {
+    id: "toggleMaster",
+    label: "Toggle Master agent",
+    defaultBinding: "Mod+Shift+A",
   },
 ];
 

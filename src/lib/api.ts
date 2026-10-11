@@ -347,6 +347,38 @@ export interface SqlQueryResult {
   rowsAffected: number | null;
 }
 
+/** DevNest's MCP server for the Master agent. */
+export interface MasterEndpoint {
+  url: string;
+  token: string;
+  bridgeCommand: string;
+  bridgeArgs: string[];
+}
+
+export interface HostProcess {
+  pid: number;
+  cpu: number;
+  mem: number;
+  name: string;
+}
+
+/** Live stats of a device, macOS or Linux (the host by default). */
+export interface HostStats {
+  cpuPercent: number;
+  cores: number;
+  memUsed: number;
+  memTotal: number;
+  load: [number, number, number];
+  diskUsed: number;
+  diskTotal: number;
+  /** Cumulative bytes; diff two samples for a rate. */
+  netRx: number;
+  netTx: number;
+  uptimeSecs: number;
+  top: HostProcess[];
+  timestampMs: number;
+}
+
 export const api = {
   ping: () => call<string>("ping"),
   appVersion: () => call<string>("app_version"),
@@ -494,6 +526,12 @@ export const api = {
   agentSend: (agentId: string, line: string) =>
     call<void>("agent_send", { agentId, line }),
   agentKill: (agentId: string) => call<void>("agent_kill", { agentId }),
+  masterStart: () => call<MasterEndpoint>("master_start"),
+  masterResolve: (id: string, allow: boolean) =>
+    call<void>("master_resolve", { id, allow }),
+  masterDenyAll: () => call<void>("master_deny_all"),
+  hostStats: (deviceId?: string) =>
+    call<HostStats>("host_stats", { deviceId: deviceId ?? null }),
 
   ngrokAvailable: () => call<boolean>("ngrok_available"),
   ngrokList: () => call<NgrokTunnel[]>("ngrok_list"),
