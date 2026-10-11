@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   AcpConnection,
   AcpError,
+  flattenOptions,
   isInside,
   sliceLines,
   type AcpClientHandlers,
@@ -195,6 +196,31 @@ describe("AcpConnection", () => {
       }),
     );
     expect(onAuthStatus).toHaveBeenCalledWith(status);
+  });
+
+  it("sets select and boolean config options", () => {
+    const { conn, sent } = setup();
+    void conn.setConfigOption("s1", "model", "sonnet");
+    void conn.setConfigOption("s1", "fast", true);
+    expect(sent[0]).toMatchObject({
+      method: "session/set_config_option",
+      params: { sessionId: "s1", configId: "model", value: "sonnet" },
+    });
+    expect(sent[1].params).toEqual({
+      sessionId: "s1",
+      configId: "fast",
+      type: "boolean",
+      value: true,
+    });
+  });
+
+  it("flattens grouped config options", () => {
+    expect(
+      flattenOptions([
+        { group: "g", name: "G", options: [{ value: "a", name: "A" }] },
+      ]).map((o) => o.value),
+    ).toEqual(["a"]);
+    expect(flattenOptions([{ value: "b", name: "B" }])).toHaveLength(1);
   });
 
   it("declines url-mode elicitation", async () => {

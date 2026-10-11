@@ -11,6 +11,7 @@ import {
   logout,
   retryAfterLogin,
   sendPrompt,
+  setConfig,
   setMode,
   startAgent,
   stopAgent,
@@ -688,6 +689,131 @@ function PermissionCard({ s }: { s: AgentSession }) {
 
 // ─── Composer ─────────────────────────────────────────────────────────────────
 
+/**
+ * Every setting the agent exposes (model, effort, mode, fast mode, persona,
+ * …) as compact pickers, built from its `configOptions` — nothing hard-coded,
+ * so new agent options show up automatically.
+ */
+function SettingsRow({ s }: { s: AgentSession }) {
+  const hasModeOption = s.config.some((o) => o.category === "mode");
+  const legacyMode =
+    !hasModeOption && s.modes
+      ? s.modes.availableModes.find((m) => m.id === s.modes?.currentModeId)
+      : null;
+  if (s.config.length === 0 && !s.modes) return null;
+
+  return (
+    <div className="mt-1.5 flex flex-wrap items-center gap-1 px-0.5">
+      {s.config.map((o) =>
+        o.type === "boolean" ? (
+          <button
+            key={o.id}
+            onClick={() => void setConfig(s, o.id, !o.currentValue)}
+            disabled={!s.sessionId}
+            title={o.description ?? undefined}
+            className={`${PILL} ${o.currentValue ? "text-(--color-accent)" : ""}`}
+          >
+            {o.name}: {o.currentValue ? "On" : "Off"}
+          </button>
+        ) : (
+          <SelectPill
+            key={o.id}
+            // Model and mode read fine on their own; others need the name.
+            label={
+              o.category === "model" || o.category === "mode" ? null : o.name
+            }
+            title={o.description ?? o.name}
+            value={o.currentValue}
+            disabled={!s.sessionId}
+            onChange={(v) => void setConfig(s, o.id, v)}
+          >
+            {o.options.map((opt) =>
+              "group" in opt ? (
+                <optgroup key={opt.group} label={opt.name}>
+                  {opt.options.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.name}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : (
+                <option key={opt.value} value={opt.value}>
+                  {opt.name}
+                </option>
+              ),
+            )}
+          </SelectPill>
+        ),
+      )}
+      {legacyMode && s.modes && (
+        <SelectPill
+          label={null}
+          title={legacyMode.description ?? "Agent mode"}
+          value={s.modes.currentModeId}
+          disabled={!s.sessionId}
+          onChange={(v) => void setMode(s, v)}
+        >
+          {s.modes.availableModes.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.name}
+            </option>
+          ))}
+        </SelectPill>
+      )}
+    </div>
+  );
+}
+
+const PILL =
+  "relative inline-flex h-5 items-center gap-0.5 rounded-md px-1.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-50";
+
+/** Compact pill showing the selected option, with the native menu on click. */
+function SelectPill({
+  label,
+  title,
+  value,
+  disabled,
+  onChange,
+  children,
+}: {
+  label: string | null;
+  title: string;
+  value: string;
+  disabled: boolean;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<React.ComponentRef<"select">>(null);
+  // Name of the selected option, read from the rendered <option>s so groups
+  // and agent-provided names are respected.
+  const [shown, setShown] = useState("");
+  useEffect(() => {
+    const el = ref.current;
+    setShown(el?.selectedOptions[0]?.text ?? value);
+  }, [value, children]);
+
+  return (
+    <label className={PILL} title={title}>
+      <span className="pointer-events-none flex items-center gap-0.5">
+        {label && <span className="opacity-70">{label}:</span>}
+        <span className="text-(--color-fg)">{shown}</span>
+        <ChevronDown size={10} />
+      </span>
+      {/* Invisible native select on top: native menu, compact look. */}
+      <select
+        ref={ref}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={label ?? title}
+        className="no-focus-ring absolute inset-0 cursor-pointer opacity-0"
+      >
+        {children}
+      </select>
+    </label>
+  );
+}
+
 /** Commands matching a `/partial` with no space typed yet; else none. */
 function matchCommands(text: string, commands: AvailableCommand[]) {
   const m = /^\/(\S*)$/.exec(text);
@@ -782,10 +908,6 @@ function Composer({ s }: { s: AgentSession }) {
     return cmd?.input?.hint ?? null;
   })();
 
-  const currentMode = s.modes?.availableModes.find(
-    (m) => m.id === s.modes?.currentModeId,
-  );
-
   return (
     <div className="shrink-0 border-t border-(--color-border) px-4 py-2.5">
       <div className="relative mx-auto max-w-3xl">
@@ -848,31 +970,6 @@ function Composer({ s }: { s: AgentSession }) {
                 onChange={(e) => edit(e.target.value)}
                 onKeyDown={onKeyDown}
               />
-              {s.modes && (
-                <label
-                  className="relative mb-0.5 flex h-6 shrink-0 items-center rounded-md px-1.5 text-[11px] text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
-                  title={currentMode?.description ?? "Agent mode"}
-                >
-                  <span className="pointer-events-none flex items-center gap-0.5">
-                    {currentMode?.name ?? "Mode"}
-                    <ChevronDown size={11} />
-                  </span>
-                  {/* Invisible native select on top: native menu, compact look. */}
-                  <select
-                    value={s.modes.currentModeId}
-                    onChange={(e) => void setMode(s, e.target.value)}
-                    disabled={!s.sessionId}
-                    aria-label="Agent mode"
-                    className="no-focus-ring absolute inset-0 cursor-pointer opacity-0"
-                  >
-                    {s.modes.availableModes.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
               {busy ? (
                 <button
                   className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
@@ -898,6 +995,7 @@ function Composer({ s }: { s: AgentSession }) {
                 Argument: {hint}
               </div>
             )}
+            <SettingsRow s={s} />
           </>
         )}
       </div>

@@ -92,6 +92,45 @@ export interface SessionMode {
   description?: string | null;
 }
 
+// ── Session config options: every setting the agent exposes (model, effort,
+// mode, fast mode, …), discovered at runtime rather than hard-coded. ──
+
+export interface ConfigSelectOption {
+  value: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface ConfigSelectGroup {
+  group: string;
+  name: string;
+  options: ConfigSelectOption[];
+}
+
+export type ConfigOption = {
+  id: string;
+  name: string;
+  description?: string | null;
+  /** "mode" | "model" | "model_config" | "thought_level" | custom */
+  category?: string | null;
+} & (
+  | {
+      type: "select";
+      currentValue: string;
+      options: ConfigSelectOption[] | ConfigSelectGroup[];
+    }
+  | { type: "boolean"; currentValue: boolean }
+);
+
+/** All choices of a select option, groups flattened. */
+export function flattenOptions(
+  options: ConfigSelectOption[] | ConfigSelectGroup[],
+): ConfigSelectOption[] {
+  return options.flatMap((o) =>
+    "group" in o ? (o as ConfigSelectGroup).options : [o as ConfigSelectOption],
+  );
+}
+
 export interface SessionModeState {
   currentModeId: string;
   availableModes: SessionMode[];
@@ -291,6 +330,8 @@ export class AcpConnection {
         // We can open a terminal for agents that sign in interactively
         // (Claude Code's subscription / console login).
         auth: { terminal: true },
+        // Agents may expose on/off settings, not only pick-lists.
+        session: { configOptions: { boolean: {} } },
         // Lets agents ask structured questions (Claude Code's AskUserQuestion
         // is disabled unless the client says it can render forms).
         elicitation: { form: {} },
@@ -312,12 +353,27 @@ export class AcpConnection {
   }
 
   newSession(cwd: string) {
-    return this.request<{ sessionId: string; modes?: SessionModeState | null }>(
-      "session/new",
-      {
-        cwd,
-        mcpServers: [],
-      },
+    return this.request<{
+      sessionId: string;
+      modes?: SessionModeState | null;
+      configOptions?: ConfigOption[] | null;
+    }>("session/new", {
+      cwd,
+      mcpServers: [],
+    });
+  }
+
+  /** Returns the agent's full, updated option list. */
+  setConfigOption(
+    sessionId: string,
+    configId: string,
+    value: string | boolean,
+  ) {
+    return this.request<{ configOptions: ConfigOption[] }>(
+      "session/set_config_option",
+      typeof value === "boolean"
+        ? { sessionId, configId, type: "boolean", value }
+        : { sessionId, configId, value },
     );
   }
 

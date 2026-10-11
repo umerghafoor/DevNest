@@ -12,6 +12,7 @@ import {
   type AuthMethod,
   type AuthStatus,
   type AvailableCommand,
+  type ConfigOption,
   type ElicitationRequest,
   type ElicitationResponse,
   type SessionModeState,
@@ -70,8 +71,10 @@ export interface AgentSession {
   canLogout: boolean;
   /** Slash commands the agent currently offers. */
   commands: AvailableCommand[];
-  /** Agent modes, if it supports them. */
+  /** Agent modes (legacy API; hidden when `config` has a mode option). */
   modes: SessionModeState | null;
+  /** Every setting the agent exposes: model, effort, mode, … */
+  config: ConfigOption[];
   permission: PendingPermission | null;
   /** A question form the agent is waiting on. */
   elicitation: PendingElicitation | null;
@@ -131,6 +134,7 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
       canLogout: false,
       commands: [],
       modes: null,
+      config: [],
       permission: null,
       elicitation: null,
       processId: null,
@@ -219,6 +223,10 @@ function applyUpdate(s: AgentSession, u: SessionUpdate) {
         (u as { availableCommands?: AvailableCommand[] }).availableCommands ??
         [];
       break;
+    case "config_option_update":
+      s.config =
+        (u as { configOptions?: ConfigOption[] }).configOptions ?? s.config;
+      break;
     case "current_mode_update":
       if (s.modes) {
         s.modes = {
@@ -258,6 +266,7 @@ export async function startAgent(
   s.canLogout = false;
   s.commands = [];
   s.modes = null;
+  s.config = [];
   s.status = "starting";
   const processId = uid();
   s.processId = processId;
@@ -354,9 +363,10 @@ export async function startAgent(
 async function openSession(s: AgentSession) {
   if (!s.conn) return;
   try {
-    const { sessionId, modes } = await s.conn.newSession(s.cwd);
+    const { sessionId, modes, configOptions } = await s.conn.newSession(s.cwd);
     s.sessionId = sessionId;
     s.modes = modes?.availableModes?.length ? modes : null;
+    s.config = configOptions ?? [];
     s.status = "ready";
     system(s, `${s.agent?.name ?? "Agent"} ready.`);
   } catch (e) {
@@ -384,6 +394,7 @@ export async function logout(s: AgentSession) {
     // A logged-out session can't prompt; sign in again to get a new one.
     s.sessionId = null;
     s.modes = null;
+    s.config = [];
     s.commands = [];
     s.status = "auth";
     system(s, "Signed out. Sign in to continue.");
@@ -427,9 +438,12 @@ async function trySavedKey(s: AgentSession): Promise<boolean> {
     if (!key) continue;
     try {
       await s.conn.authenticate(m.id, key);
-      const { sessionId, modes } = await s.conn.newSession(s.cwd);
+      const { sessionId, modes, configOptions } = await s.conn.newSession(
+        s.cwd,
+      );
       s.sessionId = sessionId;
       s.modes = modes?.availableModes?.length ? modes : null;
+      s.config = configOptions ?? [];
       s.status = "ready";
       system(s, `${s.agent?.name ?? "Agent"} ready (${m.name}).`);
       return true;
@@ -479,6 +493,33 @@ export async function sendPrompt(s: AgentSession, text: string) {
     if (s.status === "prompting") s.status = "ready";
     notify(s);
   }
+}
+
+/** Change one agent setting; the agent answers with the full new list. */
+export async function setConfig(
+  s: AgentSession,
+  configId: string,
+  value: string | boolean,
+) {
+  if (!s.conn || !s.sessionId) return;
+  const prev = s.config;
+  // Optimistic, so the picker doesn't snap back while the agent applies it.
+  s.config = s.config.map((o) =>
+    o.id === configId ? ({ ...o, currentValue: value } as ConfigOption) : o,
+  );
+  notify(s);
+  try {
+    const { configOptions } = await s.conn.setConfigOption(
+      s.sessionId,
+      configId,
+      value,
+    );
+    if (Array.isArray(configOptions)) s.config = configOptions;
+  } catch (e) {
+    s.config = prev;
+    system(s, `Couldn't change setting: ${describe(e)}`, true);
+  }
+  notify(s);
 }
 
 export async function setMode(s: AgentSession, modeId: string) {
