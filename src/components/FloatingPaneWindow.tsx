@@ -8,6 +8,7 @@ import {
   useAppStore,
 } from "../store/app-store";
 import { PanelContent, PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
+import { SudoPasswordDialog } from "./SudoPasswordDialog";
 import {
   getFloatingPaneIdFromLocation,
   getFloatingPaneWorkspaceIdFromLocation,
@@ -152,6 +153,10 @@ export function FloatingPaneWindow() {
       <div className="min-h-0 flex-1 overflow-hidden">
         <PanelContent pane={pane} />
       </div>
+      {/* Detached windows are a separate webview; they need their own host
+          for the sudo prompt or requests would wait on a dialog that never
+          shows. */}
+      <SudoPasswordDialog />
     </div>
   );
 }

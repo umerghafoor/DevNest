@@ -88,6 +88,15 @@ async function call<T>(
   }
 }
 
+/**
+ * `invoke` with the same sudo handling as the `api` helpers: prompts for the
+ * sudo password (or offers to enable sudo) and retries. Use it for commands
+ * that may run under sudo (`run_remote_command`, tailscale, …). Don't use it
+ * for SFTP or log streams — they never use sudo, and a "permission denied"
+ * there would wrongly offer to enable it.
+ */
+export const invokeWithSudo = call;
+
 export type AuthType = "key" | "password" | "localhost";
 
 export interface Device {

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { errorMessage } from "../lib/api";
+import { errorMessage, invokeWithSudo } from "../lib/api";
 
 interface TailnetPeer {
   tailscaleIps: string[];
@@ -32,7 +31,9 @@ export function TailscalePanel({ deviceId }: Props) {
 
   const refresh = useCallback(async () => {
     try {
-      const s = await invoke<TailnetStatus>("tailscale_status", { deviceId });
+      const s = await invokeWithSudo<TailnetStatus>("tailscale_status", {
+        deviceId,
+      });
       setStatus(s);
       setError(null);
     } catch (e) {
@@ -51,7 +52,7 @@ export function TailscalePanel({ deviceId }: Props) {
   const setExitNode = async (hostName: string | null) => {
     setSettingExit(hostName ?? "");
     try {
-      await invoke("tailscale_set_exit_node", {
+      await invokeWithSudo("tailscale_set_exit_node", {
         deviceId,
         exitNode: hostName,
       });

@@ -321,11 +321,27 @@ echo '##ARCH##'; uname -m
 
 pub fn dimms(pool: &SessionPool, device: &Device) -> AppResult<Vec<DimmModule>> {
     // dmidecode requires root. The frontend gates this behind device.use_sudo
-    // and our ssh::run_command already handles sudo wrapping.
-    let out = ssh::run_command(pool, device, "dmidecode -t memory")?;
+    // and our ssh::run_command already handles sudo wrapping. It usually lives
+    // in sbin, which a non-login PATH may not include, so check there too.
+    let cmd = r#"
+for b in "$(command -v dmidecode 2>/dev/null)" /usr/sbin/dmidecode /sbin/dmidecode /usr/local/sbin/dmidecode; do
+  [ -n "$b" ] && [ -x "$b" ] && exec "$b" -t memory
+done
+echo "dmidecode not found" >&2
+exit 127
+"#;
+    let out = ssh::run_command(pool, device, cmd)?;
+    if out.exit_code == 127 {
+        return Err(AppError::Invalid(
+            "dmidecode is not installed on this device. Install it (e.g. \
+             `sudo apt install dmidecode`, `sudo dnf install dmidecode` or \
+             `sudo pacman -S dmidecode`) and try again."
+                .into(),
+        ));
+    }
     if out.exit_code != 0 {
         return Err(AppError::Invalid(format!(
-            "dmidecode failed (needs sudo): {}",
+            "dmidecode failed: {}",
             out.stderr.trim()
         )));
     }

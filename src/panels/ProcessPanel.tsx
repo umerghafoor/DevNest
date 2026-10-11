@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { errorMessage } from "../lib/api";
+import { errorMessage, invokeWithSudo } from "../lib/api";
 import { toast } from "../components/Toast";
 import { SkeletonTable } from "../components/Skeleton";
 import { usePaneSettings } from "../store/pane-settings-store";
@@ -103,7 +102,7 @@ export function ProcessPanel({ deviceId, paneId }: Props) {
 
   const fetch = useCallback(async () => {
     try {
-      const out = await invoke<{ stdout: string; exitCode: number }>(
+      const out = await invokeWithSudo<{ stdout: string; exitCode: number }>(
         "run_remote_command",
         {
           deviceId,
@@ -150,7 +149,7 @@ export function ProcessPanel({ deviceId, paneId }: Props) {
     setKilling(true);
     try {
       const sigNum = SIGNALS.indexOf(killSignal) >= 0 ? killSignal : "SIGTERM";
-      await invoke("run_remote_command", {
+      await invokeWithSudo("run_remote_command", {
         deviceId,
         cmd: `kill -${sigNum} ${killTarget.pid}`,
       });

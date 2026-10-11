@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { errorMessage } from "../lib/api";
+import { errorMessage, invokeWithSudo } from "../lib/api";
 
 interface Props {
   deviceId: string;
@@ -200,7 +199,7 @@ export function CronPanel({ deviceId }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const out = await invoke<{ stdout: string; exitCode: number }>(
+      const out = await invokeWithSudo<{ stdout: string; exitCode: number }>(
         "run_remote_command",
         { deviceId, cmd: "crontab -l 2>/dev/null || true" },
       );
@@ -224,7 +223,7 @@ export function CronPanel({ deviceId }: Props) {
       const content = serializeCrontab(newEntries);
       // Pipe new crontab via echo | crontab -
       const escaped = content.replace(/'/g, "'\\''");
-      await invoke("run_remote_command", {
+      await invokeWithSudo("run_remote_command", {
         deviceId,
         cmd: `printf '%s' '${escaped}' | crontab -`,
       });

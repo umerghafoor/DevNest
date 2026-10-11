@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 
 interface ConfirmRequest {
@@ -51,16 +51,16 @@ export function ConfirmDialogHost() {
   const current = queue[0];
 
   const [visible, setVisible] = useState(false);
-  const prevId = useRef<number | undefined>(undefined);
 
+  // Trigger the enter animation on the next frame. Re-scheduled on every
+  // effect run (no "seen" ref) so StrictMode's cleanup can't leave it stuck
+  // invisible.
   useEffect(() => {
-    if (current && current.id !== prevId.current) {
-      prevId.current = current.id;
-      // Trigger animation on next frame
+    if (current) {
       const frame = requestAnimationFrame(() => setVisible(true));
       return () => cancelAnimationFrame(frame);
     }
-    if (!current) setVisible(false);
+    setVisible(false);
   }, [current]);
 
   const handleRespond = (ok: boolean) => {
