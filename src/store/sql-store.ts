@@ -89,3 +89,74 @@ export const useSqlStore = create<SqlState>((set) => ({
     set({ activeId: id });
   },
 }));
+
+/**
+ * A saved query. `connectionId` scopes it to one connection; queries without
+ * one show up for every connection.
+ */
+export interface SavedSqlQuery {
+  id: string;
+  name: string;
+  sql: string;
+  connectionId?: string;
+  updatedAt: number;
+}
+
+const QUERIES_KEY = "devnest.sql.queries";
+
+function readQueries(): SavedSqlQuery[] {
+  try {
+    const raw = localStorage.getItem(QUERIES_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as SavedSqlQuery[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistQueries(list: SavedSqlQuery[]) {
+  try {
+    localStorage.setItem(QUERIES_KEY, JSON.stringify(list));
+  } catch {
+    // ignore
+  }
+}
+
+interface SqlQueriesState {
+  queries: SavedSqlQuery[];
+  save: (q: Omit<SavedSqlQuery, "id" | "updatedAt">) => SavedSqlQuery;
+  update: (id: string, patch: Partial<SavedSqlQuery>) => void;
+  remove: (id: string) => void;
+}
+
+export const useSqlQueriesStore = create<SqlQueriesState>((set) => ({
+  queries: readQueries(),
+  save: (q) => {
+    const created: SavedSqlQuery = {
+      ...q,
+      id: Math.random().toString(36).slice(2, 10),
+      updatedAt: Date.now(),
+    };
+    set((s) => {
+      const next = [created, ...s.queries];
+      persistQueries(next);
+      return { queries: next };
+    });
+    return created;
+  },
+  update: (id, patch) =>
+    set((s) => {
+      const next = s.queries.map((q) =>
+        q.id === id ? { ...q, ...patch, updatedAt: Date.now() } : q,
+      );
+      persistQueries(next);
+      return { queries: next };
+    }),
+  remove: (id) =>
+    set((s) => {
+      const next = s.queries.filter((q) => q.id !== id);
+      persistQueries(next);
+      return { queries: next };
+    }),
+}));
