@@ -35,11 +35,11 @@ interface Rect {
 const PALETTE = [
   "oklch(0.68 0.16 240)", // blue
   "oklch(0.68 0.16 160)", // emerald
-  "oklch(0.72 0.18 55)",  // amber
+  "oklch(0.72 0.18 55)", // amber
   "oklch(0.68 0.18 340)", // rose
   "oklch(0.68 0.16 290)", // purple
   "oklch(0.68 0.16 200)", // cyan
-  "oklch(0.72 0.17 90)",  // yellow-lime
+  "oklch(0.72 0.17 90)", // yellow-lime
 ];
 
 function getColor(index: number, _depth: number): string {
@@ -54,7 +54,7 @@ function layoutTreemap(
   y: number,
   w: number,
   h: number,
-  depth: number = 0
+  depth: number = 0,
 ): Rect[] {
   if (w <= 0 || h <= 0) return [];
   if (!node.children || node.children.length === 0) {
@@ -79,7 +79,8 @@ function layoutTreemap(
 
     if (remW >= remH) {
       // Split horizontally
-      const childW = i === sorted.length - 1 ? remW : Math.max(1, remW * fraction);
+      const childW =
+        i === sorted.length - 1 ? remW : Math.max(1, remW * fraction);
       rects.push({
         node: child,
         x: curX,
@@ -92,7 +93,8 @@ function layoutTreemap(
       remW = Math.max(0, remW - childW);
     } else {
       // Split vertically
-      const childH = i === sorted.length - 1 ? remH : Math.max(1, remH * fraction);
+      const childH =
+        i === sorted.length - 1 ? remH : Math.max(1, remH * fraction);
       rects.push({
         node: child,
         x: curX,
@@ -115,7 +117,9 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hovered, setHovered] = useState<Rect | null>(null);
-  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(null);
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number } | null>(
+    null,
+  );
   const [chartType, setChartType] = useState<"treemap" | "sunburst">("treemap");
 
   const scan = useCallback(
@@ -136,7 +140,7 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
         setLoading(false);
       }
     },
-    [deviceId]
+    [deviceId],
   );
 
   useEffect(() => {
@@ -198,9 +202,10 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
       depth: number,
       startAngle: number,
       endAngle: number,
-      _idx: number
+      _idx: number,
     ) {
-      if (depth >= levels || !node.children || node.children.length === 0) return;
+      if (depth >= levels || !node.children || node.children.length === 0)
+        return;
 
       const innerR = 40 + depth * layerThickness;
       const outerR = innerR + layerThickness - 2;
@@ -311,7 +316,8 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
           <div className="flex h-full items-center justify-center text-xs text-(--color-error)">
             {error}
           </div>
-        ) : !currentRoot || (currentRoot.children.length === 0 && currentRoot.size === 0) ? (
+        ) : !currentRoot ||
+          (currentRoot.children.length === 0 && currentRoot.size === 0) ? (
           <div className="flex h-full items-center justify-center text-xs text-(--color-fg-muted)">
             Directory is empty or inaccessible
           </div>
@@ -331,7 +337,9 @@ export function DiskUsageTreemap({ deviceId, path, onNavigate }: Props) {
               onMouseLeave={() => setHovered(null)}
             >
               {rects.map((r, i) => {
-                const isDir = Boolean(r.node.children && r.node.children.length > 0);
+                const isDir = Boolean(
+                  r.node.children && r.node.children.length > 0,
+                );
                 const color = getColor(i, r.depth);
                 const isHovered = hovered?.node.path === r.node.path;
 

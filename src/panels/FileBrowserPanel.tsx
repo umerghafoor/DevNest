@@ -183,7 +183,9 @@ export function FileBrowserPanel({ deviceId }: Props) {
     });
   };
 
-  const handleFileInputChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileInputChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -236,11 +238,16 @@ export function FileBrowserPanel({ deviceId }: Props) {
         };
 
         if (payload.isDir) {
-          toast.warn("Folder transfer is currently not supported. Please transfer individual files.");
+          toast.warn(
+            "Folder transfer is currently not supported. Please transfer individual files.",
+          );
           return;
         }
 
-        if (payload.sourceDeviceId === deviceId && payload.sourcePath.startsWith(cwd)) {
+        if (
+          payload.sourceDeviceId === deviceId &&
+          payload.sourcePath.startsWith(cwd)
+        ) {
           toast.info("Source and destination are the same");
           return;
         }
