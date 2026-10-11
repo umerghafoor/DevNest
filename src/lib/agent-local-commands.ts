@@ -18,7 +18,11 @@ import {
  *
  * The agent's own command always wins when names collide.
  */
-export type MenuCommand = AvailableCommand & { local?: boolean };
+export type MenuCommand = AvailableCommand & {
+  local?: boolean;
+  /** Not offered over ACP: runs in the agent's own terminal UI. */
+  terminal?: boolean;
+};
 
 interface LocalCommand extends MenuCommand {
   local: true;

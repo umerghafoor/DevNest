@@ -12,6 +12,12 @@ export interface AgentDef {
    * the user's login shell on the target device.
    */
   install?: string;
+  /**
+   * How to open the agent's own interactive terminal UI, for commands its
+   * ACP mode doesn't offer. `args` follow `command`; `resumeArgs` are added
+   * when there's a conversation to continue (`{sessionId}` is substituted).
+   */
+  terminal?: { args: string[]; resumeArgs?: string[] };
   /** Shipped with the app; editable, but "reset" restores it. */
   builtin?: boolean;
 }
@@ -31,6 +37,13 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     command: "npx",
     args: ["-y", "@agentclientprotocol/claude-agent-acp"],
     install: INSTALL_NODE,
+    // The adapter wraps the real CLI; ACP session ids are Claude Code's own,
+    // so --resume opens this conversation. Fork it so the terminal doesn't
+    // write into the transcript the panel is using.
+    terminal: {
+      args: ["-y", "@agentclientprotocol/claude-agent-acp", "--cli"],
+      resumeArgs: ["--resume", "{sessionId}", "--fork-session"],
+    },
     builtin: true,
   },
   {
@@ -47,6 +60,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     command: "gemini",
     args: ["--acp"],
     install: "npm install -g @google/gemini-cli",
+    terminal: { args: [] },
     builtin: true,
   },
   {
@@ -54,6 +68,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     name: "Goose",
     command: "goose",
     args: ["acp"],
+    terminal: { args: ["session"] },
     install:
       "curl -fsSL https://github.com/block/goose/releases/download/stable/download_cli.sh | CONFIGURE=false bash",
     builtin: true,
@@ -64,6 +79,7 @@ export const BUILTIN_AGENTS: AgentDef[] = [
     command: "opencode",
     args: ["acp"],
     install: "npm install -g opencode-ai",
+    terminal: { args: [] },
     builtin: true,
   },
 ];
@@ -92,8 +108,12 @@ function readStored(): Stored {
     for (const b of BUILTIN_AGENTS) {
       const i = agents.findIndex((a) => a.id === b.id);
       if (i === -1) agents.push(b);
-      else if (agents[i].install === undefined)
-        agents[i] = { ...agents[i], install: b.install };
+      else
+        agents[i] = {
+          ...agents[i],
+          install: agents[i].install ?? b.install,
+          terminal: agents[i].terminal ?? b.terminal,
+        };
     }
     return {
       agents,

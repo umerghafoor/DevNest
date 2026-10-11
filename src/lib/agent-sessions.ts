@@ -403,14 +403,42 @@ export async function logout(s: AgentSession) {
   }
 }
 
+function shellQuote(a: string) {
+  return /^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`;
+}
+
+/** `cd <cwd> && <parts…>`, quoted for a POSIX shell. */
+function shellLine(s: AgentSession, parts: string[]) {
+  const cd = s.cwd ? `cd ${shellQuote(s.cwd)} && ` : "";
+  return cd + parts.map(shellQuote).join(" ");
+}
+
 /** Shell command a "terminal" auth method wants the user to run. */
 export function terminalLoginCommand(s: AgentSession, m: AuthMethod) {
   if (!s.agent) return null;
-  const q = (a: string) =>
-    /^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`;
-  const parts = [s.agent.command, ...s.agent.args, ...(m.args ?? [])];
-  const cd = s.cwd ? `cd ${q(s.cwd)} && ` : "";
-  return cd + parts.map(q).join(" ");
+  return shellLine(s, [s.agent.command, ...s.agent.args, ...(m.args ?? [])]);
+}
+
+/**
+ * Command that opens the agent's own terminal UI on (a copy of) this
+ * conversation, optionally starting with `prompt` — e.g. a slash command
+ * only the terminal UI supports. Null if the agent doesn't define one.
+ */
+export function agentTerminalCommand(s: AgentSession, prompt?: string) {
+  const t = s.agent?.terminal;
+  if (!s.agent || !t) return null;
+  // Only resume once the agent has a transcript to resume (a turn ran).
+  const hasHistory = s.items.some((i) => i.kind === "user");
+  const resume =
+    hasHistory && s.sessionId && t.resumeArgs
+      ? t.resumeArgs.map((a) => a.replace("{sessionId}", s.sessionId!))
+      : [];
+  return shellLine(s, [
+    s.agent.command,
+    ...t.args,
+    ...resume,
+    ...(prompt ? [prompt] : []),
+  ]);
 }
 
 /** After a terminal sign-in finished: open the session the user was missing. */

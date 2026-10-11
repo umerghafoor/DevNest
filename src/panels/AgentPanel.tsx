@@ -17,6 +17,8 @@ import {
   stopAgent,
   stopInstall,
   subscribeAgentSession,
+  agentTerminalCommand,
+  note,
   terminalLoginCommand,
   type AgentSession,
   type TranscriptItem,
@@ -49,6 +51,7 @@ import {
   ScrollText,
   Settings2,
   Square,
+  SquareTerminal,
 } from "lucide-react";
 
 /**
@@ -92,6 +95,23 @@ export function AgentPanel({
   }
 
   const running = s.status !== "idle" && s.status !== "exited";
+  const splitPane = useAppStore((st) => st.splitPane);
+
+  /** Open the agent's own terminal UI beside this pane (optionally with a
+   *  starting prompt / slash command). */
+  const openTerminal = (prompt?: string) => {
+    const cmd = agentTerminalCommand(s, prompt);
+    if (!cmd) return;
+    const id = Math.random().toString(36).slice(2, 10);
+    splitPane(paneId, "horizontal", {
+      id,
+      deviceId,
+      panel: "terminal",
+      instanceId: id,
+      extra: { initialCommand: cmd },
+    });
+  };
+  const canTerminal = running && !!s.agent?.terminal;
   const agent = agents.find((a) => a.id === agentId);
 
   // Is the agent's command available on this device? Re-check after an
@@ -191,6 +211,15 @@ export function AgentPanel({
           </div>
         )}
         <div className={BTN_GROUP}>
+          {canTerminal && (
+            <button
+              className={TOOL_BTN}
+              onClick={() => openTerminal()}
+              title={`Open ${s.agent?.name ?? "the agent"}'s own terminal UI on a copy of this conversation — every command works there`}
+            >
+              <SquareTerminal size={12} />
+            </button>
+          )}
           {running ? (
             <button className={TOOL_BTN} onClick={() => void stopAgent(s)}>
               <Square size={11} /> Stop
@@ -260,7 +289,7 @@ export function AgentPanel({
 
       {s.permission && <PermissionCard s={s} />}
 
-      <Composer s={s} />
+      <Composer s={s} onTerminal={canTerminal ? openTerminal : undefined} />
     </div>
   );
 }
@@ -831,7 +860,14 @@ function matchCommands(text: string, commands: MenuCommand[]) {
   return [...starts, ...contains];
 }
 
-function Composer({ s }: { s: AgentSession }) {
+function Composer({
+  s,
+  onTerminal,
+}: {
+  s: AgentSession;
+  /** Set when the agent has a terminal UI for commands ACP doesn't offer. */
+  onTerminal?: (prompt: string) => void;
+}) {
   const [text, setText] = useState("");
   const [sel, setSel] = useState(0);
   const [dismissed, setDismissed] = useState(false);
@@ -840,7 +876,23 @@ function Composer({ s }: { s: AgentSession }) {
   const busy = s.status === "prompting";
 
   const commands = allCommands(s);
-  const suggestions = dismissed ? [] : matchCommands(text, commands);
+  const typed = /^\/(\S+)$/.exec(text)?.[1];
+  const known = (name: string) => commands.some((c) => c.name === name);
+  const suggestions = dismissed
+    ? []
+    : [
+        ...matchCommands(text, commands),
+        // Anything else the agent's terminal UI may know (e.g. /btw, /usage).
+        ...(onTerminal && typed && !known(typed)
+          ? [
+              {
+                name: typed,
+                description: `Run in ${s.agent?.name ?? "agent"} terminal`,
+                terminal: true,
+              } satisfies MenuCommand,
+            ]
+          : []),
+      ];
   const active = Math.min(sel, Math.max(0, suggestions.length - 1));
   const menuRef = useRef<React.ComponentRef<"ul">>(null);
 
@@ -875,6 +927,12 @@ function Composer({ s }: { s: AgentSession }) {
     if (!t || !ready) return;
     edit("");
     if (runLocalCommand(s, t)) return;
+    const name = /^\/(\S+)/.exec(t)?.[1];
+    if (name && onTerminal && !known(name)) {
+      onTerminal(t);
+      note(s, `Opened ${t} in the ${s.agent?.name ?? "agent"} terminal →`);
+      return;
+    }
     void sendPrompt(s, t);
   };
 
@@ -947,6 +1005,14 @@ function Composer({ s }: { s: AgentSession }) {
                       <span className="min-w-0 flex-1 truncate text-(--color-fg-muted)">
                         {c.description}
                       </span>
+                      {c.terminal && (
+                        <span
+                          className="shrink-0 rounded bg-(--color-surface-2) px-1 text-[10px] text-(--color-fg-muted)"
+                          title="Not available over ACP: opens the agent's own terminal UI beside this pane"
+                        >
+                          Terminal
+                        </span>
+                      )}
                       {c.local && (
                         <span
                           className="shrink-0 rounded bg-(--color-surface-2) px-1 text-[10px] text-(--color-fg-muted)"
