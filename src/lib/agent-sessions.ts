@@ -9,6 +9,8 @@ import {
   type ContentBlock,
   isInside,
   type AuthMethod,
+  type AvailableCommand,
+  type SessionModeState,
   type PermissionOutcome,
   type PermissionRequest,
   type PlanEntry,
@@ -53,6 +55,10 @@ export interface AgentSession {
   items: TranscriptItem[];
   stderr: string[];
   authMethods: AuthMethod[];
+  /** Slash commands the agent currently offers. */
+  commands: AvailableCommand[];
+  /** Agent modes, if it supports them. */
+  modes: SessionModeState | null;
   permission: PendingPermission | null;
   processId: string | null;
   sessionId: string | null;
@@ -106,6 +112,8 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
       items: [],
       stderr: [],
       authMethods: [],
+      commands: [],
+      modes: null,
       permission: null,
       processId: null,
       sessionId: null,
@@ -188,8 +196,23 @@ function applyUpdate(s: AgentSession, u: SessionUpdate) {
       s.items = [...others, { kind: "plan", id: "plan", entries }];
       break;
     }
+    case "available_commands_update":
+      s.commands =
+        (u as { availableCommands?: AvailableCommand[] }).availableCommands ??
+        [];
+      break;
+    case "current_mode_update":
+      if (s.modes) {
+        s.modes = {
+          ...s.modes,
+          currentModeId: String(
+            (u as { currentModeId?: unknown }).currentModeId,
+          ),
+        };
+      }
+      break;
     default:
-      return; // user_message_chunk (replay), commands, modes — not shown
+      return; // user_message_chunk (history replay) etc. — not shown
   }
   notify(s);
 }
@@ -213,6 +236,8 @@ export async function startAgent(
   s.items = [];
   s.stderr = [];
   s.authMethods = [];
+  s.commands = [];
+  s.modes = null;
   s.status = "starting";
   const processId = uid();
   s.processId = processId;
@@ -296,8 +321,9 @@ export async function startAgent(
 async function openSession(s: AgentSession) {
   if (!s.conn) return;
   try {
-    const { sessionId } = await s.conn.newSession(s.cwd);
+    const { sessionId, modes } = await s.conn.newSession(s.cwd);
     s.sessionId = sessionId;
+    s.modes = modes?.availableModes?.length ? modes : null;
     s.status = "ready";
     system(s, `${s.agent?.name ?? "Agent"} ready.`);
   } catch (e) {
@@ -341,6 +367,19 @@ export async function sendPrompt(s: AgentSession, text: string) {
   } finally {
     if (s.status === "prompting") s.status = "ready";
     notify(s);
+  }
+}
+
+export async function setMode(s: AgentSession, modeId: string) {
+  if (!s.conn || !s.sessionId || !s.modes) return;
+  const prev = s.modes.currentModeId;
+  s.modes = { ...s.modes, currentModeId: modeId };
+  notify(s);
+  try {
+    await s.conn.setMode(s.sessionId, modeId);
+  } catch (e) {
+    if (s.modes) s.modes = { ...s.modes, currentModeId: prev };
+    system(s, `Couldn't switch mode: ${describe(e)}`, true);
   }
 }
 

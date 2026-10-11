@@ -78,6 +78,25 @@ export type PermissionOutcome =
   | { outcome: "selected"; optionId: string }
   | { outcome: "cancelled" };
 
+/** A slash command the agent advertises; sent as prompt text `/name args`. */
+export interface AvailableCommand {
+  name: string;
+  description?: string;
+  input?: { hint?: string } | null;
+}
+
+/** An agent operating mode (e.g. Claude Code's Manual / Accept edits / Plan). */
+export interface SessionMode {
+  id: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface SessionModeState {
+  currentModeId: string;
+  availableModes: SessionMode[];
+}
+
 export interface AuthMethod {
   id: string;
   name: string;
@@ -216,10 +235,17 @@ export class AcpConnection {
   }
 
   newSession(cwd: string) {
-    return this.request<{ sessionId: string }>("session/new", {
-      cwd,
-      mcpServers: [],
-    });
+    return this.request<{ sessionId: string; modes?: SessionModeState | null }>(
+      "session/new",
+      {
+        cwd,
+        mcpServers: [],
+      },
+    );
+  }
+
+  setMode(sessionId: string, modeId: string) {
+    return this.request<unknown>("session/set_mode", { sessionId, modeId });
   }
 
   prompt(sessionId: string, text: string) {

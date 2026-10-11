@@ -8,6 +8,7 @@ import {
   installAgent,
   isAgentInstalled,
   sendPrompt,
+  setMode,
   startAgent,
   stopAgent,
   stopInstall,
@@ -15,7 +16,7 @@ import {
   type AgentSession,
   type TranscriptItem,
 } from "../lib/agent-sessions";
-import type { PermissionOption, ToolCall } from "../lib/acp";
+import type { AvailableCommand, PermissionOption, ToolCall } from "../lib/acp";
 import { contentText } from "../lib/acp";
 import {
   joinArgs,
@@ -559,11 +560,31 @@ function PermissionCard({ s }: { s: AgentSession }) {
 
 // ─── Composer ─────────────────────────────────────────────────────────────────
 
+/** Commands matching a `/partial` with no space typed yet; else none. */
+function matchCommands(text: string, commands: AvailableCommand[]) {
+  const m = /^\/(\S*)$/.exec(text);
+  if (!m || commands.length === 0) return [];
+  const q = m[1].toLowerCase();
+  const starts = commands.filter((c) => c.name.toLowerCase().startsWith(q));
+  const contains = commands.filter(
+    (c) =>
+      !c.name.toLowerCase().startsWith(q) &&
+      (c.name.toLowerCase().includes(q) ||
+        (c.description ?? "").toLowerCase().includes(q)),
+  );
+  return [...starts, ...contains].slice(0, 8);
+}
+
 function Composer({ s }: { s: AgentSession }) {
   const [text, setText] = useState("");
+  const [sel, setSel] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   const ready = s.status === "ready";
   const busy = s.status === "prompting";
+
+  const suggestions = dismissed ? [] : matchCommands(text, s.commands);
+  const active = Math.min(sel, Math.max(0, suggestions.length - 1));
 
   // Grow with the content up to a cap, then scroll.
   useEffect(() => {
@@ -573,58 +594,150 @@ function Composer({ s }: { s: AgentSession }) {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [text]);
 
+  const edit = (v: string) => {
+    setText(v);
+    setSel(0);
+    setDismissed(false);
+  };
+
+  const pick = (c: AvailableCommand) => {
+    edit(`/${c.name} `);
+    ref.current?.focus();
+  };
+
   const submit = () => {
     const t = text.trim();
     if (!t || !ready) return;
-    setText("");
+    edit("");
     void sendPrompt(s, t);
   };
 
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.nativeEvent.isComposing) return;
+    if (suggestions.length) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const d = e.key === "ArrowDown" ? 1 : -1;
+        setSel((active + d + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        pick(suggestions[active]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDismissed(true);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
+  };
+
+  const hint = (() => {
+    const m = /^\/(\S+)\s*$/.exec(text);
+    const cmd = m && s.commands.find((c) => c.name === m[1]);
+    return cmd?.input?.hint ?? null;
+  })();
+
   return (
     <div className="shrink-0 border-t border-(--color-border) px-4 py-3">
-      <div className="mx-auto flex max-w-3xl items-end gap-2 rounded-xl border border-(--color-border) bg-(--color-surface) py-1.5 pr-1.5 pl-3 focus-within:border-(--color-accent)">
-        <textarea
-          ref={ref}
-          rows={1}
-          className="max-h-40 min-h-[1.75rem] flex-1 resize-none bg-transparent py-1 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-60"
-          placeholder={
-            ready
-              ? "Ask the agent…"
-              : busy
-                ? "Agent is working…"
-                : "Start an agent to chat"
-          }
-          value={text}
-          disabled={!ready && !busy}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              submit();
+      <div className="relative mx-auto max-w-3xl">
+        {suggestions.length > 0 && (
+          <ul className="absolute right-0 bottom-full left-0 mb-1.5 max-h-64 overflow-y-auto rounded-lg border border-(--color-border) bg-(--color-surface) py-1 shadow-lg">
+            {suggestions.map((c, i) => (
+              <li key={c.name}>
+                <button
+                  className={`flex w-full items-baseline gap-3 px-3 py-1.5 text-left ${
+                    i === active
+                      ? "bg-(--color-accent)/15"
+                      : "hover:bg-(--color-surface-2)"
+                  }`}
+                  onMouseEnter={() => setSel(i)}
+                  onMouseDown={(e) => {
+                    e.preventDefault(); // keep focus in the textarea
+                    pick(c);
+                  }}
+                >
+                  <span className="shrink-0 font-mono">/{c.name}</span>
+                  <span className="truncate text-(--color-fg-muted)">
+                    {c.description}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="flex items-end gap-2 rounded-xl border border-(--color-border) bg-(--color-surface) py-1.5 pr-1.5 pl-3 focus-within:border-(--color-accent)">
+          <textarea
+            ref={ref}
+            rows={1}
+            className="max-h-40 min-h-[1.75rem] flex-1 resize-none bg-transparent py-1 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:opacity-60"
+            placeholder={
+              ready
+                ? s.commands.length
+                  ? "Ask the agent…  ( / for commands )"
+                  : "Ask the agent…"
+                : busy
+                  ? "Agent is working…"
+                  : "Start an agent to chat"
             }
-          }}
-        />
-        {busy ? (
-          <button
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
-            onClick={() => cancelTurn(s)}
-            title="Stop this turn"
-          >
-            <Square size={12} fill="currentColor" />
-          </button>
-        ) : (
-          <button
-            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
-            onClick={submit}
-            disabled={!ready || !text.trim()}
-            title="Send (Enter) · Newline (Shift+Enter)"
-          >
-            <ArrowUp size={15} />
-          </button>
+            value={text}
+            disabled={!ready && !busy}
+            onChange={(e) => edit(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          {busy ? (
+            <button
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
+              onClick={() => cancelTurn(s)}
+              title="Stop this turn"
+            >
+              <Square size={12} fill="currentColor" />
+            </button>
+          ) : (
+            <button
+              className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
+              onClick={submit}
+              disabled={!ready || !text.trim()}
+              title="Send (Enter) · Newline (Shift+Enter)"
+            >
+              <ArrowUp size={15} />
+            </button>
+          )}
+        </div>
+
+        {(s.modes || hint) && (
+          <div className="mt-1.5 flex items-center gap-3 px-1 text-[11px] text-(--color-fg-muted)">
+            {s.modes && (
+              <label className="flex items-center gap-1.5">
+                Mode
+                <select
+                  value={s.modes.currentModeId}
+                  onChange={(e) => void setMode(s, e.target.value)}
+                  disabled={!s.sessionId}
+                  className="rounded bg-transparent text-(--color-fg) outline-none hover:bg-(--color-surface-2)"
+                  title={
+                    s.modes.availableModes.find(
+                      (m) => m.id === s.modes?.currentModeId,
+                    )?.description ?? undefined
+                  }
+                >
+                  {s.modes.availableModes.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {hint && <span className="truncate">Argument: {hint}</span>}
+          </div>
         )}
       </div>
     </div>
