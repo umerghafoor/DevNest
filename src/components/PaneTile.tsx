@@ -182,7 +182,7 @@ export function PanelContent({ pane }: { pane: Pane }) {
     case "docker":
       return <DockerPanel deviceId={pane.deviceId} />;
     case "metrics":
-      return <MetricsPanel deviceId={pane.deviceId} />;
+      return <MetricsPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "terminal":
       return (
         <TerminalPanel deviceId={pane.deviceId} instanceId={pane.instanceId} />

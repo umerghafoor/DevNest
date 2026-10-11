@@ -269,6 +269,21 @@ export interface MetricsSnapshot {
   disks: DiskUsage[];
   net: NetInterface[];
   temperatures: ThermalZone[];
+  gpus: GpuInfo[];
+}
+
+export interface GpuInfo {
+  vendor: "nvidia" | "amd" | "apple" | string;
+  id: string;
+  name: string;
+  utilizationPercent: number | null;
+  memoryUsedMb: number | null;
+  /** null for unified memory (Apple Silicon). */
+  memoryTotalMb: number | null;
+  temperatureC: number | null;
+  powerW: number | null;
+  /** Set when the GPU was detected but its stats couldn't be read. */
+  error: string | null;
 }
 
 export interface CpuInfo {
