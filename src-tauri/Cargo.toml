@@ -3,6 +3,7 @@ name = "devnest"
 version = "1.2.2"
 description = "Unified desktop control panel for developers and self-hosters"
 authors = ["DevNest Contributors"]
+license = "MIT"
 edition = "2021"
 
 [lib]

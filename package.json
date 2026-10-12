@@ -1,6 +1,7 @@
 {
   "name": "devnest",
   "private": true,
+  "license": "MIT",
   "version": "1.2.2",
   "type": "module",
   "scripts": {

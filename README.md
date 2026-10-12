@@ -85,3 +85,7 @@ src-tauri/             Tauri + Rust backend
   migrations/          SQLite migrations
 docs/plans/            Roadmap and TODO
 ```
+
+## License
+
+[MIT](LICENSE) © 2026 Umer Ghafoor. See also the [privacy policy](https://devnest.optikflows.com/privacy.html).
