@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — DevNest</title>
+    <meta
+      name="description"
+      content="DevNest privacy policy: a local-first desktop app that does not collect, transmit, or sell your data."
+    />
+    <style>
+      :root {
+        --accent: oklch(0.74 0.17 58);
+        --surface: oklch(0.985 0.005 80);
+        --line: oklch(0.88 0.008 60);
+        --ink: oklch(0.18 0.012 60);
+        --ink-2: oklch(0.36 0.01 60);
+        --ink-3: oklch(0.55 0.008 60);
+        color-scheme: light dark;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --surface: oklch(0.16 0.01 60);
+          --line: oklch(0.28 0.01 60);
+          --ink: oklch(0.96 0.005 80);
+          --ink-2: oklch(0.78 0.008 70);
+          --ink-3: oklch(0.58 0.01 65);
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--surface);
+        color: var(--ink-2);
+        font:
+          16px/1.65 "Space Grotesk",
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      main {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 3rem 16px 4rem;
+      }
+      h1,
+      h2 {
+        color: var(--ink);
+        line-height: 1.2;
+      }
+      h2 {
+        margin-top: 2.2rem;
+        font-size: 1.15rem;
+      }
+      a {
+        color: var(--accent);
+      }
+      .meta {
+        color: var(--ink-3);
+        font-size: 0.9rem;
+      }
+      hr {
+        border: 0;
+        border-top: 1px solid var(--line);
+        margin: 2rem 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p><a href="/">&larr; DevNest</a></p>
+      <h1>Privacy Policy</h1>
+      <p class="meta">Last updated: October 12, 2026</p>
+
+      <p>
+        DevNest is a local-first desktop application. This policy explains what
+        data DevNest handles and what it does not.
+      </p>
+
+      <h2>Data we collect</h2>
+      <p>
+        None. DevNest does not collect, transmit, or sell personal data, and it
+        contains no analytics, telemetry, advertising, or crash-reporting
+        services. We do not operate servers that receive data from the app.
+      </p>
+
+      <h2>Data stored on your device</h2>
+      <p>
+        Settings, saved connections (such as SSH hosts), saved HTTP requests,
+        and similar configuration are stored locally on your computer. This data
+        never leaves your device through DevNest and is yours to view, back up,
+        or delete at any time by removing the app's data directory.
+      </p>
+
+      <h2>Access to your system</h2>
+      <p>
+        To do its job, DevNest reads and acts on resources you point it at:
+        local files, processes, ports, Docker, system services, terminals, and
+        remote machines you connect to over SSH or Tailscale. This access is
+        used only to show you that information and run actions you request. It
+        is not sent to us or to any third party.
+      </p>
+
+      <h2>Network requests you initiate</h2>
+      <p>
+        DevNest connects to remote hosts, APIs, or services only when you
+        instruct it to (for example, sending an HTTP request or opening an SSH
+        session). Those connections are between your device and the destination
+        you chose, and are subject to that destination's own privacy practices.
+      </p>
+
+      <h2>Website</h2>
+      <p>
+        This website is a static page hosted on GitHub Pages. It does not use
+        cookies or analytics. The host may keep standard server logs under its
+        own privacy policy. The site loads fonts from Google Fonts, which may
+        receive your IP address when fonts are fetched.
+      </p>
+
+      <h2>Children</h2>
+      <p>
+        DevNest is a developer tool and is not directed at children, and we do
+        not knowingly collect data from anyone.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        If this policy changes, the updated version will be posted here with a
+        new date.
+      </p>
+
+      <h2>Contact</h2>
+      <p>
+        Questions? Open an issue at
+        <a href="https://github.com/umerghafoor/DevNest/issues"
+          >github.com/umerghafoor/DevNest</a
+        >
+        or email
+        <a href="mailto:umerghafoor.lab@gmail.com">umerghafoor.lab@gmail.com</a
+        >.
+      </p>
+    </main>
+  </body>
+</html>

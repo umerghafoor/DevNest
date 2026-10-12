@@ -16,6 +16,7 @@ export default defineConfig(async () => ({
       input: {
         index: resolve(root, "index.html"),
         app: resolve(root, "app.html"),
+        privacy: resolve(root, "privacy.html"),
       },
     },
   },
