@@ -90,8 +90,8 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
               --target "$GITHUB_SHA" \
-              --title "DevNest main ${SHORT_SHA}" \
-              --notes "Automated release from main (${GITHUB_SHA})."
+              --title "DevNest $TAG" \
+              --notes "Automated release of $TAG from main (${SHORT_SHA})."
           fi
 
           find release-assets -type f \( \
