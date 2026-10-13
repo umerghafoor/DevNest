@@ -32,6 +32,10 @@ import { HttpPanel } from "../panels/HttpPanel";
 import { NetworkPanel } from "../panels/NetworkPanel";
 import type { PanelKind } from "../store/app-store";
 
+const AgentPanel = lazy(() =>
+  import("../panels/AgentPanel").then((m) => ({ default: m.AgentPanel })),
+);
+
 // SqlPanel pulls in Monaco (~3 MB). Lazy-load it so the rest of the app
 // isn't paying for it unless the user opens the SQL Client.
 const SqlPanel = lazy(() =>
@@ -61,6 +65,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   sql: "◰",
   markdown: "◧",
   netmon: "⇅",
+  agent: "✧",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -86,6 +91,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   sql: "SQL Client",
   markdown: "Markdown",
   netmon: "Ping & Speed",
+  agent: "AI Agent",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
@@ -111,6 +117,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   sql: "Connect to Postgres / MySQL / SQLite",
   markdown: "Write and preview Markdown with live rendering",
   netmon: "Ping monitor and internet speed test",
+  agent: "Claude Code, Codex, Gemini & other ACP agents",
 };
 
 export type PanelCategory =
@@ -146,6 +153,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   sql: "code",
   markdown: "code",
   netmon: "network",
+  agent: "code",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -178,7 +186,7 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   observability: ["metrics", "logs"],
   services: ["systemd", "services", "cron"],
   network: ["netmon", "http", "tailscale", "ngrok"],
-  code: ["git", "gitGraph", "editor", "markdown", "sql"],
+  code: ["agent", "git", "gitGraph", "editor", "markdown", "sql"],
   app: ["settings"],
 };
 
@@ -190,7 +198,11 @@ export function PanelContent({ pane }: { pane: Pane }) {
       return <MetricsPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "terminal":
       return (
-        <TerminalPanel deviceId={pane.deviceId} instanceId={pane.instanceId} />
+        <TerminalPanel
+          deviceId={pane.deviceId}
+          instanceId={pane.instanceId}
+          initialCommand={pane.extra?.initialCommand}
+        />
       );
     case "tailscale":
       return <TailscalePanel deviceId={pane.deviceId} />;
@@ -234,6 +246,12 @@ export function PanelContent({ pane }: { pane: Pane }) {
       return <SystemdPanel deviceId={pane.deviceId} />;
     case "http":
       return <HttpPanel />;
+    case "agent":
+      return (
+        <Suspense fallback={null}>
+          <AgentPanel deviceId={pane.deviceId} paneId={pane.id} />
+        </Suspense>
+      );
     case "sql":
       return (
         <Suspense

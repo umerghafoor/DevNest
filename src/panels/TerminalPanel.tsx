@@ -13,7 +13,13 @@ import { terminalRegistry } from "../lib/terminal-registry";
 interface Props {
   deviceId: string;
   instanceId?: string;
+  /** Typed into the shell once, right after it opens (e.g. an agent login). */
+  initialCommand?: string;
 }
+
+// Sessions that already ran their initialCommand, so a remount (which may
+// reopen the PTY) doesn't run it again.
+const ranInitial = new Set<string>();
 
 type ConnectState = "connecting" | "connected" | "error";
 
@@ -86,7 +92,7 @@ function watchTerminalTheme(term: Terminal): () => void {
   return () => mo.disconnect();
 }
 
-export function TerminalPanel({ deviceId, instanceId }: Props) {
+export function TerminalPanel({ deviceId, instanceId, initialCommand }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const searchAddonRef = useRef<SearchAddon | null>(null);
@@ -259,6 +265,16 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         });
 
         setConnectState("connected");
+
+        if (initialCommand && !ranInitial.has(sessionKey)) {
+          ranInitial.add(sessionKey);
+          const data = btoa(
+            String.fromCharCode(
+              ...new TextEncoder().encode(initialCommand + "\r"),
+            ),
+          );
+          void invoke("terminal_write", { termId, data });
+        }
       } catch {
         if (!cancelled) {
           setConnectState("error");
@@ -283,7 +299,7 @@ export function TerminalPanel({ deviceId, instanceId }: Props) {
         term.dispose();
       }
     };
-  }, [sessionKey, deviceId, retryNonce]);
+  }, [sessionKey, deviceId, retryNonce, initialCommand]);
 
   const termIdForRerun = terminalRegistry.get(sessionKey)?.termId ?? null;
 

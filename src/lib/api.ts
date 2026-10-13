@@ -347,6 +347,38 @@ export interface SqlQueryResult {
   rowsAffected: number | null;
 }
 
+/** DevNest's MCP server for the Master agent. */
+export interface MasterEndpoint {
+  url: string;
+  token: string;
+  bridgeCommand: string;
+  bridgeArgs: string[];
+}
+
+export interface HostProcess {
+  pid: number;
+  cpu: number;
+  mem: number;
+  name: string;
+}
+
+/** Live stats of a device, macOS or Linux (the host by default). */
+export interface HostStats {
+  cpuPercent: number;
+  cores: number;
+  memUsed: number;
+  memTotal: number;
+  load: [number, number, number];
+  diskUsed: number;
+  diskTotal: number;
+  /** Cumulative bytes; diff two samples for a rate. */
+  netRx: number;
+  netTx: number;
+  uptimeSecs: number;
+  top: HostProcess[];
+  timestampMs: number;
+}
+
 export const api = {
   ping: () => call<string>("ping"),
   appVersion: () => call<string>("app_version"),
@@ -473,6 +505,33 @@ export const api = {
 
   httpRequest: (spec: HttpRequestSpec) =>
     call<HttpResponse>("http_request", { spec }),
+
+  agentSpawn: (
+    deviceId: string,
+    agentId: string,
+    command: string,
+    args: string[],
+    cwd: string,
+    env?: Record<string, string>,
+  ) =>
+    call<void>("agent_spawn", { deviceId, agentId, command, args, cwd, env }),
+  agentCommandExists: (deviceId: string, command: string) =>
+    call<boolean>("agent_command_exists", { deviceId, command }),
+  agentSecretSet: (keyId: string, secret: string) =>
+    call<void>("agent_secret_set", { keyId, secret }),
+  agentSecretGet: (keyId: string) =>
+    call<string | null>("agent_secret_get", { keyId }),
+  agentSecretDelete: (keyId: string) =>
+    call<void>("agent_secret_delete", { keyId }),
+  agentSend: (agentId: string, line: string) =>
+    call<void>("agent_send", { agentId, line }),
+  agentKill: (agentId: string) => call<void>("agent_kill", { agentId }),
+  masterStart: () => call<MasterEndpoint>("master_start"),
+  masterResolve: (id: string, allow: boolean) =>
+    call<void>("master_resolve", { id, allow }),
+  masterDenyAll: () => call<void>("master_deny_all"),
+  hostStats: (deviceId?: string) =>
+    call<HostStats>("host_stats", { deviceId: deviceId ?? null }),
 
   ngrokAvailable: () => call<boolean>("ngrok_available"),
   ngrokList: () => call<NgrokTunnel[]>("ngrok_list"),

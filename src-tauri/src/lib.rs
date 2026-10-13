@@ -1,3 +1,4 @@
+mod agent;
 mod commands;
 mod db;
 mod devices;
@@ -10,6 +11,7 @@ mod local_fs;
 mod local_shell;
 mod log_stream;
 mod mac_rounded_corners;
+mod master;
 mod metrics;
 mod net;
 mod ngrok;
@@ -321,6 +323,8 @@ pub fn run() {
                 ngrok: ngrok::NgrokPool::new(),
                 tunnels: ssh_tunnel::TunnelPool::new(),
                 sql: sql::SqlPool::new(),
+                agents: agent::AgentPool::new(),
+                master: master::MasterHub::new(),
             });
             Ok(())
         })
@@ -328,6 +332,7 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(state) = window.try_state::<AppState>() {
                     state.ngrok.shutdown_all();
+                    state.agents.shutdown_all();
                 }
             }
         })
@@ -382,6 +387,17 @@ pub fn run() {
             tailscale_set_exit_node,
             log_stream::log_stream_start,
             log_stream::log_stream_stop,
+            agent::agent_spawn,
+            agent::agent_send,
+            agent::agent_kill,
+            agent::agent_command_exists,
+            agent::agent_secret_set,
+            agent::agent_secret_get,
+            agent::agent_secret_delete,
+            master::master_start,
+            master::master_resolve,
+            master::master_deny_all,
+            master::host_stats,
             git::git_is_repo,
             git::git_branch,
             git::git_clone,
@@ -422,4 +438,14 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running devnest");
+}
+
+/// `devnest --mcp-bridge`: stdio relay for the Master agent's MCP server.
+/// Returns true if that mode ran (the app itself should not start).
+pub fn run_mcp_bridge_if_requested() -> bool {
+    if std::env::args().nth(1).as_deref() == Some(master::BRIDGE_FLAG) {
+        master::bridge();
+        return true;
+    }
+    false
 }
