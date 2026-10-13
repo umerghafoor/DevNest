@@ -171,7 +171,11 @@ impl SqlPool {
                         .fetch_all(p)
                         .await
                         .map_err(|e| AppError::Db(format!("postgres query: {e}")))?;
-                    pg_rows_to_result(rows)
+                    let mut r = pg_rows_to_result(rows);
+                    if r.columns.is_empty() {
+                        r.columns = describe_columns(p, &sql).await;
+                    }
+                    r
                 } else {
                     let r = sqlx::query(&sql)
                         .execute(p)
@@ -186,7 +190,11 @@ impl SqlPool {
                         .fetch_all(p)
                         .await
                         .map_err(|e| AppError::Db(format!("mysql query: {e}")))?;
-                    mysql_rows_to_result(rows)
+                    let mut r = mysql_rows_to_result(rows);
+                    if r.columns.is_empty() {
+                        r.columns = describe_columns(p, &sql).await;
+                    }
+                    r
                 } else {
                     let r = sqlx::query(&sql)
                         .execute(p)
@@ -201,7 +209,11 @@ impl SqlPool {
                         .fetch_all(p)
                         .await
                         .map_err(|e| AppError::Db(format!("sqlite query: {e}")))?;
-                    sqlite_rows_to_result(rows)
+                    let mut r = sqlite_rows_to_result(rows);
+                    if r.columns.is_empty() {
+                        r.columns = describe_columns(p, &sql).await;
+                    }
+                    r
                 } else {
                     let r = sqlx::query(&sql)
                         .execute(p)
@@ -251,6 +263,26 @@ impl SqlPool {
                 other => other.to_string(),
             })
             .collect())
+    }
+}
+
+/// Column names for a statement that returned no rows (rows carry the column
+/// metadata, so an empty result set has none). Best effort.
+async fn describe_columns<'c, E, DB>(executor: E, sql: &str) -> Vec<ColumnInfo>
+where
+    E: sqlx::Executor<'c, Database = DB>,
+    DB: sqlx::Database,
+{
+    match executor.describe(sql).await {
+        Ok(d) => d
+            .columns()
+            .iter()
+            .map(|c| ColumnInfo {
+                name: c.name().to_string(),
+                data_type: c.type_info().name().to_string(),
+            })
+            .collect(),
+        Err(_) => vec![],
     }
 }
 
