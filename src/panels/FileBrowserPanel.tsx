@@ -1,9 +1,33 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  ArrowUp,
+  ChevronRight,
+  ChevronUp,
+  ChevronDown,
+  Eye,
+  EyeOff,
+  File as FileIcon,
+  FileCode,
+  FileImage,
+  FileText,
+  Folder,
+  FolderOpen,
+  HardDrive,
+  Home,
+  Pencil,
+  RefreshCw,
+  ScanLine,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from "lucide-react";
 import { errorMessage } from "../lib/api";
 import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { SkeletonTable } from "../components/Skeleton";
+import { DiskUsageTreemap } from "../components/DiskUsageTreemap";
 
 interface FileEntry {
   name: string;
@@ -27,10 +51,71 @@ function fmtSize(bytes: number): string {
 
 function fmtDate(ts: number): string {
   if (!ts) return "—";
-  return new Date(ts * 1000).toLocaleDateString();
+  return new Date(ts * 1000).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+type SortKey = "name" | "size" | "modified";
+
+const CODE_EXT =
+  /\.(tsx?|jsx?|json|ya?ml|toml|rs|py|go|c|cpp|h|java|sh|css|html|sql|xml)$/i;
+const IMAGE_EXT = /\.(png|jpe?g|gif|svg|webp|ico|bmp)$/i;
+const TEXT_EXT = /\.(md|txt|log|csv|lock|env)$/i;
+
+function EntryIcon({ entry }: { entry: FileEntry }) {
+  const cls = "h-4 w-4 shrink-0";
+  if (entry.isDir)
+    return (
+      <Folder
+        className={`${cls} text-(--color-accent)`}
+        fill="currentColor"
+        fillOpacity={0.18}
+      />
+    );
+  if (IMAGE_EXT.test(entry.name))
+    return <FileImage className={`${cls} text-(--color-online)`} />;
+  if (CODE_EXT.test(entry.name))
+    return <FileCode className={`${cls} text-sky-500`} />;
+  if (TEXT_EXT.test(entry.name))
+    return <FileText className={`${cls} text-(--color-fg-muted)`} />;
+  return <FileIcon className={`${cls} text-(--color-fg-muted)`} />;
+}
+
+function IconButton({
+  title,
+  onClick,
+  danger,
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  danger?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      title={title}
+      aria-label={title}
+      onClick={(ev) => {
+        ev.stopPropagation();
+        onClick();
+      }}
+      className={`flex h-6 w-6 items-center justify-center rounded transition-colors ${
+        danger
+          ? "text-(--color-error) hover:bg-(--color-error)/15"
+          : "text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+      }`}
+    >
+      {children}
+    </button>
+  );
 }
 
 const CWD_PREFIX = "devnest.files.cwd.";
+const DEVNEST_FILE_DRAG = "application/x-devnest-file";
 
 function loadCwd(deviceId: string): string {
   try {
@@ -52,6 +137,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"files" | "diskUsage">("files");
   const [editing, setEditing] = useState<{
     path: string;
     content: string;
@@ -61,6 +147,22 @@ export function FileBrowserPanel({ deviceId }: Props) {
     entry: FileEntry;
     name: string;
   } | null>(null);
+
+  // Drag and drop states
+  const [dragOver, setDragOver] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Quick filter
+  const [filter, setFilter] = useState("");
+  const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({
+    key: "name",
+    asc: true,
+  });
+  const [showHidden, setShowHidden] = useState(true);
+  const [selected, setSelected] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(
     async (path: string) => {
@@ -72,6 +174,7 @@ export function FileBrowserPanel({ deviceId }: Props) {
           path,
         });
         setEntries(list);
+        setFilter("");
         setCwd(path);
         saveCwd(deviceId, path);
       } catch (e) {
@@ -89,6 +192,110 @@ export function FileBrowserPanel({ deviceId }: Props) {
 
   const navigate = (entry: FileEntry) => {
     if (entry.isDir) void load(entry.path);
+  };
+
+  const q = filter.trim().toLowerCase();
+  const visible = entries
+    .filter((e) => showHidden || !e.name.startsWith("."))
+    .filter((e) => !q || e.name.toLowerCase().includes(q))
+    .sort((a, b) => {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      const dir = sort.asc ? 1 : -1;
+      if (sort.key === "size") return (a.size - b.size) * dir;
+      if (sort.key === "modified") return (a.modified - b.modified) * dir;
+      return a.name.localeCompare(b.name, undefined, { numeric: true }) * dir;
+    });
+
+  const toggleSort = (key: SortKey) =>
+    setSort((s) => ({ key, asc: s.key === key ? !s.asc : true }));
+
+  const crumbs = cwd.split("/").filter(Boolean);
+  const crumbPath = (i: number) => "/" + crumbs.slice(0, i + 1).join("/");
+
+  // Keep the selection valid and visible.
+  useEffect(() => {
+    setSelected(0);
+  }, [cwd, filter, showHidden, sort]);
+
+  // A clicked row unmounts on navigation; hand focus back so keys keep working.
+  useEffect(() => {
+    const root = rootRef.current;
+    const active = document.activeElement;
+    if (root && (active === document.body || root.contains(active))) {
+      if (active?.tagName !== "INPUT") root.focus({ preventScroll: true });
+    }
+  }, [entries]);
+
+  useEffect(() => {
+    rootRef.current
+      ?.querySelector(`[data-row-idx="${selected}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }, [selected]);
+
+  const openSelected = () => {
+    const entry = visible[Math.min(selected, visible.length - 1)];
+    if (!entry) return;
+    if (entry.isDir) void load(entry.path);
+    else void openEditor(entry);
+  };
+
+  // Arrow-key list navigation. `inInput` limits keys to those that don't
+  // clash with text editing.
+  const handleNavKey = (e: React.KeyboardEvent, inInput: boolean): boolean => {
+    const last = visible.length - 1;
+    switch (e.key) {
+      case "ArrowDown":
+        setSelected((i) => Math.min(last, i + 1));
+        break;
+      case "ArrowUp":
+        setSelected((i) => Math.max(0, i - 1));
+        break;
+      case "Enter":
+        openSelected();
+        break;
+      case "Home":
+        if (inInput) return false;
+        setSelected(0);
+        break;
+      case "End":
+        if (inInput) return false;
+        setSelected(Math.max(0, last));
+        break;
+      case "ArrowRight":
+        if (inInput) return false;
+        if (!visible[selected]?.isDir) return false;
+        openSelected();
+        break;
+      case "ArrowLeft":
+      case "Backspace":
+        if (inInput || cwd === "/") return false;
+        goUp();
+        break;
+      default:
+        return false;
+    }
+    e.preventDefault();
+    return true;
+  };
+
+  // Type anywhere in the panel to start filtering; Ctrl/Cmd+F focuses the box.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (viewMode !== "files") return;
+    const t = e.target as HTMLElement;
+    if (t.tagName === "INPUT" || t.tagName === "TEXTAREA") return;
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      filterRef.current?.focus();
+      filterRef.current?.select();
+      return;
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (handleNavKey(e, false)) return;
+    if (e.key.length === 1) {
+      e.preventDefault();
+      setFilter((f) => f + e.key);
+      filterRef.current?.focus();
+    }
   };
 
   const goUp = () => {
@@ -162,6 +369,134 @@ export function FileBrowserPanel({ deviceId }: Props) {
     }
   };
 
+  // Upload local files
+  const uploadLocalFile = async (file: File, targetDir: string) => {
+    const targetPath = targetDir.replace(/\/?$/, "/") + file.name;
+    const buffer = await file.arrayBuffer();
+    const data = Array.from(new Uint8Array(buffer));
+
+    await invoke("sftp_upload_file_bytes", {
+      deviceId,
+      path: targetPath,
+      data,
+    });
+  };
+
+  const handleFileInputChange = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setTransferring(true);
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const f = files[i];
+        toast.info(`Uploading ${f.name}…`);
+        await uploadLocalFile(f, cwd);
+      }
+      toast.success(`Uploaded ${files.length} file(s)`);
+      void load(cwd);
+    } catch (err) {
+      toast.error(`Upload failed: ${errorMessage(err)}`);
+    } finally {
+      setTransferring(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragOver) setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear if dragging out of currentTarget
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+
+    // Case 1: Drop from another DevNest remote FileBrowserPanel
+    const remoteData = e.dataTransfer.getData(DEVNEST_FILE_DRAG);
+    if (remoteData) {
+      try {
+        const payload = JSON.parse(remoteData) as {
+          sourceDeviceId: string;
+          sourcePath: string;
+          name: string;
+          isDir: boolean;
+        };
+
+        if (payload.isDir) {
+          toast.warn(
+            "Folder transfer is currently not supported. Please transfer individual files.",
+          );
+          return;
+        }
+
+        if (
+          payload.sourceDeviceId === deviceId &&
+          payload.sourcePath.startsWith(cwd)
+        ) {
+          toast.info("Source and destination are the same");
+          return;
+        }
+
+        setTransferring(true);
+        toast.info(`Transferring ${payload.name}…`);
+
+        // Download bytes from source device
+        const bytes = await invoke<number[]>("sftp_download_file_bytes", {
+          deviceId: payload.sourceDeviceId,
+          path: payload.sourcePath,
+        });
+
+        // Upload bytes to destination device
+        const targetPath = cwd.replace(/\/?$/, "/") + payload.name;
+        await invoke("sftp_upload_file_bytes", {
+          deviceId,
+          path: targetPath,
+          data: bytes,
+        });
+
+        toast.success(`Transferred ${payload.name} successfully`);
+        void load(cwd);
+      } catch (err) {
+        toast.error(`Transfer failed: ${errorMessage(err)}`);
+      } finally {
+        setTransferring(false);
+      }
+      return;
+    }
+
+    // Case 2: Drop from local operating system
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const files = Array.from(e.dataTransfer.files);
+      setTransferring(true);
+      try {
+        for (const file of files) {
+          toast.info(`Uploading ${file.name}…`);
+          await uploadLocalFile(file, cwd);
+        }
+        toast.success(`Uploaded ${files.length} file(s)`);
+        void load(cwd);
+      } catch (err) {
+        toast.error(`Drop upload failed: ${errorMessage(err)}`);
+      } finally {
+        setTransferring(false);
+      }
+    }
+  };
+
   if (editing) {
     return (
       <div className="flex h-full flex-col fade-up">
@@ -198,120 +533,350 @@ export function FileBrowserPanel({ deviceId }: Props) {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-2 border-b border-(--color-border) px-3 py-2 text-xs">
-        {/* Up button stays enabled — clicking while loading queues the navigation */}
+    <div
+      ref={rootRef}
+      tabIndex={-1}
+      onKeyDown={handleKeyDown}
+      className="relative flex h-full flex-col select-none overflow-hidden outline-none"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Hidden file input for Upload button */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileInputChange}
+        multiple
+        className="hidden"
+      />
+
+      {/* Drag & Drop Visual Overlay */}
+      {dragOver && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex flex-col items-center justify-center gap-2 border-2 border-dashed border-(--color-accent) bg-(--color-bg)/90 backdrop-blur-xs">
+          <span className="text-3xl">📥</span>
+          <div className="text-sm font-semibold text-(--color-fg)">
+            Drop files here to upload to
+          </div>
+          <div className="font-mono text-xs text-(--color-accent)">{cwd}</div>
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 border-b border-(--color-border) bg-(--color-surface) px-3 py-2 text-xs">
         <button
           onClick={goUp}
           disabled={cwd === "/"}
-          className="rounded border border-(--color-border) px-2 py-0.5 hover:bg-(--color-surface-2) disabled:opacity-40 transition-colors"
+          title="Go to parent folder"
+          aria-label="Up"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-(--color-fg-muted) transition-colors hover:bg-(--color-surface-2) hover:text-(--color-fg) disabled:opacity-30"
         >
-          ↑ Up
+          <ArrowUp className="h-4 w-4" />
         </button>
-        <span className="font-mono text-(--color-fg-muted) transition-all">
-          {cwd}
-        </span>
-        {/* Inline spinner — doesn't block the toolbar */}
-        {loading && (
-          <span className="ml-auto flex items-center gap-1.5 text-(--color-fg-muted)">
-            <span className="h-3 w-3 rounded-full border border-(--color-accent) border-t-transparent animate-spin" />
-          </span>
-        )}
+
+        {/* View switcher */}
+        <div className="flex shrink-0 rounded-md bg-(--color-surface-2) p-0.5">
+          {(
+            [
+              ["files", "Files", FolderOpen],
+              ["diskUsage", "Disk Usage", HardDrive],
+            ] as const
+          ).map(([mode, label, Icon]) => (
+            <button
+              key={mode}
+              onClick={() => setViewMode(mode)}
+              className={`flex items-center gap-1.5 rounded px-2.5 py-1 text-[11px] font-medium transition-all ${
+                viewMode === mode
+                  ? "bg-(--color-bg) text-(--color-fg) shadow-sm"
+                  : "text-(--color-fg-muted) hover:text-(--color-fg)"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Breadcrumbs */}
+        <nav className="flex min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap rounded-md bg-(--color-bg) px-2 py-1 font-mono [scrollbar-width:none]">
+          <button
+            onClick={() => void load("/")}
+            title="Root"
+            className="flex shrink-0 items-center rounded px-1 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+          >
+            <Home className="h-3.5 w-3.5" />
+          </button>
+          {crumbs.map((c, i) => (
+            <span key={crumbPath(i)} className="flex shrink-0 items-center">
+              <ChevronRight className="h-3 w-3 text-(--color-fg-muted)/60" />
+              <button
+                onClick={() => void load(crumbPath(i))}
+                className={`rounded px-1 hover:bg-(--color-surface-2) ${
+                  i === crumbs.length - 1
+                    ? "font-semibold text-(--color-fg)"
+                    : "text-(--color-fg-muted) hover:text-(--color-fg)"
+                }`}
+              >
+                {c}
+              </button>
+            </span>
+          ))}
+        </nav>
+
+        {/* Actions */}
+        <div className="flex shrink-0 items-center gap-1.5">
+          {(loading || transferring) && (
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-(--color-accent) border-t-transparent" />
+          )}
+          {viewMode === "files" && (
+            <>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-(--color-fg-muted)" />
+                <input
+                  ref={filterRef}
+                  value={filter}
+                  onChange={(ev) => setFilter(ev.target.value)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Escape") {
+                      setFilter("");
+                      ev.currentTarget.blur();
+                    } else {
+                      handleNavKey(ev, true);
+                    }
+                  }}
+                  placeholder="Filter files…"
+                  spellCheck={false}
+                  className="w-44 select-text rounded-md bg-(--color-bg) py-1 pl-7 pr-6 text-xs outline-none ring-1 ring-(--color-border) transition-shadow focus:ring-(--color-accent)"
+                />
+                {filter && (
+                  <button
+                    onClick={() => {
+                      setFilter("");
+                      filterRef.current?.focus();
+                    }}
+                    title="Clear filter"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-(--color-fg-muted) hover:text-(--color-fg)"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              <IconButton
+                title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
+                onClick={() => setShowHidden((v) => !v)}
+              >
+                {showHidden ? (
+                  <Eye className="h-4 w-4" />
+                ) : (
+                  <EyeOff className="h-4 w-4" />
+                )}
+              </IconButton>
+              <IconButton title="Refresh" onClick={() => void load(cwd)}>
+                <RefreshCw className="h-4 w-4" />
+              </IconButton>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={transferring}
+                title="Upload files from your computer"
+                className="flex items-center gap-1.5 rounded-md bg-(--color-accent) px-2.5 py-1 font-medium text-(--color-accent-fg) transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                <Upload className="h-3.5 w-3.5" />
+                Upload
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
-      {loading && entries.length === 0 ? (
+      {/* Main View Area */}
+      {viewMode === "diskUsage" ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <DiskUsageTreemap
+            deviceId={deviceId}
+            path={cwd}
+            onNavigate={(newPath) => {
+              void load(newPath);
+              setViewMode("files");
+            }}
+          />
+        </div>
+      ) : loading && entries.length === 0 ? (
         <SkeletonTable rows={8} cols={5} />
       ) : error ? (
-        <div className="flex flex-1 items-center justify-center text-sm text-(--color-error) fade-up">
+        <div className="fade-up flex flex-1 items-center justify-center text-sm text-(--color-error)">
           {error}
         </div>
       ) : (
-        <div
-          className="flex-1 overflow-auto transition-opacity duration-150"
-          style={{ opacity: loading ? 0.5 : 1 }}
-        >
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-(--color-surface) text-left text-(--color-fg-muted)">
-              <tr>
-                <th className="px-3 py-2 font-medium">Name</th>
-                <th className="px-3 py-2 font-medium">Size</th>
-                <th className="px-3 py-2 font-medium">Modified</th>
-                <th className="px-3 py-2 font-medium">Perms</th>
-                <th className="px-3 py-2 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((e, i) => (
-                <tr
-                  key={e.path}
-                  className="group border-b border-(--color-border) hover:bg-(--color-surface-2) row-animate"
-                  style={{ animationDelay: `${i * 25}ms` }}
-                >
-                  <td className="px-3 py-1.5 align-middle">
-                    <button
-                      onClick={() => navigate(e)}
-                      className={`text-left transition-colors ${e.isDir ? "font-medium text-(--color-accent)" : ""}`}
-                    >
-                      {e.isDir ? "📁 " : "📄 "}
-                      {renaming?.entry.path === e.path ? (
-                        <input
-                          autoFocus
-                          value={renaming.name}
-                          onChange={(ev) =>
-                            setRenaming(
-                              (r) => r && { ...r, name: ev.target.value },
-                            )
-                          }
-                          onKeyDown={(ev) => {
-                            if (ev.key === "Enter") void doRename();
-                            if (ev.key === "Escape") setRenaming(null);
-                          }}
-                          onClick={(ev) => ev.stopPropagation()}
-                          className="rounded border border-(--color-accent) bg-(--color-bg) px-1 text-xs outline-none"
-                        />
-                      ) : (
-                        e.name
-                      )}
-                    </button>
-                  </td>
-                  <td className="px-3 py-1.5 align-middle text-(--color-fg-muted)">
-                    {e.isDir ? "—" : fmtSize(e.size)}
-                  </td>
-                  <td className="px-3 py-1.5 align-middle text-(--color-fg-muted)">
-                    {fmtDate(e.modified)}
-                  </td>
-                  <td className="px-3 py-1.5 align-middle font-mono text-(--color-fg-muted)">
-                    {e.permissions}
-                  </td>
-                  <td className="px-3 py-1.5 align-middle">
-                    <div className="flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
-                      {!e.isDir && (
-                        <button
-                          onClick={() => openEditor(e)}
-                          className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface) transition-colors"
-                        >
-                          Edit
-                        </button>
-                      )}
+        <>
+          <div
+            className="flex-1 overflow-auto transition-opacity duration-150"
+            style={{ opacity: loading ? 0.5 : 1 }}
+          >
+            <table className="w-full table-fixed text-xs">
+              <thead className="sticky top-0 z-10 bg-(--color-bg) text-left text-[11px] uppercase tracking-wide text-(--color-fg-muted)">
+                <tr className="border-b border-(--color-border)">
+                  {(
+                    [
+                      ["name", "Name", "w-auto"],
+                      ["size", "Size", "w-24"],
+                      ["modified", "Modified", "w-32"],
+                    ] as const
+                  ).map(([key, label, w]) => (
+                    <th key={key} className={`px-3 py-2 font-medium ${w}`}>
                       <button
-                        onClick={() => setRenaming({ entry: e, name: e.name })}
-                        className="rounded border border-(--color-border) px-1.5 py-0.5 text-[10px] hover:bg-(--color-surface) transition-colors"
+                        onClick={() => toggleSort(key)}
+                        className="flex items-center gap-1 uppercase tracking-wide hover:text-(--color-fg)"
                       >
-                        Rename
+                        {label}
+                        {sort.key === key &&
+                          (sort.asc ? (
+                            <ChevronUp className="h-3 w-3" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3" />
+                          ))}
                       </button>
-                      <button
-                        onClick={() => void deleteEntry(e)}
-                        className="rounded bg-(--color-error)/10 px-1.5 py-0.5 text-[10px] text-(--color-error) hover:bg-(--color-error)/20 transition-colors"
-                      >
-                        Del
-                      </button>
-                    </div>
-                  </td>
+                    </th>
+                  ))}
+                  <th className="hidden w-20 px-3 py-2 font-medium md:table-cell">
+                    Perms
+                  </th>
+                  <th className="w-28 px-3 py-2" />
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {visible.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-12 text-center text-(--color-fg-muted)"
+                    >
+                      {q ? `No files match "${filter}"` : "Empty directory"}
+                    </td>
+                  </tr>
+                )}
+                {visible.map((e, i) => (
+                  <tr
+                    key={e.path}
+                    draggable
+                    onDragStart={(ev) => {
+                      ev.dataTransfer.setData(
+                        DEVNEST_FILE_DRAG,
+                        JSON.stringify({
+                          sourceDeviceId: deviceId,
+                          sourcePath: e.path,
+                          name: e.name,
+                          isDir: e.isDir,
+                        }),
+                      );
+                      ev.dataTransfer.effectAllowed = "copyMove";
+                    }}
+                    data-row-idx={i}
+                    onClick={() => setSelected(i)}
+                    onDoubleClick={() =>
+                      e.isDir ? navigate(e) : void openEditor(e)
+                    }
+                    className={`group row-animate cursor-default border-b border-(--color-border) transition-colors hover:bg-(--color-surface) ${
+                      i === selected
+                        ? "bg-(--color-accent)/10 shadow-[inset_2px_0_0_var(--color-accent)]"
+                        : ""
+                    }`}
+                    style={{ animationDelay: `${Math.min(i, 20) * 20}ms` }}
+                  >
+                    <td className="px-3 py-1.5 align-middle">
+                      <div className="flex items-center gap-2.5">
+                        <EntryIcon entry={e} />
+                        {renaming?.entry.path === e.path ? (
+                          <input
+                            autoFocus
+                            value={renaming.name}
+                            onChange={(ev) =>
+                              setRenaming(
+                                (r) => r && { ...r, name: ev.target.value },
+                              )
+                            }
+                            onKeyDown={(ev) => {
+                              if (ev.key === "Enter") void doRename();
+                              if (ev.key === "Escape") setRenaming(null);
+                            }}
+                            onClick={(ev) => ev.stopPropagation()}
+                            className="select-text rounded border border-(--color-accent) bg-(--color-bg) px-1.5 py-0.5 text-xs outline-none"
+                          />
+                        ) : (
+                          <button
+                            onClick={() => navigate(e)}
+                            className={`truncate text-left ${
+                              e.isDir
+                                ? "font-medium text-(--color-fg) hover:text-(--color-accent)"
+                                : "text-(--color-fg)"
+                            } ${e.name.startsWith(".") ? "opacity-60" : ""}`}
+                          >
+                            {e.name}
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-1.5 align-middle tabular-nums text-(--color-fg-muted)">
+                      {e.isDir ? "" : fmtSize(e.size)}
+                    </td>
+                    <td className="px-3 py-1.5 align-middle text-(--color-fg-muted)">
+                      {fmtDate(e.modified)}
+                    </td>
+                    <td className="hidden px-3 py-1.5 align-middle font-mono text-(--color-fg-muted)/70 md:table-cell">
+                      {e.permissions}
+                    </td>
+                    <td className="px-3 py-1.5 align-middle">
+                      <div className="flex justify-end gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                        {e.isDir ? (
+                          <IconButton
+                            title="Scan disk usage"
+                            onClick={() => {
+                              setCwd(e.path);
+                              saveCwd(deviceId, e.path);
+                              setViewMode("diskUsage");
+                            }}
+                          >
+                            <ScanLine className="h-3.5 w-3.5" />
+                          </IconButton>
+                        ) : (
+                          <IconButton
+                            title="Edit"
+                            onClick={() => void openEditor(e)}
+                          >
+                            <FileCode className="h-3.5 w-3.5" />
+                          </IconButton>
+                        )}
+                        <IconButton
+                          title="Rename"
+                          onClick={() =>
+                            setRenaming({ entry: e, name: e.name })
+                          }
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </IconButton>
+                        <IconButton
+                          title="Delete"
+                          danger
+                          onClick={() => void deleteEntry(e)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </IconButton>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-between border-t border-(--color-border) bg-(--color-surface) px-3 py-1 text-[11px] text-(--color-fg-muted)">
+            <span>
+              {visible.length}
+              {q || !showHidden ? ` of ${entries.length}` : ""} items
+            </span>
+            <span>↑↓ navigate · Enter/→ open · ←/⌫ up · type to filter</span>
+          </div>
+        </>
       )}
     </div>
   );

@@ -119,3 +119,101 @@ pub fn delete(path: &str, is_dir: bool) -> AppResult<()> {
         fs::remove_file(path).map_err(|e| AppError::Invalid(format!("unlink {path}: {e}")))
     }
 }
+
+// ─── Raw byte transfer & disk usage ─────────────────────────────────────────
+
+use crate::sftp::DiskUsageNode;
+
+pub fn download_file_bytes(path: &str) -> AppResult<Vec<u8>> {
+    let p = Path::new(path);
+    let meta = fs::metadata(p).map_err(|e| AppError::Invalid(format!("stat {path}: {e}")))?;
+    if !meta.is_file() {
+        return Err(AppError::Invalid(format!("not a file: {path}")));
+    }
+    if meta.len() > 100 * 1024 * 1024 {
+        return Err(AppError::Invalid("file too large (>100 MB)".into()));
+    }
+    fs::read(p).map_err(|e| AppError::Invalid(format!("read {path}: {e}")))
+}
+
+pub fn upload_file_bytes(path: &str, data: &[u8]) -> AppResult<()> {
+    let p = Path::new(path);
+    if let Some(parent) = p.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            return Err(AppError::Invalid(format!(
+                "parent does not exist: {}",
+                parent.display()
+            )));
+        }
+    }
+    fs::write(p, data).map_err(|e| AppError::Invalid(format!("write {path}: {e}")))
+}
+
+pub fn disk_usage(path: &str, max_depth: u32) -> AppResult<DiskUsageNode> {
+    let root = Path::new(path);
+    let meta =
+        fs::symlink_metadata(root).map_err(|e| AppError::Invalid(format!("stat {path}: {e}")))?;
+    if !meta.is_dir() {
+        return Ok(DiskUsageNode {
+            name: root
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.to_string()),
+            path: path.to_string(),
+            size: meta.len(),
+            children: Vec::new(),
+        });
+    }
+    scan_dir(root, 0, max_depth)
+}
+
+fn scan_dir(dir: &Path, depth: u32, max_depth: u32) -> AppResult<DiskUsageNode> {
+    let mut children = Vec::new();
+    let mut size: u64 = 0;
+
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let entry_path = entry.path();
+            let meta = match fs::symlink_metadata(&entry_path) {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            if meta.is_dir() && depth < max_depth {
+                match scan_dir(&entry_path, depth + 1, max_depth) {
+                    Ok(child) => {
+                        size += child.size;
+                        children.push(child);
+                    }
+                    Err(_) => continue,
+                }
+            } else if meta.is_file() {
+                let file_size = meta.len();
+                size += file_size;
+                if depth < max_depth {
+                    children.push(DiskUsageNode {
+                        name: entry.file_name().to_string_lossy().into_owned(),
+                        path: entry_path.to_string_lossy().into_owned(),
+                        size: file_size,
+                        children: Vec::new(),
+                    });
+                }
+            } else {
+                // Symlink or other — count size but don't recurse.
+                size += meta.len();
+            }
+        }
+    }
+
+    children.sort_by_key(|b| std::cmp::Reverse(b.size));
+
+    Ok(DiskUsageNode {
+        name: dir
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| dir.to_string_lossy().into_owned()),
+        path: dir.to_string_lossy().into_owned(),
+        size,
+        children,
+    })
+}
