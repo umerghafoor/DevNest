@@ -82,6 +82,8 @@ export function GitPanel() {
       m.set(d.id, { name: d.name, isLocalhost: d.isLocalhost });
     return m;
   }, [devices]);
+  // The localhost device has a generated id; undefined until devices load.
+  const localId = devices.find((d) => d.isLocalhost)?.id;
 
   const openGraph = (deviceId: string, path: string) => {
     const uid = Math.random().toString(36).slice(2, 10);
@@ -129,10 +131,16 @@ export function GitPanel() {
     persistFolders(updated);
   };
 
+  // Once devices load, migrate legacy "local" bookmarks to the real localhost
+  // id, then refresh branches.
   useEffect(() => {
-    if (folders.length > 0) void refreshBranches(folders);
+    if (!localId) return;
+    const migrated = folders.map((f) =>
+      f.deviceId === "local" ? { ...f, deviceId: localId } : f,
+    );
+    if (migrated.length > 0) void refreshBranches(migrated);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [localId]);
 
   const addBookmark = async (deviceId: string, path: string) => {
     const trimmed = path.trim();
@@ -171,8 +179,8 @@ export function GitPanel() {
 
   const pickLocalFolder = async () => {
     const selected = await openDialog({ directory: true, multiple: false });
-    if (typeof selected !== "string") return;
-    await addBookmark("local", selected);
+    if (typeof selected !== "string" || !localId) return;
+    await addBookmark(localId, selected);
   };
 
   const removeFolder = (id: string) => {
@@ -199,7 +207,7 @@ export function GitPanel() {
             name: d.name,
             isLocalhost: d.isLocalhost,
           }))}
-          defaultDeviceId={activeDeviceId ?? "local"}
+          defaultDeviceId={activeDeviceId ?? localId ?? ""}
           onPickLocal={pickLocalFolder}
           onAddRemote={addBookmark}
           onRemove={removeFolder}
@@ -230,7 +238,7 @@ export function GitPanel() {
               directory: true,
               multiple: false,
             });
-            if (typeof parent !== "string") return;
+            if (typeof parent !== "string" || !localId) return;
             try {
               toast.info(`Cloning ${repo.full_name}…`);
               const cloned = await api.gitClone(
@@ -239,13 +247,13 @@ export function GitPanel() {
                 repo.name,
               );
               const branch = await api
-                .gitBranch("local", cloned)
+                .gitBranch(localId, cloned)
                 .catch(() => null);
               const next: FolderBookmark[] = [
                 ...folders,
                 {
                   id: Math.random().toString(36).slice(2, 10),
-                  deviceId: "local",
+                  deviceId: localId,
                   path: cloned,
                   branch,
                 },
@@ -320,6 +328,17 @@ function FoldersSection({
   const [showRemotePicker, setShowRemotePicker] = useState(false);
   const selectedDevice = devices.find((d) => d.id === deviceId);
   const isLocal = !!selectedDevice?.isLocalhost;
+
+  // Devices may load after mount; keep the selection pointing at a real one.
+  useEffect(() => {
+    if (!selectedDevice && devices.length > 0) {
+      setDeviceId(
+        devices.some((d) => d.id === defaultDeviceId)
+          ? defaultDeviceId
+          : devices[0].id,
+      );
+    }
+  }, [devices, defaultDeviceId, selectedDevice]);
 
   const pickRemoteFolder = async (path: string) => {
     setShowRemotePicker(false);

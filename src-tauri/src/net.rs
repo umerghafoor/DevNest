@@ -85,13 +85,18 @@ pub fn ping(pool: &SessionPool, device: &Device, hosts: &[String]) -> AppResult<
 
 fn ping_script(hosts: &[String]) -> String {
     // macOS: -t is the overall timeout in seconds; Linux/busybox: -W.
+    // Windows (Git sh resolves `ping` to ping.exe): -n count, -w timeout in ms.
     let mut script = String::from(
         r#"os=$(uname)
 p() {
-  if [ "$os" = Darwin ]; then o=$(ping -c1 -t2 "$1" 2>&1); else o=$(ping -c1 -W2 "$1" 2>&1); fi
+  case "$os" in
+    Darwin) o=$(ping -c1 -t2 "$1" 2>&1) ;;
+    MINGW*|MSYS*|CYGWIN*) o=$(ping -n 1 -w 2000 "$1" 2>&1) ;;
+    *) o=$(ping -c1 -W2 "$1" 2>&1) ;;
+  esac
   t=$(printf '%s\n' "$o" | sed -n 's/.*time[=<] *\([0-9.]*\).*/\1/p' | head -n1)
   if [ -n "$t" ]; then printf '%s\tok\t%s\n' "$1" "$t"
-  elif [ -z "$o" ] || printf '%s' "$o" | grep -q 'packet loss'; then printf '%s\tlost\n' "$1"
+  elif [ -z "$o" ] || printf '%s' "$o" | grep -qE 'packet loss|timed out|unreachable'; then printf '%s\tlost\n' "$1"
   else printf '%s\terr\t%s\n' "$1" "$(printf '%s\n' "$o" | head -n1)"; fi
 }
 "#,
@@ -385,11 +390,7 @@ mod tests {
     }
 
     fn sh(script: &str) -> String {
-        let out = std::process::Command::new("sh")
-            .arg("-c")
-            .arg(script)
-            .output()
-            .unwrap();
+        let out = crate::local_shell::sh(script).output().unwrap();
         String::from_utf8_lossy(&out.stdout).into_owned()
     }
 

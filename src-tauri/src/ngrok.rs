@@ -7,7 +7,7 @@
 /// are killed when the app exits (see `shutdown_all`).
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::thread;
 
@@ -16,6 +16,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, AppResult};
+use crate::local_shell;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,7 +66,7 @@ impl NgrokPool {
 
         let id = uuid::Uuid::new_v4().to_string();
         let target = format!("{port}");
-        let mut cmd = Command::new("ngrok");
+        let mut cmd = local_shell::command("ngrok");
         cmd.arg(&proto)
             .arg(&target)
             .arg("--log=stdout")
@@ -193,7 +194,7 @@ impl NgrokPool {
 }
 
 fn which_ngrok() -> AppResult<()> {
-    let probe = Command::new("ngrok").arg("--version").output();
+    let probe = local_shell::command("ngrok").arg("--version").output();
     match probe {
         Ok(out) if out.status.success() => Ok(()),
         Ok(_) => Err(AppError::Invalid(

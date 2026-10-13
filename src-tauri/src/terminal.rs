@@ -37,6 +37,16 @@ impl TermHandle {
     }
 }
 
+/// The user's interactive shell. On Windows `$SHELL` (if set at all, e.g. by
+/// Git Bash) is a POSIX path that CreateProcess can't resolve, so ignore it.
+fn default_shell() -> String {
+    if cfg!(windows) {
+        "powershell.exe".into()
+    } else {
+        std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into())
+    }
+}
+
 /// Spawn a local PTY shell. Returns a handle (for input) and starts a thread
 /// that reads output and calls `on_output` for each chunk. `on_exit` is
 /// called once when the PTY closes (shell `exit`, process death, broken
@@ -69,10 +79,11 @@ where
         })
         .map_err(|e| AppError::Ssh(format!("openpty: {e}")))?;
 
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".into());
+    let shell = default_shell();
 
     // Use tmux for a persistent session when available and a session_id is given.
-    let use_tmux = session_id.is_some()
+    let use_tmux = !cfg!(windows)
+        && session_id.is_some()
         && std::process::Command::new("which")
             .arg("tmux")
             .output()

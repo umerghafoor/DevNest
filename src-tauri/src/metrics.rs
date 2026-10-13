@@ -476,10 +476,12 @@ fn parse_proc_stat(s: &str) -> (Option<CpuCoreTicks>, Vec<CpuCoreTicks>, Process
             // "cpu" or "cpuN" followed by jiffies.
             let mut it = line.split_whitespace();
             let label = it.next().unwrap_or("");
-            let nums: Vec<u64> = it.filter_map(|t| t.parse::<u64>().ok()).collect();
-            if nums.len() < 8 {
+            let mut nums: Vec<u64> = it.filter_map(|t| t.parse::<u64>().ok()).collect();
+            // Linux has 8+ columns; Cygwin/MSYS (Windows) only user/nice/system/idle.
+            if nums.len() < 4 {
                 continue;
             }
+            nums.resize(nums.len().max(8), 0);
             let ticks = CpuCoreTicks {
                 core: if label == "cpu" {
                     u32::MAX
