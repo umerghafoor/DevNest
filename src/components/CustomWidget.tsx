@@ -67,6 +67,7 @@ export function CustomWidget({
   const [showCmd, setShowCmd] = useState(false);
 
   const feed = useWidgetFeed(spec, deviceId, visible);
+  const wide = blockSpans(spec.blocks);
 
   const onSave = () => {
     save({ spec, deviceId, deviceName: name });
@@ -90,7 +91,7 @@ export function CustomWidget({
   return (
     <div
       ref={ref}
-      className="overflow-hidden rounded-lg border border-(--color-border) bg-(--color-bg) text-xs"
+      className="@container overflow-hidden rounded-lg border border-(--color-border) bg-(--color-bg) text-xs"
     >
       <div className="relative flex h-9 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) pr-1 pl-2.5 select-none">
         <div
@@ -104,14 +105,14 @@ export function CustomWidget({
         <span className="truncate font-semibold" title={spec.description ?? ""}>
           {spec.name}
         </span>
-        <span className="opacity-40">·</span>
-        <span className="flex min-w-0 shrink items-center gap-1 text-(--color-fg-muted)">
+        <span className="opacity-40 @max-xs:hidden">·</span>
+        <span className="flex min-w-0 shrink items-center gap-1 text-(--color-fg-muted) @max-xs:hidden">
           <span
             className={`h-1.5 w-1.5 shrink-0 rounded-full ${online ? "bg-(--color-online)" : "bg-(--color-fg-muted)"}`}
           />
           <span className="truncate">{name}</span>
         </span>
-        <span className="ml-auto shrink-0 pl-1 text-[10px] text-(--color-fg-muted) tabular-nums">
+        <span className="ml-auto shrink-0 pl-1 text-[10px] whitespace-nowrap text-(--color-fg-muted) tabular-nums @max-sm:hidden">
           {feed.updatedAt ? <Ago at={feed.updatedAt} /> : null}
         </span>
         <button
@@ -166,7 +167,7 @@ export function CustomWidget({
         </pre>
       )}
 
-      <div className="space-y-3 p-3">
+      <div className="grid gap-4 p-3 @3xl:grid-cols-2 @3xl:p-4">
         {feed.error && (
           <div className="rounded-md bg-(--color-error)/10 px-2.5 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-(--color-error)">
             {feed.error}
@@ -180,6 +181,7 @@ export function CustomWidget({
           spec.blocks.map((b, i) => (
             <Block
               key={i}
+              wide={wide[i]}
               block={b}
               data={feed.data}
               history={feed.history.current[i] ?? []}
@@ -269,11 +271,37 @@ function trackedValue(b: WidgetBlock, data: unknown): number | null {
 
 // ─── Blocks ───────────────────────────────────────────────────────────────────
 
+/** Blocks that read best at full width; the rest pair up side by side on
+ *  wide widgets. */
+const FULL_WIDTH = new Set(["stat", "stats", "table", "text", "line"]);
+
+/** Which blocks span both columns of a wide widget: full-width kinds, and a
+ *  half-width block with no half-width neighbour to share the row. */
+function blockSpans(blocks: WidgetBlock[]) {
+  const wide: boolean[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    if (FULL_WIDTH.has(blocks[i].type)) {
+      wide.push(true);
+      continue;
+    }
+    const next = blocks[i + 1];
+    if (next && !FULL_WIDTH.has(next.type)) {
+      wide.push(false, false);
+      i++;
+    } else {
+      wide.push(true);
+    }
+  }
+  return wide;
+}
+
 function Block({
   block: b,
+  wide,
   data,
   history,
 }: {
+  wide: boolean;
   block: WidgetBlock;
   data: unknown;
   history: number[];
@@ -347,7 +375,7 @@ function Block({
       ? b.label
       : undefined;
   return (
-    <section>
+    <section className={`min-w-0 ${wide ? "@3xl:col-span-2" : ""}`}>
       {label && (
         <h4 className="mb-1.5 text-[10px] font-semibold tracking-wider text-(--color-fg-muted) uppercase">
           {label}
@@ -488,12 +516,10 @@ function BarsBlock({
   const max = Math.max(1, ...series.map((s) => s.value));
   if (series.length === 0) return <Empty />;
   return (
-    <ul className="space-y-1.5">
+    // One grid for all rows so every bar starts and ends at the same x.
+    <ul className="grid grid-cols-[fit-content(40%)_1fr_auto] items-center gap-x-3 gap-y-1.5">
       {series.map((s, i) => (
-        <li
-          key={s.label}
-          className="grid grid-cols-[minmax(60px,30%)_1fr_auto] items-center gap-2"
-        >
+        <li key={s.label} className="contents">
           <span className="truncate" title={s.label}>
             {s.label}
           </span>
@@ -822,7 +848,7 @@ export function WidgetsPanel({ widgetId }: { widgetId?: string }) {
   }
   return (
     <div className="h-full overflow-y-auto p-3">
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-3">
         {shown.map((w) => (
           <CustomWidget
             key={w.spec.id}
