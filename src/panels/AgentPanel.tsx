@@ -948,7 +948,7 @@ export function PermissionCard({ s }: { s: AgentSession }) {
             {call.locations.map((l) => l.path).join(", ")}
           </div>
         )}
-        <div className="mt-2 flex flex-col-reverse gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
+        <div className="mt-2 flex flex-col gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
           {options.map((o) => (
             <button
               key={o.optionId}

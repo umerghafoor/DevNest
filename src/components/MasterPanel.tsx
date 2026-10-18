@@ -455,7 +455,7 @@ function ApprovalCard({ a }: { a: Approval }) {
         <pre className="max-h-32 overflow-auto rounded-lg bg-(--color-bg) px-2.5 py-1.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
           {a.detail}
         </pre>
-        <div className="mt-2 flex flex-col-reverse gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
+        <div className="mt-2 flex flex-col gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
           <button
             className={permissionButtonClass("reject_once")}
             onClick={() => answerApproval(a, false)}
