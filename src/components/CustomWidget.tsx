@@ -942,14 +942,6 @@ export function WidgetsPanel({ widgetId }: { widgetId?: string }) {
   );
 }
 
-/** Pinned widgets, for the Dashboard. Nothing when none are pinned. */
-export function PinnedWidgets() {
-  const saved = useWidgetsStore((s) => s.saved);
-  const pinned = saved.filter((w) => w.pinned);
-  if (pinned.length === 0) return null;
-  return <WidgetGrid widgets={pinned} />;
-}
-
 function WidgetGrid({
   widgets,
   className = "",
