@@ -530,6 +530,8 @@ export const api = {
   masterResolve: (id: string, allow: boolean) =>
     call<void>("master_resolve", { id, allow }),
   masterDenyAll: () => call<void>("master_deny_all"),
+  widgetRun: (deviceId: string, command: string, cwd: string | null) =>
+    call<CommandOutput>("widget_run", { deviceId, command, cwd }),
   hostStats: (deviceId?: string) =>
     call<HostStats>("host_stats", { deviceId: deviceId ?? null }),
 

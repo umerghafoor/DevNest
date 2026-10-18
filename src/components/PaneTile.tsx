@@ -30,6 +30,7 @@ import { GitGraphPanel } from "../panels/GitGraphPanel";
 import { SystemdPanel } from "../panels/SystemdPanel";
 import { HttpPanel } from "../panels/HttpPanel";
 import { NetworkPanel } from "../panels/NetworkPanel";
+import { WidgetsPanel } from "./CustomWidget";
 import type { PanelKind } from "../store/app-store";
 
 const AgentPanel = lazy(() =>
@@ -66,6 +67,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   markdown: "◧",
   netmon: "⇅",
   agent: "✧",
+  widgets: "▦",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -92,6 +94,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   markdown: "Markdown",
   netmon: "Ping & Speed",
   agent: "AI Agent",
+  widgets: "Widgets",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
@@ -118,6 +121,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   markdown: "Write and preview Markdown with live rendering",
   netmon: "Ping monitor and internet speed test",
   agent: "Claude Code, Codex, Gemini & other ACP agents",
+  widgets: "Custom widgets made with the Master agent",
 };
 
 export type PanelCategory =
@@ -154,6 +158,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   markdown: "code",
   netmon: "network",
   agent: "code",
+  widgets: "overview",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -180,7 +185,7 @@ export const CATEGORY_ORDER: PanelCategory[] = [
 ];
 
 export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
-  overview: ["dashboard", "sysinfo"],
+  overview: ["dashboard", "sysinfo", "widgets"],
   remote: ["terminal", "files", "processes", "ports"],
   containers: ["docker"],
   observability: ["metrics", "logs"],
@@ -240,6 +245,8 @@ export function PanelContent({ pane }: { pane: Pane }) {
           paneId={pane.id}
         />
       );
+    case "widgets":
+      return <WidgetsPanel widgetId={pane.extra?.widgetId} />;
     case "netmon":
       return <NetworkPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "systemd":

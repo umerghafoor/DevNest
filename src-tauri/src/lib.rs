@@ -398,6 +398,7 @@ pub fn run() {
             master::master_resolve,
             master::master_deny_all,
             master::host_stats,
+            master::widget_run,
             git::git_is_repo,
             git::git_branch,
             git::git_clone,

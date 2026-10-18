@@ -49,6 +49,7 @@ import { ChatHistoryButton } from "./agent/ChatHistory";
 import { chatsFor, useChatsStore, type ChatRecord } from "../lib/agent-chats";
 import { promptHistory, pushPrompt, stepHistory } from "../lib/prompt-history";
 import { MasterWidget } from "../components/MasterWidgets";
+import { CustomWidget } from "../components/CustomWidget";
 import {
   ArrowUp,
   ChevronDown,
@@ -697,6 +698,14 @@ function WorkingIndicator({ waitingOn }: { waitingOn: string | null }) {
 function Item({ item, deviceId }: { item: TranscriptItem; deviceId: string }) {
   switch (item.kind) {
     case "widget":
+      if (item.spec)
+        return (
+          <CustomWidget
+            spec={item.spec}
+            deviceId={item.deviceId ?? deviceId}
+            deviceName={item.deviceName}
+          />
+        );
       return (
         <MasterWidget
           widget={item.widget}

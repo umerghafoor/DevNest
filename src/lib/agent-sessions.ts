@@ -25,6 +25,7 @@ import {
   type ToolCall,
 } from "./acp";
 import type { AgentDef } from "../store/agents-store";
+import type { WidgetSpec } from "./custom-widgets";
 import {
   chatTitle,
   compactItems,
@@ -50,6 +51,8 @@ export type TranscriptItem =
       /** Device the widget watches; the session's device if unset. */
       deviceId?: string;
       deviceName?: string;
+      /** A custom widget the agent designed (`create_widget`). */
+      spec?: WidgetSpec;
     };
 
 export type AgentStatus =
