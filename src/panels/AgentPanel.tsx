@@ -166,7 +166,8 @@ export function AgentPanel({
 
   const allChats = useChatsStore((st) => st.chats);
   const removeChat = useChatsStore((st) => st.remove);
-  const chats = chatsFor(allChats, "pane", agentId, deviceId);
+  const chats = chatsFor(allChats, "pane", null, deviceId);
+  const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
 
   /** Open a saved chat, starting its agent in its folder if needed. */
   const resume = async (c: ChatRecord) => {
@@ -263,6 +264,7 @@ export function AgentPanel({
             chats={chats}
             currentId={s.chatId}
             showCwd
+            agentName={agentName}
             onNew={
               s.status === "ready" ? () => void newConversation(s) : undefined
             }
@@ -636,8 +638,33 @@ export function Transcript({
 
 /** Live "the agent is busy" row at the end of the transcript. Mounted only
  *  while a turn runs, so the timer restarts with each prompt. */
+const WORKING_WORDS = [
+  "Pondering",
+  "Cogitating",
+  "Mulling",
+  "Ruminating",
+  "Noodling",
+  "Brewing",
+  "Percolating",
+  "Tinkering",
+  "Conjuring",
+  "Crafting",
+  "Musing",
+  "Churning",
+  "Spelunking",
+  "Hatching",
+  "Nesting",
+  "Weaving",
+  "Simmering",
+  "Puzzling",
+];
+
 function WorkingIndicator({ waitingOn }: { waitingOn: string | null }) {
   const [start] = useState(() => Date.now());
+  // One word per turn, like Claude Code's status line.
+  const [word] = useState(
+    () => WORKING_WORDS[Math.floor(Math.random() * WORKING_WORDS.length)],
+  );
   const [now, setNow] = useState(start);
   useEffect(() => {
     const t = window.setInterval(() => setNow(Date.now()), 1000);
@@ -660,7 +687,7 @@ function WorkingIndicator({ waitingOn }: { waitingOn: string | null }) {
         />
       )}
       <span className={waitingOn ? "text-(--color-warn)" : ""}>
-        {waitingOn ?? "Working…"}
+        {waitingOn ?? `${word}…`}
       </span>
       <span className="tabular-nums opacity-70">{elapsed}</span>
     </div>
@@ -943,7 +970,7 @@ function SettingsRow({ s }: { s: AgentSession }) {
   if (s.config.length === 0 && !s.modes) return null;
 
   return (
-    <div className="flex items-center">
+    <div className="flex shrink-0 items-center">
       {s.config.map((o) =>
         o.type === "boolean" ? (
           <button
@@ -1307,18 +1334,18 @@ export function Composer({
               </ul>
             )}
 
-            <div className="flex flex-wrap items-end gap-x-1 rounded-xl border border-(--color-border) bg-(--color-surface) p-1 pl-3 transition-colors focus-within:border-(--color-accent)">
+            <div className="flex flex-col rounded-xl border border-(--color-border) bg-(--color-surface) p-1 transition-colors focus-within:border-(--color-accent)">
               <textarea
                 ref={ref}
                 rows={1}
-                className="no-focus-ring max-h-40 min-h-7 min-w-48 flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
+                className="no-focus-ring max-h-40 min-h-7 w-full resize-none bg-transparent px-2 py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
                 placeholder={
                   ready
                     ? commands.length
                       ? "Ask the agent… / for commands"
                       : "Ask the agent…"
                     : busy
-                      ? "Agent is working… type to queue a message"
+                      ? "Queue a message…"
                       : "Start an agent to chat"
                 }
                 value={text}
@@ -1326,8 +1353,10 @@ export function Composer({
                 onChange={(e) => edit(e.target.value)}
                 onKeyDown={onKeyDown}
               />
-              <div className="ml-auto flex shrink-0 items-center gap-0.5">
-                <SettingsRow s={s} />
+              <div className="flex items-center gap-0.5">
+                <div className="flex min-w-0 flex-1 overflow-x-auto">
+                  <SettingsRow s={s} />
+                </div>
                 {busy && (
                   <button
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"

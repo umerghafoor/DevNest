@@ -266,7 +266,8 @@ function MasterMenu({
   const agents = useAgentsStore((st) => st.agents);
   const allChats = useChatsStore((st) => st.chats);
   const removeChat = useChatsStore((st) => st.remove);
-  const chats = chatsFor(allChats, MASTER_KEY, agentId, s.deviceId);
+  const chats = chatsFor(allChats, MASTER_KEY, null, s.deviceId);
+  const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -335,6 +336,7 @@ function MasterMenu({
           <ChatList
             chats={chats}
             currentId={s.chatId}
+            agentName={agentName}
             onNew={canNew ? act(() => void newConversation(s)) : undefined}
             onOpen={(c) => {
               if (busy) return;

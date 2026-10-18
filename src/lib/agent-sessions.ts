@@ -579,6 +579,8 @@ export async function sendPrompt(s: AgentSession, text: string) {
   if (!s.conn || !s.sessionId || s.status !== "ready") return;
   s.items = [...s.items, { kind: "user", id: uid(), text }];
   s.status = "prompting";
+  // Save now so the chat is in the history even if the app closes mid-turn.
+  saveChat(s);
   notify(s);
   try {
     const { stopReason } = await s.conn.prompt(s.sessionId, text);

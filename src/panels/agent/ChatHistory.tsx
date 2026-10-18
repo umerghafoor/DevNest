@@ -10,6 +10,7 @@ export function ChatList({
   chats,
   currentId,
   showCwd,
+  agentName,
   onNew,
   onOpen,
   onDelete,
@@ -18,10 +19,13 @@ export function ChatList({
   currentId: string | null;
   /** Show each chat's folder (agent panes work in different projects). */
   showCwd?: boolean;
+  /** Display name for a chat's agent; shown when the list mixes agents. */
+  agentName?: (agentId: string) => string;
   onNew?: () => void;
   onOpen: (c: ChatRecord) => void;
   onDelete: (c: ChatRecord) => void;
 }) {
+  const mixed = new Set(chats.map((c) => c.agentId)).size > 1;
   return (
     <div className="text-xs">
       {onNew && (
@@ -54,6 +58,7 @@ export function ChatList({
                 </span>
                 <span className="w-full truncate text-[11px] text-(--color-fg-muted)">
                   {relativeTime(c.updatedAt)}
+                  {mixed && agentName && ` · ${agentName(c.agentId)}`}
                   {showCwd && c.cwd && (
                     <>
                       {" · "}
