@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { downloadDir, join } from "@tauri-apps/api/path";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowUp,
   ChevronRight,
   ChevronUp,
   ChevronDown,
+  Download,
   Eye,
   EyeOff,
   File as FileIcon,
@@ -330,6 +333,25 @@ export function FileBrowserPanel({ deviceId }: Props) {
       toast.error(`Save failed: ${errorMessage(e)}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** Save a file from this device to a place the user picks. */
+  const downloadEntry = async (entry: FileEntry) => {
+    try {
+      const dest = await saveDialog({
+        defaultPath: await join(await downloadDir(), entry.name),
+      });
+      if (!dest) return;
+      toast.info(`Downloading ${entry.name}…`);
+      await invoke<number>("sftp_download_to", {
+        deviceId,
+        path: entry.path,
+        dest,
+      });
+      toast.success(`Saved ${entry.name}`);
+    } catch (err) {
+      toast.error(`Download failed: ${errorMessage(err)}`);
     }
   };
 
@@ -838,12 +860,20 @@ export function FileBrowserPanel({ deviceId }: Props) {
                             <ScanLine className="h-3.5 w-3.5" />
                           </IconButton>
                         ) : (
-                          <IconButton
-                            title="Edit"
-                            onClick={() => void openEditor(e)}
-                          >
-                            <FileCode className="h-3.5 w-3.5" />
-                          </IconButton>
+                          <>
+                            <IconButton
+                              title="Download"
+                              onClick={() => void downloadEntry(e)}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </IconButton>
+                            <IconButton
+                              title="Edit"
+                              onClick={() => void openEditor(e)}
+                            >
+                              <FileCode className="h-3.5 w-3.5" />
+                            </IconButton>
+                          </>
                         )}
                         <IconButton
                           title="Rename"

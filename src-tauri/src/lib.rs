@@ -258,6 +258,22 @@ fn sftp_download_file_bytes(
     sftp::download_file_bytes(&device, &path)
 }
 
+/// Save a file from a device to a local path the user picked.
+#[tauri::command(async)]
+fn sftp_download_to(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+    dest: String,
+) -> error::AppResult<u64> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    if device.is_localhost {
+        return Ok(std::fs::copy(&path, &dest)?);
+    }
+    sftp::download_to_file(&device, &path, &dest)
+}
+
 #[tauri::command(async)]
 fn sftp_upload_file_bytes(
     state: tauri::State<'_, AppState>,
@@ -382,6 +398,7 @@ pub fn run() {
             sftp_delete,
             sftp_disk_usage,
             sftp_download_file_bytes,
+            sftp_download_to,
             sftp_upload_file_bytes,
             tailscale_status,
             tailscale_set_exit_node,
