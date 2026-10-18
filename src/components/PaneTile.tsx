@@ -336,9 +336,12 @@ function usePaneDragging() {
   );
 }
 // A drop or cancel anywhere ends the drag (dragend may not fire if the
-// source pane moved during the drop).
+// source pane moved during the drop). Deferred and in the bubble phase, so
+// the shields are still there while the pane under them handles the drop.
 for (const ev of ["dragend", "drop"] as const) {
-  window.addEventListener(ev, () => setPaneDragging(false), true);
+  window.addEventListener(ev, () =>
+    setTimeout(() => setPaneDragging(false), 0),
+  );
 }
 
 function dropIndicatorClass(position: DockPosition): string {
@@ -601,7 +604,11 @@ function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
           getDockPosition(e, e.currentTarget.getBoundingClientRect()),
         );
       }}
-      onDragLeave={finishDrop}
+      onDragLeave={(e) => {
+        // Moving onto a child (the shield, the header) isn't leaving.
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null))
+          finishDrop();
+      }}
       onDrop={(e) => {
         const raw = e.dataTransfer.getData(PANE_DRAG_MIME);
         finishDrop();
@@ -610,11 +617,12 @@ function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
         try {
           const payload = JSON.parse(raw) as { paneId?: string };
           if (!payload.paneId) return;
+          // From the drop point itself: the hover state can lag a frame.
           dockPane(
             workspaceId,
             payload.paneId,
             pane.id,
-            dropPosition ?? "center",
+            getDockPosition(e, e.currentTarget.getBoundingClientRect()),
           );
         } catch {
           // ignore malformed drag payloads

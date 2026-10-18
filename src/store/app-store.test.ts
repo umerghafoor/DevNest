@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { useAppStore } from "./app-store";
+import { collectPanes, useAppStore, type PaneNode } from "./app-store";
 
 function activeWs() {
   const s = useAppStore.getState();
@@ -22,6 +22,38 @@ describe("app-store — panes", () => {
       workspaces: [ws],
       activeWorkspaceId: ws.id,
     });
+  });
+
+  it("docks a pane beside another one", () => {
+    const { openPane, splitPane, dockPane } = useAppStore.getState();
+    const pane = (id: string) => ({
+      id,
+      deviceId: "d1",
+      panel: "docker" as const,
+      instanceId: id,
+    });
+    openPane(pane("a"));
+    splitPane("a", "horizontal", pane("b"));
+    splitPane("b", "vertical", pane("c"));
+    // Move a to the right of c.
+    dockPane("w1", "a", "c", "right");
+    const root = activeWs().paneRoot as PaneNode;
+    expect(
+      collectPanes(root)
+        .map((p) => p.id)
+        .sort(),
+    ).toEqual(["a", "b", "c"]);
+    const leafId = (n: PaneNode) => (n.type === "leaf" ? n.pane.id : null);
+    const parentOf = (n: PaneNode, id: string): PaneNode | null => {
+      if (n.type !== "split") return null;
+      if (leafId(n.first) === id || leafId(n.second) === id) return n;
+      return parentOf(n.first, id) ?? parentOf(n.second, id);
+    };
+    const parent = parentOf(root, "a");
+    expect(parent?.type).toBe("split");
+    if (parent?.type !== "split") return;
+    expect(parent.direction).toBe("horizontal");
+    expect([leafId(parent.first), leafId(parent.second)]).toEqual(["c", "a"]);
   });
 
   it("opens a pane and makes it active", () => {
