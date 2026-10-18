@@ -8,7 +8,7 @@ import { toast } from "./Toast";
 import { confirm } from "./ConfirmDialog";
 import { iconForDeviceId } from "../lib/device-icon";
 import { useUiStore } from "../store/ui-store";
-import { Plus } from "lucide-react";
+import { HeartPulse, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 
 type Status = ConnectionStatus | "connecting" | "error";
 
@@ -200,11 +200,11 @@ export function Sidebar() {
                           onClick={() => void onToggleSudo(d)}
                           aria-label={d.useSudo ? "Disable sudo" : "Enable sudo"}
                           title={d.useSudo ? "Disable sudo" : "Enable sudo"}
-                          className={`flex h-5 w-5 items-center justify-center rounded text-[11px] hover:bg-(--color-bg) transition-colors ${
-                            d.useSudo ? "text-(--color-warn)" : ""
+                          className={`flex h-6 w-6 items-center justify-center rounded hover:bg-(--color-bg) transition-colors ${
+                            d.useSudo ? "text-(--color-warn)" : "text-(--color-fg-muted) hover:text-(--color-fg)"
                           }`}
                         >
-                          ⚡
+                          <ShieldCheck size={13} strokeWidth={1.75} />
                         </button>
                         {!d.isLocalhost && (
                           <button
@@ -219,11 +219,11 @@ export function Sidebar() {
                                 ? "Disable SSH keep-alive"
                                 : "Enable SSH keep-alive (reconnect to apply)"
                             }
-                            className={`flex h-5 w-5 items-center justify-center rounded text-[11px] hover:bg-(--color-bg) transition-colors ${
-                              d.keepAlive ? "text-(--color-accent)" : ""
+                            className={`flex h-6 w-6 items-center justify-center rounded hover:bg-(--color-bg) transition-colors ${
+                              d.keepAlive ? "text-(--color-accent)" : "text-(--color-fg-muted) hover:text-(--color-fg)"
                             }`}
                           >
-                            ↻
+                            <HeartPulse size={13} strokeWidth={1.75} />
                           </button>
                         )}
                         {!d.isLocalhost && (
@@ -234,19 +234,19 @@ export function Sidebar() {
                             }}
                             aria-label="Edit device"
                             title="Edit device"
-                            className="flex h-5 w-5 items-center justify-center rounded text-[11px] text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-fg) transition-colors"
+                            className="flex h-6 w-6 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-fg) transition-colors"
                           >
-                            ✎
+                            <Pencil size={13} strokeWidth={1.75} />
                           </button>
                         )}
                         {!d.isLocalhost && (
                           <button
                             onClick={() => void onDelete(d.id)}
                             aria-label="Delete device"
-                            title="Delete"
-                            className="flex h-5 w-5 items-center justify-center rounded text-[11px] text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-error) transition-colors"
+                            title="Delete device"
+                            className="flex h-6 w-6 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-error) transition-colors"
                           >
-                            ×
+                            <Trash2 size={13} strokeWidth={1.75} />
                           </button>
                         )}
                       </div>
