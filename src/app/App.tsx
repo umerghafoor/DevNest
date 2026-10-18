@@ -10,6 +10,7 @@ import { ConfirmDialogHost } from "../components/ConfirmDialog";
 import { CommandPalette } from "../components/CommandPalette";
 import { FloatingPaneWindow } from "../components/FloatingPaneWindow";
 import { MasterPanel } from "../components/MasterPanel";
+import { startUpdateChecks } from "../lib/updates";
 import { useMasterStore } from "../lib/master";
 import { usePaletteStore } from "../store/palette-store";
 import { api } from "../lib/api";
@@ -87,6 +88,11 @@ export function App() {
   useEffect(() => {
     reapplyColors();
   }, [themeValue, reapplyColors]);
+
+  // New-version checks run in the main window only.
+  useEffect(() => {
+    if (!floatingPaneId) startUpdateChecks();
+  }, [floatingPaneId]);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;

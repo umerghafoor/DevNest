@@ -13,6 +13,8 @@ import {
   type ShortcutId,
 } from "../store/shortcuts-store";
 import { THEME_TEMPLATES, type ThemeTemplate } from "../lib/theme-templates";
+import { checkForUpdates, useUpdateStore } from "../lib/updates";
+import { openUrl } from "@tauri-apps/plugin-opener";
 
 type Tab = "appearance" | "shortcuts" | "integrations" | "about";
 
@@ -554,6 +556,10 @@ function IntegrationsTab() {
 }
 
 function AboutTab() {
+  const update = useUpdateStore((s) => s.available);
+  const checking = useUpdateStore((s) => s.checking);
+  const lastChecked = useUpdateStore((s) => s.lastChecked);
+  const error = useUpdateStore((s) => s.error);
   return (
     <div className="mx-auto max-w-2xl">
       <SectionTitle>About</SectionTitle>
@@ -569,6 +575,38 @@ function AboutTab() {
           <div>
             Engine <span className="text-(--color-fg) font-mono">Tauri 2</span>
           </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-(--color-border) pt-3 text-xs">
+          {update ? (
+            <>
+              <span className="text-(--color-accent)">
+                DevNest {update.version} is available.
+              </span>
+              <button
+                onClick={() => void openUrl(update.url)}
+                className="rounded-md bg-(--color-accent) px-2.5 py-1 font-medium text-(--color-accent-fg) hover:opacity-90"
+              >
+                Get it
+              </button>
+            </>
+          ) : (
+            <span className="text-(--color-fg-muted)">
+              {checking
+                ? "Checking for updates…"
+                : error
+                  ? `Last check failed: ${error}`
+                  : lastChecked
+                    ? "You're on the latest version."
+                    : "DevNest checks for new versions on launch and every 6 hours."}
+            </span>
+          )}
+          <button
+            onClick={() => void checkForUpdates(true)}
+            disabled={checking}
+            className="ml-auto rounded-md border border-(--color-border) px-2.5 py-1 hover:bg-(--color-surface-2) disabled:opacity-50"
+          >
+            Check for updates
+          </button>
         </div>
       </div>
     </div>
