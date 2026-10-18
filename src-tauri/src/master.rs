@@ -412,6 +412,7 @@ fn tool_defs() -> Value {
                 "cwd": { "type": "string", "description": "Working directory (default: home)." },
                 "parse": { "type": "string", "enum": ["json", "lines", "table", "kv", "number", "text"], "description": "How to read stdout (default json)." },
                 "interval": { "type": "integer", "minimum": 0, "description": "Refresh every N seconds; 0 = only on demand. Default 30." },
+                "params": { "type": "object", "description": "Settings the user can change when reusing the widget, e.g. {\"dir\": {\"label\": \"Folder\", \"default\": \"~/DevNest\"}}. Reference them as {{dir}} in command/cwd, without quotes (DevNest quotes them)." },
                 "blocks": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "Layout, top to bottom. See the tool description." },
                 "reason": reason },
             "required": ["name", "command", "blocks", "reason"] } },
@@ -838,8 +839,8 @@ updating by itself; don't call show_widget again for the same device and widget.
                 return Err("Pass `device`: a name from list_devices, or \"host\".".into());
             }
             let spec = widget_spec(args)?;
-            let command = spec["command"].as_str().unwrap_or("");
-            let cwd = spec["cwd"].as_str();
+            let (command, cwd) = resolve_widget(&spec);
+            let (command, cwd) = (command.as_str(), cwd.as_deref());
             let key = (
                 device.id.clone(),
                 cwd.unwrap_or("").to_string(),
@@ -907,7 +908,9 @@ limit?, exclude?: [keys]} horizontal bar chart\n\
 - {type:\"list\", label?, items, primary, secondary?, badge?, limit?, exclude?}\n\
 - {type:\"kv\", label?, items:[{label, value, format?}]} key/value facts\n\
 - {type:\"status\", label, value, ok?: [values]} green/red health pill (truthy = ok if no `ok`)\n\
-- {type:\"text\", label?, value?, mono?: bool, maxLines?} raw text / log tail";
+- {type:\"text\", label?, value?, mono?: bool, maxLines?} raw text / log tail\n\
+Make it reusable: put what the user may change later (folder, service, host, URL) in \
+`params` and reference it as {{name}} in command/cwd, unquoted.";
 
 /// Check and normalise a `create_widget` call into the spec the UI renders.
 fn widget_spec(args: &Value) -> Result<Value, String> {
@@ -934,6 +937,14 @@ fn widget_spec(args: &Value) -> Result<Value, String> {
             ));
         }
     }
+    let params = match args.get("params") {
+        None | Some(Value::Null) => json!({}),
+        Some(Value::Object(m)) if m.values().all(Value::is_object) => Value::Object(m.clone()),
+        Some(_) => return Err(
+            "`params` must map names to {label, default}, e.g. {\"dir\": {\"default\": \"~/x\"}}."
+                .into(),
+        ),
+    };
     let id = args
         .get("id")
         .and_then(Value::as_str)
@@ -949,6 +960,7 @@ fn widget_spec(args: &Value) -> Result<Value, String> {
         "cwd": args.get("cwd").and_then(Value::as_str).filter(|s| !s.trim().is_empty()),
         "parse": parse,
         "interval": args.get("interval").and_then(Value::as_u64).unwrap_or(30),
+        "params": params,
         "blocks": blocks,
     }))
 }
@@ -1258,6 +1270,45 @@ pub fn host_stats(app: AppHandle, device_id: Option<String>) -> AppResult<HostSt
     stats_for(&app, &device)
 }
 
+/// Command and cwd with `{{param}}` defaults filled in: shell-quoted in the
+/// command, as-is in the cwd. Mirrors `resolveSpec` in custom-widgets.ts.
+fn resolve_widget(spec: &Value) -> (String, Option<String>) {
+    let value = |key: &str| {
+        spec["params"][key]["default"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    };
+    let fill = |text: &str, quote: bool| {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(start) = rest.find("{{") {
+            let Some(len) = rest[start..].find("}}") else {
+                break;
+            };
+            let key = rest[start + 2..start + len].trim();
+            let ok = !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            out.push_str(&rest[..start]);
+            if ok {
+                let v = value(key);
+                out.push_str(&if quote { q(&v) } else { v });
+            } else {
+                out.push_str(&rest[start..start + len + 2]);
+            }
+            rest = &rest[start + len + 2..];
+        }
+        out.push_str(rest);
+        out
+    };
+    (
+        fill(spec["command"].as_str().unwrap_or(""), true),
+        spec["cwd"].as_str().map(|c| fill(c, false)),
+    )
+}
+
 /// Run a saved widget's command on a device: login shell, no sudo, short
 /// timeout. Used by the widget renderer on every refresh.
 #[tauri::command(async)]
@@ -1397,7 +1448,21 @@ disk=1000 400\nnet=123 456\nuptime=3600\nproc=42|12.5|1.0|/usr/bin/Google Chrome
             (Some("abc"), Some(0))
         );
 
+        let tpl = widget_spec(&json!({
+            "name": "x", "command": "cloc {{dir}} {{ nope", "cwd": "{{dir}}",
+            "params": { "dir": { "default": "~/a b" } },
+            "blocks": [{ "type": "text" }]
+        }))
+        .unwrap();
+        let (cmd, cwd) = resolve_widget(&tpl);
+        assert_eq!(cmd, format!("cloc {} {{{{ nope", q("~/a b")));
+        assert_eq!(cwd.as_deref(), Some("~/a b"));
+
         let bad = |v: Value| widget_spec(&v).unwrap_err();
+        assert!(bad(
+            json!({ "name": "x", "command": "y", "params": [1], "blocks": [{ "type": "text" }] })
+        )
+        .contains("params"));
         assert!(bad(json!({ "name": "x", "command": "y", "blocks": [] })).contains("blocks"));
         assert!(
             bad(json!({ "name": "x", "command": "y", "blocks": [{ "type": "pie" }] }))

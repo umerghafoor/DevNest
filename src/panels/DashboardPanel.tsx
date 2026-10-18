@@ -8,6 +8,7 @@ import {
   CATEGORY_ORDER,
   PANEL_ORDER_IN_CATEGORY,
 } from "../components/PaneTile";
+import { PinnedWidgets } from "../components/CustomWidget";
 
 interface Props {
   deviceId: string;
@@ -52,6 +53,8 @@ export function DashboardPanel({ deviceId }: Props) {
             <Stat label="workspace" value={ws?.name ?? "—"} />
           </span>
         </header>
+
+        <PinnedWidgets />
 
         {/* Quick launch — denser, single section */}
         <section className="flex-1">

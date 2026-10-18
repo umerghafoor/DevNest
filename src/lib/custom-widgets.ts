@@ -119,7 +119,15 @@ export interface WidgetSpec {
   parse?: ParseMode;
   /** Seconds between refreshes; 0 = only on demand. */
   interval?: number;
+  /** Settings the user can change when reusing the widget (folder, service,
+   *  …), referenced as {{key}} in `command` and `cwd`. */
+  params?: Record<string, WidgetParam>;
   blocks: WidgetBlock[];
+}
+
+export interface WidgetParam {
+  label?: string;
+  default?: string;
 }
 
 export interface SavedWidget {
@@ -127,6 +135,36 @@ export interface SavedWidget {
   deviceId: string;
   deviceName: string;
   savedAt: number;
+  /** Values for `spec.params`; defaults fill the gaps. */
+  params?: Record<string, string>;
+  /** Shown on the Dashboard. */
+  pinned?: boolean;
+}
+
+// ─── Templates ────────────────────────────────────────────────────────────────
+
+const PLACEHOLDER = /\{\{\s*([\w-]+)\s*\}\}/g;
+
+function shQuote(v: string) {
+  return `'${v.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Command and folder with {{params}} filled in: shell-quoted in the
+ *  command, as-is in the folder. Mirrors `resolve_widget` in master.rs. */
+export function resolveSpec(
+  spec: WidgetSpec,
+  values: Record<string, string> = {},
+): { command: string; cwd: string | null } {
+  const value = (key: string) =>
+    values[key] ?? spec.params?.[key]?.default ?? "";
+  return {
+    command: spec.command.replace(PLACEHOLDER, (_, k: string) =>
+      shQuote(value(k)),
+    ),
+    cwd: spec.cwd
+      ? spec.cwd.replace(PLACEHOLDER, (_, k: string) => value(k))
+      : null,
+  };
 }
 
 // ─── Parsing ──────────────────────────────────────────────────────────────────
@@ -334,24 +372,93 @@ function persist(list: SavedWidget[]) {
 
 interface WidgetsState {
   saved: SavedWidget[];
+  /** Add, or replace the widget with the same id (keeping its place). */
   save: (w: Omit<SavedWidget, "savedAt">) => void;
   remove: (id: string) => void;
+  togglePin: (id: string) => void;
 }
 
-export const useWidgetsStore = create<WidgetsState>((set, get) => ({
-  saved: load(),
-  save: (w) => {
-    const rest = get().saved.filter((x) => x.spec.id !== w.spec.id);
-    const saved = [{ ...w, savedAt: Date.now() }, ...rest];
+export function newWidgetId() {
+  return Math.random().toString(36).slice(2, 14);
+}
+
+export const useWidgetsStore = create<WidgetsState>((set, get) => {
+  const commit = (saved: SavedWidget[]) => {
     set({ saved });
     persist(saved);
-  },
-  remove: (id) => {
-    const saved = get().saved.filter((x) => x.spec.id !== id);
-    set({ saved });
-    persist(saved);
-  },
-}));
+  };
+  return {
+    saved: load(),
+    save: (w) => {
+      const list = get().saved;
+      const next = { ...w, savedAt: Date.now() };
+      const at = list.findIndex((x) => x.spec.id === w.spec.id);
+      commit(
+        at < 0
+          ? [next, ...list]
+          : list.map((x, i) =>
+              i === at ? { ...next, pinned: w.pinned ?? x.pinned } : x,
+            ),
+      );
+    },
+    remove: (id) => commit(get().saved.filter((x) => x.spec.id !== id)),
+    togglePin: (id) =>
+      commit(
+        get().saved.map((x) =>
+          x.spec.id === id ? { ...x, pinned: !x.pinned } : x,
+        ),
+      ),
+  };
+});
+
+// ─── Export / import ──────────────────────────────────────────────────────────
+
+const FILE_TAG = "devnest-widgets";
+
+export function exportWidgets(list: SavedWidget[]) {
+  return JSON.stringify(
+    { format: FILE_TAG, version: 1, widgets: list },
+    null,
+    2,
+  );
+}
+
+/** Widgets from an exported file (or a bare spec / list of specs). Throws
+ *  on anything that doesn't look like a widget. */
+export function parseWidgetFile(text: string): SavedWidget[] {
+  const raw: unknown = JSON.parse(text);
+  const items: unknown[] =
+    raw && typeof raw === "object" && "widgets" in raw
+      ? ((raw as { widgets: unknown[] }).widgets ?? [])
+      : Array.isArray(raw)
+        ? raw
+        : [raw];
+  const out = items.map((it, i): SavedWidget => {
+    const o = (it ?? {}) as Partial<SavedWidget> & Partial<WidgetSpec>;
+    const spec = (o.spec ?? o) as WidgetSpec;
+    if (
+      typeof spec.name !== "string" ||
+      typeof spec.command !== "string" ||
+      !Array.isArray(spec.blocks) ||
+      spec.blocks.length === 0
+    ) {
+      throw new Error(`Item ${i + 1} isn't a DevNest widget.`);
+    }
+    return {
+      spec: {
+        ...spec,
+        id: typeof spec.id === "string" ? spec.id : newWidgetId(),
+      },
+      deviceId: typeof o.deviceId === "string" ? o.deviceId : "",
+      deviceName: typeof o.deviceName === "string" ? o.deviceName : "",
+      params: o.params,
+      pinned: o.pinned,
+      savedAt: Date.now(),
+    };
+  });
+  if (out.length === 0) throw new Error("The file has no widgets.");
+  return out;
+}
 
 /** Saved and identical to `spec` (a revised preview counts as unsaved). */
 export function isSaved(saved: SavedWidget[], spec: WidgetSpec) {

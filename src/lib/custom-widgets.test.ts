@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  exportWidgets,
   formatValue,
+  parseWidgetFile,
+  resolveSpec,
   parseOutput,
   pick,
   rowsOf,
@@ -62,5 +65,42 @@ describe("custom widgets", () => {
     expect(formatValue(5.25, "percent")).toBe("5.3%");
     expect(formatValue(null)).toBe("—");
     expect(formatValue("ok")).toBe("ok");
+  });
+
+  it("fills template params, quoting them in the command", () => {
+    const spec = {
+      id: "w",
+      name: "LOC",
+      command: "cloc --json {{dir}} --exclude-dir={{skip}}",
+      cwd: "{{dir}}",
+      params: { dir: { default: "~/a b" }, skip: { default: "node_modules" } },
+      blocks: [{ type: "text" as const }],
+    };
+    expect(resolveSpec(spec)).toEqual({
+      command: "cloc --json '~/a b' --exclude-dir='node_modules'",
+      cwd: "~/a b",
+    });
+    expect(resolveSpec(spec, { dir: "it's" }).command).toContain("'it'\\''s'");
+  });
+
+  it("round-trips exported widgets and rejects junk", () => {
+    const w = {
+      spec: {
+        id: "w",
+        name: "x",
+        command: "y",
+        blocks: [{ type: "text" as const }],
+      },
+      deviceId: "d",
+      deviceName: "Mac",
+      savedAt: 1,
+    };
+    const back = parseWidgetFile(exportWidgets([w]));
+    expect(back[0].spec).toEqual(w.spec);
+    expect(back[0].deviceName).toBe("Mac");
+    // A bare spec works too.
+    expect(parseWidgetFile(JSON.stringify(w.spec))[0].spec.name).toBe("x");
+    expect(() => parseWidgetFile('{"hello":1}')).toThrow();
+    expect(() => parseWidgetFile('{"widgets":[]}')).toThrow();
   });
 });

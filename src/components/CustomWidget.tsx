@@ -1,27 +1,42 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  open as openDialog,
+  save as saveDialog,
+} from "@tauri-apps/plugin-dialog";
+import {
   Bookmark,
   BookmarkCheck,
+  Download,
   LayoutDashboard,
   Maximize2,
+  Pin,
   RefreshCw,
+  SlidersHorizontal,
   Terminal,
-  Trash2,
+  Upload,
 } from "lucide-react";
 import { api, errorMessage } from "../lib/api";
 import {
+  exportWidgets,
   formatValue,
   isSaved,
+  newWidgetId,
   num,
   parseOutput,
+  parseWidgetFile,
   pick,
+  resolveSpec,
   rowsOf,
   sortRows,
   useWidgetsStore,
+  type SavedWidget,
   type WidgetBlock,
   type WidgetSpec,
 } from "../lib/custom-widgets";
+import { SMALL_INPUT } from "../lib/ui";
 import { useAppStore } from "../store/app-store";
+import { confirm } from "./ConfirmDialog";
+import { Modal } from "./Modal";
 import { toast } from "./Toast";
 
 /** Series colours for bars / donut slices, from the theme where possible. */
@@ -46,12 +61,18 @@ export function CustomWidget({
   spec,
   deviceId,
   deviceName,
+  params,
   variant = "chat",
+  frameless,
 }: {
   spec: WidgetSpec;
   deviceId: string;
   deviceName?: string;
+  /** Values for the spec's template params (saved widgets). */
+  params?: Record<string, string>;
   variant?: "chat" | "panel";
+  /** Fill the pane edge to edge: no card border or radius. */
+  frameless?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const visible = useVisible(ref);
@@ -60,13 +81,16 @@ export function CustomWidget({
   const openPane = useAppStore((s) => s.openPane);
   const saved = useWidgetsStore((s) => s.saved);
   const save = useWidgetsStore((s) => s.save);
-  const remove = useWidgetsStore((s) => s.remove);
+  const togglePin = useWidgetsStore((s) => s.togglePin);
+  const entry = saved.find((w) => w.spec.id === spec.id);
   const name = device?.name ?? deviceName ?? "device";
   const online = device?.isLocalhost || status === "connected";
   const isStored = isSaved(saved, spec);
   const [showCmd, setShowCmd] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const run = resolveSpec(spec, params);
 
-  const feed = useWidgetFeed(spec, deviceId, visible);
+  const feed = useWidgetFeed(spec, run, deviceId, visible);
   const wide = blockSpans(spec.blocks);
 
   const onSave = () => {
@@ -91,9 +115,13 @@ export function CustomWidget({
   return (
     <div
       ref={ref}
-      className="@container overflow-hidden rounded-lg border border-(--color-border) bg-(--color-bg) text-xs"
+      className={`@container bg-(--color-bg) text-xs ${
+        frameless
+          ? "flex h-full flex-col overflow-hidden"
+          : "overflow-hidden rounded-lg border border-(--color-border)"
+      }`}
     >
-      <div className="relative flex h-9 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) pr-1 pl-2.5 select-none">
+      <div className="relative flex h-9 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) pr-1 pl-2.5 select-none">
         <div
           className={`absolute top-0 right-0 left-0 h-0.5 transition-colors ${visible ? "bg-(--color-accent)" : "bg-transparent"}`}
         />
@@ -142,20 +170,39 @@ export function CustomWidget({
             </button>
           </>
         ) : (
-          <button
-            className={`${iconBtn} hover:text-(--color-error)`}
-            onClick={() => remove(spec.id)}
-            title="Delete saved widget"
-          >
-            <Trash2 size={12} />
-          </button>
+          <>
+            <button
+              className={`${iconBtn} ${entry?.pinned ? "text-(--color-accent)" : ""}`}
+              onClick={() => togglePin(spec.id)}
+              title={
+                entry?.pinned ? "Unpin from Dashboard" : "Pin to Dashboard"
+              }
+            >
+              <Pin
+                size={12}
+                className={entry?.pinned ? "fill-current" : undefined}
+              />
+            </button>
+            {entry && (
+              <button
+                className={iconBtn}
+                onClick={() => setEditing(true)}
+                title="Settings, duplicate, export, delete"
+              >
+                <SlidersHorizontal size={12} />
+              </button>
+            )}
+          </>
         )}
       </div>
+      {editing && entry && (
+        <WidgetSettings widget={entry} onClose={() => setEditing(false)} />
+      )}
 
       {showCmd && (
         <pre className="border-b border-(--color-border) bg-(--color-surface) px-3 py-2 font-mono text-[11px] break-all whitespace-pre-wrap text-(--color-fg-muted)">
-          {spec.cwd ? `cd ${spec.cwd}\n` : ""}
-          {spec.command}
+          {run.cwd ? `cd ${run.cwd}\n` : ""}
+          {run.command}
           {"\n"}
           <span className="opacity-70">
             {spec.interval
@@ -167,7 +214,9 @@ export function CustomWidget({
         </pre>
       )}
 
-      <div className="grid gap-4 p-3 @3xl:grid-cols-2 @3xl:p-4">
+      <div
+        className={`grid content-start gap-3 p-3 @3xl:grid-cols-2 ${frameless ? "min-h-0 flex-1 overflow-y-auto" : ""}`}
+      >
         {feed.error && (
           <div className="rounded-md bg-(--color-error)/10 px-2.5 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-(--color-error)">
             {feed.error}
@@ -195,7 +244,12 @@ export function CustomWidget({
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
-function useWidgetFeed(spec: WidgetSpec, deviceId: string, live: boolean) {
+function useWidgetFeed(
+  spec: WidgetSpec,
+  run: { command: string; cwd: string | null },
+  deviceId: string,
+  live: boolean,
+) {
   const [data, setData] = useState<unknown>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -203,9 +257,11 @@ function useWidgetFeed(spec: WidgetSpec, deviceId: string, live: boolean) {
   const [nonce, setNonce] = useState(0);
   /** Per-block numeric history for trend / line blocks. */
   const history = useRef<Record<number, number[]>>({});
-  const specKey = JSON.stringify(spec);
+  const specKey = JSON.stringify([spec, run]);
   const specRef = useRef(spec);
   specRef.current = spec;
+  const runRef = useRef(run);
+  runRef.current = run;
 
   // A revised spec starts fresh.
   useEffect(() => {
@@ -220,7 +276,8 @@ function useWidgetFeed(spec: WidgetSpec, deviceId: string, live: boolean) {
       const s = specRef.current;
       setLoading(true);
       try {
-        const out = await api.widgetRun(deviceId, s.command, s.cwd ?? null);
+        const { command, cwd } = runRef.current;
+        const out = await api.widgetRun(deviceId, command, cwd);
         if (stop) return;
         if (out.exitCode !== 0 && !out.stdout.trim()) {
           throw new Error(
@@ -832,33 +889,353 @@ function useVisible(ref: React.RefObject<HTMLElement | null>) {
 export function WidgetsPanel({ widgetId }: { widgetId?: string }) {
   const saved = useWidgetsStore((s) => s.saved);
   const shown = widgetId ? saved.filter((w) => w.spec.id === widgetId) : saved;
-  if (shown.length === 0) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1.5 p-6 text-center text-xs text-(--color-fg-muted)">
-        <LayoutDashboard size={22} strokeWidth={1.5} />
-        <span className="font-medium text-(--color-fg)">
-          {widgetId ? "This widget was deleted" : "No saved widgets yet"}
-        </span>
-        <span>
-          Ask the Master agent to make one — e.g. “create a widget that shows
-          lines of code in ~/project” — then press Save.
-        </span>
-      </div>
-    );
+
+  // A pane for one widget: the widget is the pane.
+  if (widgetId && shown[0]) {
+    return <SavedWidgetView w={shown[0]} frameless />;
   }
+
   return (
-    <div className="h-full overflow-y-auto p-3">
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-3">
-        {shown.map((w) => (
-          <CustomWidget
-            key={w.spec.id}
-            spec={w.spec}
-            deviceId={w.deviceId}
-            deviceName={w.deviceName}
-            variant="panel"
-          />
+    <div className="flex h-full flex-col text-xs">
+      {!widgetId && (
+        <div className="flex h-8 shrink-0 items-center gap-1 border-b border-(--color-border) px-2">
+          <span className="text-(--color-fg-muted)">
+            {saved.length} saved widget{saved.length === 1 ? "" : "s"}
+          </span>
+          <div className="ml-auto flex items-center gap-0.5">
+            <ToolbarButton onClick={() => void importWidgets()}>
+              <Upload size={12} /> Import
+            </ToolbarButton>
+            {saved.length > 0 && (
+              <ToolbarButton
+                onClick={() => void exportToFile(saved, "devnest-widgets")}
+              >
+                <Download size={12} /> Export all
+              </ToolbarButton>
+            )}
+          </div>
+        </div>
+      )}
+      {shown.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center text-(--color-fg-muted)">
+          <LayoutDashboard size={22} strokeWidth={1.5} />
+          <span className="font-medium text-(--color-fg)">
+            {widgetId ? "This widget was deleted" : "No saved widgets yet"}
+          </span>
+          <span>
+            Ask the Master agent to make one — e.g. “create a widget that shows
+            lines of code in ~/project” — then press Save. Or import a widget
+            file.
+          </span>
+        </div>
+      ) : shown.length === 1 ? (
+        <div className="min-h-0 flex-1">
+          <SavedWidgetView w={shown[0]} frameless />
+        </div>
+      ) : (
+        <WidgetGrid
+          widgets={shown}
+          className="min-h-0 flex-1 overflow-y-auto p-2"
+        />
+      )}
+    </div>
+  );
+}
+
+/** Pinned widgets, for the Dashboard. Nothing when none are pinned. */
+export function PinnedWidgets() {
+  const saved = useWidgetsStore((s) => s.saved);
+  const pinned = saved.filter((w) => w.pinned);
+  if (pinned.length === 0) return null;
+  return <WidgetGrid widgets={pinned} />;
+}
+
+function WidgetGrid({
+  widgets,
+  className = "",
+}: {
+  widgets: SavedWidget[];
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-2">
+        {widgets.map((w) => (
+          <SavedWidgetView key={w.spec.id} w={w} />
         ))}
       </div>
     </div>
   );
+}
+
+function SavedWidgetView({
+  w,
+  frameless,
+}: {
+  w: SavedWidget;
+  frameless?: boolean;
+}) {
+  return (
+    <CustomWidget
+      spec={w.spec}
+      deviceId={w.deviceId}
+      deviceName={w.deviceName}
+      params={w.params}
+      variant="panel"
+      frameless={frameless}
+    />
+  );
+}
+
+function ToolbarButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex h-6 items-center gap-1 rounded px-2 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── Settings: template params, device, duplicate, export, delete ─────────────
+
+function WidgetSettings({
+  widget,
+  onClose,
+}: {
+  widget: SavedWidget;
+  onClose: () => void;
+}) {
+  const devices = useAppStore((s) => s.devices);
+  const save = useWidgetsStore((s) => s.save);
+  const remove = useWidgetsStore((s) => s.remove);
+  const params = widget.spec.params ?? {};
+  const [name, setName] = useState(widget.spec.name);
+  const [deviceId, setDeviceId] = useState(widget.deviceId);
+  const [values, setValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(params).map(([k, p]) => [
+        k,
+        widget.params?.[k] ?? p.default ?? "",
+      ]),
+    ),
+  );
+  const preview = resolveSpec(widget.spec, values);
+
+  const result = (id: string): Omit<SavedWidget, "savedAt"> => ({
+    spec: { ...widget.spec, id, name: name.trim() || widget.spec.name },
+    deviceId,
+    deviceName:
+      devices.find((d) => d.id === deviceId)?.name ?? widget.deviceName,
+    params: values,
+    pinned: widget.pinned,
+  });
+
+  const apply = () => {
+    save(result(widget.spec.id));
+    onClose();
+  };
+  const duplicate = () => {
+    save({ ...result(newWidgetId()), pinned: false });
+    toast.success("Copy saved — it's in the Widgets panel");
+    onClose();
+  };
+  const del = async () => {
+    const ok = await confirm(`Delete the widget “${widget.spec.name}”?`, {
+      title: "Delete widget",
+      destructive: true,
+    });
+    if (!ok) return;
+    remove(widget.spec.id);
+    onClose();
+  };
+
+  const btn = "h-7 rounded-md px-3 text-xs font-medium transition-colors";
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Widget settings"
+      footer={
+        <>
+          <button
+            className={`${btn} mr-auto text-(--color-error) hover:bg-(--color-error)/10`}
+            onClick={() => void del()}
+          >
+            Delete
+          </button>
+          <button
+            className={`${btn} hover:bg-(--color-surface-2)`}
+            onClick={() =>
+              void exportToFile(
+                [{ ...result(widget.spec.id), savedAt: widget.savedAt }],
+                name,
+              )
+            }
+          >
+            Export
+          </button>
+          <button
+            className={`${btn} border border-(--color-border) hover:bg-(--color-surface-2)`}
+            onClick={duplicate}
+            title="Save these settings as a new widget"
+          >
+            Save as copy
+          </button>
+          <button
+            className={`${btn} bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90`}
+            onClick={apply}
+          >
+            Save
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-xs">
+        <Field label="Name">
+          <input
+            className={`${SMALL_INPUT} h-7 w-full`}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </Field>
+        <Field label="Device">
+          <select
+            className={`${SMALL_INPUT} h-7 w-full`}
+            value={deviceId}
+            onChange={(e) => setDeviceId(e.target.value)}
+          >
+            {!devices.some((d) => d.id === deviceId) && (
+              <option value={deviceId}>{widget.deviceName || "Unknown"}</option>
+            )}
+            {devices.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {Object.entries(params).map(([k, p]) => (
+          <Field key={k} label={p.label ?? k}>
+            <input
+              className={`${SMALL_INPUT} h-7 w-full font-mono`}
+              value={values[k] ?? ""}
+              placeholder={p.default}
+              onChange={(e) =>
+                setValues((v) => ({ ...v, [k]: e.target.value }))
+              }
+            />
+          </Field>
+        ))}
+        {Object.keys(params).length === 0 && (
+          <p className="text-(--color-fg-muted)">
+            This widget has no adjustable settings. Ask the Master agent to make
+            its folder or target a setting to reuse it elsewhere.
+          </p>
+        )}
+        <Field label="Runs">
+          <pre className="max-h-28 overflow-auto rounded-md bg-(--color-bg) px-2 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-(--color-fg-muted)">
+            {preview.cwd ? `cd ${preview.cwd}\n` : ""}
+            {preview.command}
+          </pre>
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-medium text-(--color-fg-muted)">
+        {label}
+      </span>
+      {children}
+    </label>
+  );
+}
+
+// ─── Files ────────────────────────────────────────────────────────────────────
+
+async function exportToFile(list: SavedWidget[], name: string) {
+  try {
+    const slug =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") || "widget";
+    const path = await saveDialog({
+      defaultPath: `${slug}.devnest-widget.json`,
+      filters: [{ name: "DevNest widgets", extensions: ["json"] }],
+    });
+    if (!path) return;
+    await api.fsWriteText(path, exportWidgets(list));
+    toast.success(
+      `Exported ${list.length === 1 ? "widget" : `${list.length} widgets`}`,
+    );
+  } catch (e) {
+    toast.error(`Export failed: ${errorMessage(e)}`);
+  }
+}
+
+/** Pick a widget file, show what it would run, then add the widgets. */
+async function importWidgets() {
+  try {
+    const path = await openDialog({
+      multiple: false,
+      directory: false,
+      filters: [{ name: "DevNest widgets", extensions: ["json"] }],
+    });
+    if (typeof path !== "string") return;
+    const items = parseWidgetFile(await api.fsReadText(path));
+    const { devices } = useAppStore.getState();
+    const host = devices.find((d) => d.isLocalhost);
+    const { saved, save } = useWidgetsStore.getState();
+    // Same device by id or name here; otherwise this computer.
+    const placed = items.map((w) => {
+      const d =
+        devices.find((x) => x.id === w.deviceId) ??
+        devices.find((x) => x.name === w.deviceName) ??
+        host;
+      const clash = saved.some((x) => x.spec.id === w.spec.id);
+      return {
+        ...w,
+        spec: clash ? { ...w.spec, id: newWidgetId() } : w.spec,
+        deviceId: d?.id ?? w.deviceId,
+        deviceName: d?.name ?? w.deviceName,
+      };
+    });
+    const list = placed
+      .map((w) => {
+        const r = resolveSpec(w.spec, w.params);
+        return `• ${w.spec.name} on ${w.deviceName}:\n   ${r.command}`;
+      })
+      .join("\n");
+    const ok = await confirm(
+      `These widgets run commands on your devices while visible:\n\n${list}\n\nOnly import widgets you trust.`,
+      {
+        title: `Import ${placed.length === 1 ? "widget" : `${placed.length} widgets`}?`,
+      },
+    );
+    if (!ok) return;
+    for (const w of [...placed].reverse()) save(w);
+    toast.success(
+      `Imported ${placed.length === 1 ? "widget" : `${placed.length} widgets`}`,
+    );
+  } catch (e) {
+    toast.error(`Import failed: ${errorMessage(e)}`);
+  }
 }
