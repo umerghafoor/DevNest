@@ -31,6 +31,8 @@ import { SystemdPanel } from "../panels/SystemdPanel";
 import { HttpPanel } from "../panels/HttpPanel";
 import { NetworkPanel } from "../panels/NetworkPanel";
 import { WidgetsPanel } from "./CustomWidget";
+import { useWidgetsStore } from "../lib/custom-widgets";
+import { paneSlotId } from "../lib/pane-slot";
 import type { PanelKind } from "../store/app-store";
 
 const AgentPanel = lazy(() =>
@@ -195,6 +197,16 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   app: ["settings"],
 };
 
+/** The pane's name: the panel, or the widget a single-widget pane shows. */
+export function PaneTitle({ pane }: { pane: Pane }) {
+  const widgetName = useWidgetsStore((s) =>
+    pane.panel === "widgets" && pane.extra?.widgetId
+      ? s.saved.find((w) => w.spec.id === pane.extra?.widgetId)?.spec.name
+      : undefined,
+  );
+  return <>{widgetName ?? PANEL_LABELS[pane.panel]}</>;
+}
+
 export function PanelContent({ pane }: { pane: Pane }) {
   switch (pane.panel) {
     case "docker":
@@ -246,7 +258,7 @@ export function PanelContent({ pane }: { pane: Pane }) {
         />
       );
     case "widgets":
-      return <WidgetsPanel widgetId={pane.extra?.widgetId} />;
+      return <WidgetsPanel widgetId={pane.extra?.widgetId} paneId={pane.id} />;
     case "netmon":
       return <NetworkPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "systemd":
@@ -283,6 +295,8 @@ const DEVICE_AGNOSTIC: Set<PanelKind> = new Set([
   "git",
   "http",
   "sql",
+  // Each widget names its own device.
+  "widgets",
 ]);
 
 const statusIconColor: Record<string, string> = {
@@ -457,9 +471,9 @@ function PaneHeader({
 
       <span className="opacity-40 text-[10px]">{PANEL_ICONS[pane.panel]}</span>
       <span
-        className={`font-medium ${isActive ? "text-(--color-fg)" : "text-(--color-fg-muted)"}`}
+        className={`truncate font-medium ${isActive ? "text-(--color-fg)" : "text-(--color-fg-muted)"}`}
       >
-        {PANEL_LABELS[pane.panel]}
+        <PaneTitle pane={pane} />
       </span>
       {!DEVICE_AGNOSTIC.has(pane.panel) && (
         <>
@@ -468,7 +482,14 @@ function PaneHeader({
         </>
       )}
 
-      <div className="ml-auto flex items-center gap-0.5">
+      {/* Panels may put their own controls here (see pane-slot.ts). */}
+      <div
+        id={paneSlotId(pane.id)}
+        className="ml-auto flex min-w-0 items-center"
+        onMouseDown={(e) => e.stopPropagation()}
+      />
+
+      <div className="flex shrink-0 items-center gap-0.5">
         <button
           title="Split right"
           onClick={(e) => {

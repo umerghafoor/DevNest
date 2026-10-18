@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   open as openDialog,
   save as saveDialog,
@@ -34,6 +35,7 @@ import {
   type WidgetSpec,
 } from "../lib/custom-widgets";
 import { SMALL_INPUT } from "../lib/ui";
+import { paneSlotId } from "../lib/pane-slot";
 import { useAppStore } from "../store/app-store";
 import { confirm } from "./ConfirmDialog";
 import { Modal } from "./Modal";
@@ -64,6 +66,7 @@ export function CustomWidget({
   params,
   variant = "chat",
   frameless,
+  slotId,
 }: {
   spec: WidgetSpec;
   deviceId: string;
@@ -73,6 +76,8 @@ export function CustomWidget({
   variant?: "chat" | "panel";
   /** Fill the pane edge to edge: no card border or radius. */
   frameless?: boolean;
+  /** Pane-header slot (see pane-slot.ts) to put the controls in. */
+  slotId?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const visible = useVisible(ref);
@@ -112,6 +117,77 @@ export function CustomWidget({
   const iconBtn =
     "flex h-6 w-6 shrink-0 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors";
 
+  // A pane showing just this widget already has a header: put the controls
+  // in it rather than drawing a second one.
+  const inPane = !!(frameless && slotId);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setSlot(slotId ? document.getElementById(slotId) : null);
+  }, [slotId]);
+
+  const controls = (
+    <>
+      <span className="flex min-w-0 shrink items-center gap-1 text-(--color-fg-muted) @max-xs:hidden">
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${online ? "bg-(--color-online)" : "bg-(--color-fg-muted)"}`}
+        />
+        <span className="truncate">{name}</span>
+      </span>
+      <span className="ml-auto shrink-0 pl-1 text-[10px] whitespace-nowrap text-(--color-fg-muted) tabular-nums @max-sm:hidden">
+        {feed.updatedAt ? <Ago at={feed.updatedAt} /> : null}
+      </span>
+      <button
+        className={iconBtn}
+        onClick={() => setShowCmd((v) => !v)}
+        title="Show command"
+      >
+        <Terminal size={12} />
+      </button>
+      <button className={iconBtn} onClick={feed.refresh} title="Refresh now">
+        <RefreshCw
+          size={12}
+          className={feed.loading ? "animate-spin" : undefined}
+        />
+      </button>
+      {variant === "chat" ? (
+        <>
+          <button
+            className={`${iconBtn} ${isStored ? "text-(--color-accent)" : ""}`}
+            onClick={isStored ? undefined : onSave}
+            title={isStored ? "Saved" : "Save widget"}
+          >
+            {isStored ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
+          </button>
+          <button className={iconBtn} onClick={dock} title="Open as a panel">
+            <Maximize2 size={12} />
+          </button>
+        </>
+      ) : (
+        <>
+          <button
+            className={`${iconBtn} ${entry?.pinned ? "text-(--color-accent)" : ""}`}
+            onClick={() => togglePin(spec.id)}
+            title={entry?.pinned ? "Unpin from Dashboard" : "Pin to Dashboard"}
+          >
+            <Pin
+              size={12}
+              className={entry?.pinned ? "fill-current" : undefined}
+            />
+          </button>
+          {entry && (
+            <button
+              className={iconBtn}
+              onClick={() => setEditing(true)}
+              title="Settings, duplicate, export, delete"
+            >
+              <SlidersHorizontal size={12} />
+            </button>
+          )}
+        </>
+      )}
+    </>
+  );
+
   return (
     <div
       ref={ref}
@@ -121,80 +197,34 @@ export function CustomWidget({
           : "overflow-hidden rounded-lg border border-(--color-border)"
       }`}
     >
-      <div className="relative flex h-9 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) pr-1 pl-2.5 select-none">
-        <div
-          className={`absolute top-0 right-0 left-0 h-0.5 transition-colors ${visible ? "bg-(--color-accent)" : "bg-transparent"}`}
-        />
-        <LayoutDashboard
-          size={13}
-          className="shrink-0 text-(--color-accent)"
-          strokeWidth={1.75}
-        />
-        <span className="truncate font-semibold" title={spec.description ?? ""}>
-          {spec.name}
-        </span>
-        <span className="opacity-40 @max-xs:hidden">·</span>
-        <span className="flex min-w-0 shrink items-center gap-1 text-(--color-fg-muted) @max-xs:hidden">
+      {inPane ? (
+        slot &&
+        createPortal(
+          <div className="ml-auto flex min-w-0 items-center gap-0.5 pl-2">
+            {controls}
+          </div>,
+          slot,
+        )
+      ) : (
+        <div className="relative flex h-9 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) pr-1 pl-2.5 select-none">
+          <div
+            className={`absolute top-0 right-0 left-0 h-0.5 transition-colors ${visible ? "bg-(--color-accent)" : "bg-transparent"}`}
+          />
+          <LayoutDashboard
+            size={13}
+            className="shrink-0 text-(--color-accent)"
+            strokeWidth={1.75}
+          />
           <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${online ? "bg-(--color-online)" : "bg-(--color-fg-muted)"}`}
-          />
-          <span className="truncate">{name}</span>
-        </span>
-        <span className="ml-auto shrink-0 pl-1 text-[10px] whitespace-nowrap text-(--color-fg-muted) tabular-nums @max-sm:hidden">
-          {feed.updatedAt ? <Ago at={feed.updatedAt} /> : null}
-        </span>
-        <button
-          className={iconBtn}
-          onClick={() => setShowCmd((v) => !v)}
-          title="Show command"
-        >
-          <Terminal size={12} />
-        </button>
-        <button className={iconBtn} onClick={feed.refresh} title="Refresh now">
-          <RefreshCw
-            size={12}
-            className={feed.loading ? "animate-spin" : undefined}
-          />
-        </button>
-        {variant === "chat" ? (
-          <>
-            <button
-              className={`${iconBtn} ${isStored ? "text-(--color-accent)" : ""}`}
-              onClick={isStored ? undefined : onSave}
-              title={isStored ? "Saved" : "Save widget"}
-            >
-              {isStored ? <BookmarkCheck size={13} /> : <Bookmark size={13} />}
-            </button>
-            <button className={iconBtn} onClick={dock} title="Open as a panel">
-              <Maximize2 size={12} />
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              className={`${iconBtn} ${entry?.pinned ? "text-(--color-accent)" : ""}`}
-              onClick={() => togglePin(spec.id)}
-              title={
-                entry?.pinned ? "Unpin from Dashboard" : "Pin to Dashboard"
-              }
-            >
-              <Pin
-                size={12}
-                className={entry?.pinned ? "fill-current" : undefined}
-              />
-            </button>
-            {entry && (
-              <button
-                className={iconBtn}
-                onClick={() => setEditing(true)}
-                title="Settings, duplicate, export, delete"
-              >
-                <SlidersHorizontal size={12} />
-              </button>
-            )}
-          </>
-        )}
-      </div>
+            className="truncate font-semibold"
+            title={spec.description ?? ""}
+          >
+            {spec.name}
+          </span>
+          <span className="opacity-40 @max-xs:hidden">·</span>
+          {controls}
+        </div>
+      )}
       {editing && entry && (
         <WidgetSettings widget={entry} onClose={() => setEditing(false)} />
       )}
@@ -886,13 +916,25 @@ function useVisible(ref: React.RefObject<HTMLElement | null>) {
 }
 
 /** Saved widgets: one if the pane names it, else all of them as a board. */
-export function WidgetsPanel({ widgetId }: { widgetId?: string }) {
+export function WidgetsPanel({
+  widgetId,
+  paneId,
+}: {
+  widgetId?: string;
+  paneId?: string;
+}) {
   const saved = useWidgetsStore((s) => s.saved);
   const shown = widgetId ? saved.filter((w) => w.spec.id === widgetId) : saved;
 
   // A pane for one widget: the widget is the pane.
   if (widgetId && shown[0]) {
-    return <SavedWidgetView w={shown[0]} frameless />;
+    return (
+      <SavedWidgetView
+        w={shown[0]}
+        frameless
+        slotId={paneId ? paneSlotId(paneId) : undefined}
+      />
+    );
   }
 
   return (
@@ -963,9 +1005,11 @@ function WidgetGrid({
 function SavedWidgetView({
   w,
   frameless,
+  slotId,
 }: {
   w: SavedWidget;
   frameless?: boolean;
+  slotId?: string;
 }) {
   return (
     <CustomWidget
@@ -975,6 +1019,7 @@ function SavedWidgetView({
       params={w.params}
       variant="panel"
       frameless={frameless}
+      slotId={slotId}
     />
   );
 }
