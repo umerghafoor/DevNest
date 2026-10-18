@@ -147,20 +147,14 @@ export function findPaneInTree(
 
 // ─── Workspace helpers ────────────────────────────────────────────────────────
 
+/** A new workspace starts empty, which shows the Dashboard. */
 function defaultWorkspace(name?: string): Workspace {
-  const paneId = uid();
-  const dashboard: Pane = {
-    id: paneId,
-    instanceId: paneId,
-    deviceId: "local",
-    panel: "dashboard",
-  };
   return {
     id: uid(),
     name: name ?? randomWorkspaceName(),
-    paneRoot: makeLeaf(dashboard),
+    paneRoot: null,
     floatingPanes: [],
-    activePaneId: paneId,
+    activePaneId: null,
   };
 }
 

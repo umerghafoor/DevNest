@@ -8,6 +8,8 @@ import {
   CATEGORY_ORDER,
   PANEL_ORDER_IN_CATEGORY,
 } from "../components/PaneTile";
+import { LayoutDashboard } from "lucide-react";
+import { useWidgetsStore } from "../lib/custom-widgets";
 
 interface Props {
   deviceId: string;
@@ -56,6 +58,7 @@ export function DashboardPanel({ deviceId }: Props) {
         {/* Quick launch — denser, single section */}
         <section className="flex-1">
           <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-3">
+            <PinnedWidgetsRow />
             {CATEGORY_ORDER.map((category) => {
               const panels = PANEL_ORDER_IN_CATEGORY[category];
               if (panels.length === 0) return null;
@@ -95,6 +98,46 @@ function Stat({ label, value }: { label: string; value: string | number }) {
       </span>{" "}
       {label}
     </span>
+  );
+}
+
+/** Pinned custom widgets as launcher buttons; each opens its own pane. */
+function PinnedWidgetsRow() {
+  const saved = useWidgetsStore((s) => s.saved);
+  const openPane = useAppStore((s) => s.openPane);
+  const pinned = saved.filter((w) => w.pinned);
+  if (pinned.length === 0) return null;
+  return (
+    <>
+      <div className="self-center pt-1 text-right text-[10px] font-semibold uppercase tracking-wide text-(--color-fg-muted)">
+        Pinned
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {pinned.map((w) => (
+          <button
+            key={w.spec.id}
+            onClick={() => {
+              const id = Math.random().toString(36).slice(2, 10);
+              openPane({
+                id,
+                instanceId: id,
+                deviceId: w.deviceId,
+                panel: "widgets",
+                extra: { widgetId: w.spec.id },
+              });
+            }}
+            title={`${w.spec.description ?? w.spec.name} · ${w.deviceName}`}
+            className="group flex items-center gap-1.5 rounded-md border border-(--color-border) bg-(--color-surface) px-2 py-1 text-[11px] transition-colors hover:border-(--color-accent)/50 hover:bg-(--color-surface-2)"
+          >
+            <LayoutDashboard
+              size={11}
+              className="text-(--color-fg-muted) group-hover:text-(--color-accent)"
+            />
+            <span className="truncate text-(--color-fg)">{w.spec.name}</span>
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 

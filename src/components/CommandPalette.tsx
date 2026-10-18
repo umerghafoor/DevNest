@@ -113,17 +113,20 @@ export function CommandPalette() {
       .filter((w) => w.pinned)
       .map((w, i) => widgetItem(w, "Pinned widgets", i === 0));
     const used = new Set<PanelKind>();
-    recents.forEach((kind, i) => {
-      used.add(kind);
-      out.push({
-        kind,
-        label: PANEL_LABELS[kind],
-        description: PANEL_DESCRIPTIONS[kind],
-        category: CATEGORY_LABELS[PANEL_CATEGORY[kind]],
-        sectionLabel: "Recent",
-        isSectionStart: i === 0,
+    // Recents can hold panels no longer offered (e.g. "dashboard").
+    recents
+      .filter((k) => ALL_KINDS.includes(k))
+      .forEach((kind, i) => {
+        used.add(kind);
+        out.push({
+          kind,
+          label: PANEL_LABELS[kind],
+          description: PANEL_DESCRIPTIONS[kind],
+          category: CATEGORY_LABELS[PANEL_CATEGORY[kind]],
+          sectionLabel: "Recent",
+          isSectionStart: i === 0,
+        });
       });
-    });
     for (const cat of CATEGORY_ORDER) {
       const kinds = PANEL_ORDER_IN_CATEGORY[cat].filter((k) => !used.has(k));
       kinds.forEach((kind, i) => {

@@ -293,8 +293,13 @@ function NewPanelMenu() {
     const used = new Set<PanelKind>();
 
     // Recents first
-    if (recents.length > 0) {
-      recents.forEach((kind, i) => {
+    // Recents can hold panels no longer offered (e.g. "dashboard").
+    const offered = new Set(
+      CATEGORY_ORDER.flatMap((c) => PANEL_ORDER_IN_CATEGORY[c]),
+    );
+    const shownRecents = recents.filter((k) => offered.has(k));
+    if (shownRecents.length > 0) {
+      shownRecents.forEach((kind, i) => {
         used.add(kind);
         result.push({
           kind,

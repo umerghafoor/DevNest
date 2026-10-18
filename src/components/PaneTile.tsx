@@ -195,7 +195,8 @@ export const CATEGORY_ORDER: PanelCategory[] = [
 ];
 
 export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
-  overview: ["dashboard", "sysinfo", "widgets"],
+  // No "dashboard": it's what an empty workspace shows, not a panel to open.
+  overview: ["sysinfo", "widgets"],
   remote: ["terminal", "files", "processes", "ports"],
   containers: ["docker"],
   observability: ["metrics", "logs"],
