@@ -232,7 +232,7 @@ export function CommandPalette() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search panels and widgets…"
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-(--color-fg-muted)"
+            className="no-focus-ring flex-1 bg-transparent text-sm outline-none placeholder:text-(--color-fg-muted)"
           />
           <kbd className="rounded border border-(--color-border) bg-(--color-surface) px-1.5 py-0.5 font-mono text-[10px] text-(--color-fg-muted)">
             Esc

@@ -419,7 +419,7 @@ function NewPanelMenu() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search panels…"
-              className="w-full bg-transparent px-2 py-1 text-xs outline-none placeholder:text-(--color-fg-muted)"
+              className="no-focus-ring w-full bg-transparent px-2 py-1 text-xs outline-none placeholder:text-(--color-fg-muted)"
             />
           </div>
 
