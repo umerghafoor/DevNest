@@ -138,15 +138,15 @@ export function MasterPanel() {
         className="flex shrink-0 justify-end overflow-hidden border-l border-(--color-border) bg-(--color-surface) motion-reduce:transition-none!"
       >
         {/* Fixed width inside so the content doesn't reflow while the
-            panel grows; it squashes a little instead. */}
+            panel grows. It springs with the same curve instead of fading:
+            squashed while the panel is narrow, overshooting with it. */}
         <div
           style={{
             width,
             transition: animating
-              ? `transform ${open ? OPEN_MS : CLOSE_MS}ms ${open ? SPRING_OUT : SPRING_IN}, opacity ${open ? OPEN_MS : CLOSE_MS}ms ease`
+              ? `transform ${open ? OPEN_MS : CLOSE_MS}ms ${open ? SPRING_OUT : SPRING_IN}`
               : undefined,
-            transform: shown ? "scaleX(1)" : "scaleX(0.9)",
-            opacity: shown ? 1 : 0,
+            transform: shown ? "scaleX(1)" : "scaleX(0.6)",
             transformOrigin: "right center",
           }}
           className="flex h-full shrink-0 flex-col motion-reduce:transition-none!"
