@@ -41,6 +41,7 @@ import {
   Composer,
   InstallBanner,
   PermissionCard,
+  permissionButtonClass,
   StatusDot,
   Transcript,
 } from "../panels/AgentPanel";
@@ -223,6 +224,7 @@ function MasterBody({ hostId }: { hostId: string }) {
         <Transcript
           s={s}
           empty={<EmptyState s={s} onStart={() => void start()} />}
+          waitingOn={approvals.length ? "Waiting for your approval" : null}
         />
       </div>
 
@@ -433,43 +435,48 @@ function EmptyState({ s, onStart }: { s: AgentSession; onStart: () => void }) {
 
 function ApprovalCard({ a }: { a: Approval }) {
   return (
-    <div className="shrink-0 border-t border-(--color-border) bg-(--color-warn)/10 px-3 py-2">
-      <div className="mb-1 flex items-start gap-1.5">
-        <ShieldAlert size={13} className="mt-px shrink-0 text-(--color-warn)" />
-        <div className="min-w-0">
-          <div className="font-semibold">{a.title}</div>
-          <div className="text-[11px] text-(--color-fg-muted)">
-            on <b className="text-(--color-fg)">{a.device}</b> ·{" "}
-            <span className="font-mono">{a.tool}</span>
+    <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
+      <div className="mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
+        <div className="mb-1.5 flex items-start gap-1.5">
+          <ShieldAlert
+            size={14}
+            className="mt-px shrink-0 text-(--color-warn)"
+          />
+          <div className="min-w-0">
+            <div className="font-semibold">{a.title}</div>
+            <div className="text-[11px] text-(--color-fg-muted)">
+              on <b className="text-(--color-fg)">{a.device}</b> ·{" "}
+              <span className="font-mono">{a.tool}</span>
+            </div>
           </div>
         </div>
-      </div>
-      <pre className="mb-2 max-h-40 overflow-auto rounded bg-(--color-bg) p-2 font-mono text-[11px] whitespace-pre-wrap break-all">
-        {a.detail}
-      </pre>
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          autoFocus
-          className="rounded bg-(--color-accent) px-2 py-1 font-medium text-(--color-accent-fg) hover:opacity-90"
-          onClick={() => answerApproval(a, true)}
-        >
-          Allow once
-        </button>
-        {canAlwaysAllow(a.tool) && (
+        <pre className="max-h-32 overflow-auto rounded-lg bg-(--color-bg) px-2.5 py-1.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          {a.detail}
+        </pre>
+        <div className="mt-2 flex flex-wrap justify-end gap-1.5">
           <button
-            className="rounded bg-(--color-surface-2) px-2 py-1 hover:opacity-90"
-            onClick={() => answerApproval(a, true, true)}
-            title="Until the agent is restarted"
+            className={permissionButtonClass("reject_once")}
+            onClick={() => answerApproval(a, false)}
           >
-            Always allow {a.tool}
+            Deny
           </button>
-        )}
-        <button
-          className="rounded bg-(--color-surface-2) px-2 py-1 hover:opacity-90"
-          onClick={() => answerApproval(a, false)}
-        >
-          Deny
-        </button>
+          {canAlwaysAllow(a.tool) && (
+            <button
+              className={permissionButtonClass("allow_always")}
+              onClick={() => answerApproval(a, true, true)}
+              title="Until the agent is restarted"
+            >
+              Always allow {a.tool}
+            </button>
+          )}
+          <button
+            autoFocus
+            className={permissionButtonClass("allow_once")}
+            onClick={() => answerApproval(a, true)}
+          >
+            Allow once
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -568,10 +568,14 @@ export function StatusDot({ status }: { status: AgentSession["status"] }) {
 export function Transcript({
   s,
   empty,
+  waitingOn,
 }: {
   s: AgentSession;
   /** Shown before the first message. */
   empty?: React.ReactNode;
+  /** Something outside the session the turn is blocked on (e.g. a DevNest
+   *  approval); shown in the working indicator. */
+  waitingOn?: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -611,11 +615,13 @@ export function Transcript({
           {s.status === "prompting" && (
             <WorkingIndicator
               waitingOn={
-                s.permission
-                  ? "Waiting for your approval"
-                  : s.elicitation
-                    ? "Waiting for your answer"
-                    : null
+                waitingOn
+                  ? waitingOn
+                  : s.permission
+                    ? "Waiting for your approval"
+                    : s.elicitation
+                      ? "Waiting for your answer"
+                      : null
               }
             />
           )}
@@ -860,6 +866,18 @@ const OPTION_ORDER: Record<string, number> = {
   allow_once: 3,
 };
 
+/** Button look for a permission choice, shared with the Master agent's
+ *  DevNest approvals so both prompts read the same. */
+export function permissionButtonClass(kind: PermissionOption["kind"]) {
+  const look =
+    kind === "allow_once"
+      ? "bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
+      : kind === "allow_always"
+        ? "border border-(--color-accent)/50 text-(--color-accent) hover:bg-(--color-accent)/10"
+        : "border border-(--color-border) bg-(--color-surface) hover:bg-(--color-surface-2)";
+  return `h-7 rounded-md px-3 font-medium transition-colors ${look}`;
+}
+
 export function PermissionCard({ s }: { s: AgentSession }) {
   const { req } = s.permission!;
   const call = req.toolCall;
@@ -868,12 +886,6 @@ export function PermissionCard({ s }: { s: AgentSession }) {
   const options = [...req.options].sort(
     (a, b) => (OPTION_ORDER[a.kind] ?? 9) - (OPTION_ORDER[b.kind] ?? 9),
   );
-  const style = (o: PermissionOption) =>
-    o.kind === "allow_once"
-      ? "bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
-      : o.kind === "allow_always"
-        ? "border border-(--color-accent)/50 text-(--color-accent) hover:bg-(--color-accent)/10"
-        : "border border-(--color-border) bg-(--color-surface) hover:bg-(--color-surface-2)";
   return (
     <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
       <div className="mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
@@ -895,7 +907,7 @@ export function PermissionCard({ s }: { s: AgentSession }) {
           {options.map((o) => (
             <button
               key={o.optionId}
-              className={`h-7 rounded-md px-3 font-medium transition-colors ${style(o)}`}
+              className={permissionButtonClass(o.kind)}
               onClick={() =>
                 answerPermission(s, {
                   outcome: "selected",
