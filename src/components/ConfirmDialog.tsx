@@ -98,7 +98,7 @@ export function ConfirmDialogHost() {
         <h3 className="mb-1 text-sm font-semibold">
           {current.title ?? "Confirm"}
         </h3>
-        <p className="mb-5 text-xs text-(--color-fg-muted) leading-relaxed">
+        <p className="mb-5 max-h-64 overflow-y-auto text-xs leading-relaxed break-words whitespace-pre-wrap text-(--color-fg-muted)">
           {current.message}
         </p>
         <div className="flex justify-end gap-2">

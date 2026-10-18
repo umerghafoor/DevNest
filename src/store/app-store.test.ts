@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import { useAppStore } from "./app-store";
+import { collectPanes, useAppStore, type PaneNode } from "./app-store";
 
 function activeWs() {
   const s = useAppStore.getState();
@@ -22,6 +22,58 @@ describe("app-store — panes", () => {
       workspaces: [ws],
       activeWorkspaceId: ws.id,
     });
+  });
+
+  it("docks a pane beside another one", () => {
+    const { openPane, splitPane, dockPane } = useAppStore.getState();
+    const pane = (id: string) => ({
+      id,
+      deviceId: "d1",
+      panel: "docker" as const,
+      instanceId: id,
+    });
+    openPane(pane("a"));
+    splitPane("a", "horizontal", pane("b"));
+    splitPane("b", "vertical", pane("c"));
+    // Move a to the right of c.
+    dockPane("w1", "a", "c", "right");
+    const root = activeWs().paneRoot as PaneNode;
+    expect(
+      collectPanes(root)
+        .map((p) => p.id)
+        .sort(),
+    ).toEqual(["a", "b", "c"]);
+    const leafId = (n: PaneNode) => (n.type === "leaf" ? n.pane.id : null);
+    const parentOf = (n: PaneNode, id: string): PaneNode | null => {
+      if (n.type !== "split") return null;
+      if (leafId(n.first) === id || leafId(n.second) === id) return n;
+      return parentOf(n.first, id) ?? parentOf(n.second, id);
+    };
+    const parent = parentOf(root, "a");
+    expect(parent?.type).toBe("split");
+    if (parent?.type !== "split") return;
+    expect(parent.direction).toBe("horizontal");
+    expect([leafId(parent.first), leafId(parent.second)]).toEqual(["c", "a"]);
+  });
+
+  it("dropping on a pane's centre swaps the two", () => {
+    const { openPane, splitPane, dockPane } = useAppStore.getState();
+    const pane = (id: string) => ({
+      id,
+      deviceId: "d1",
+      panel: "docker" as const,
+      instanceId: id,
+    });
+    openPane(pane("a"));
+    splitPane("a", "horizontal", pane("b"));
+    dockPane("w1", "a", "b", "center");
+    const root = activeWs().paneRoot as PaneNode;
+    expect(root.type).toBe("split");
+    if (root.type !== "split") return;
+    const ids = [root.first, root.second].map((n) =>
+      n.type === "leaf" ? n.pane.id : null,
+    );
+    expect(ids).toEqual(["b", "a"]);
   });
 
   it("opens a pane and makes it active", () => {
@@ -104,17 +156,15 @@ describe("app-store — workspaces", () => {
     });
   });
 
-  it("addWorkspace creates a new workspace seeded with a Dashboard pane and switches to it", () => {
+  it("addWorkspace creates an empty workspace (it shows the Dashboard) and switches to it", () => {
     useAppStore.getState().addWorkspace();
     expect(useAppStore.getState().workspaces).toHaveLength(2);
     const activeId = useAppStore.getState().activeWorkspaceId;
     const active = useAppStore
       .getState()
       .workspaces.find((w) => w.id === activeId)!;
-    expect(active.paneRoot?.type).toBe("leaf");
-    expect(
-      (active.paneRoot as { type: "leaf"; pane: { panel: string } }).pane.panel,
-    ).toBe("dashboard");
+    expect(active.paneRoot).toBeNull();
+    expect(active.activePaneId).toBeNull();
   });
 
   it("removeWorkspace removes it and falls back to another", () => {
@@ -139,12 +189,8 @@ describe("app-store — workspaces", () => {
       instanceId: "i1",
     });
     useAppStore.getState().addWorkspace(); // switches to new workspace
-    // New workspace is seeded with a Dashboard, not the docker pane.
-    const root = activeWs().paneRoot;
-    expect(root?.type).toBe("leaf");
-    expect((root as { type: "leaf"; pane: { panel: string } }).pane.panel).toBe(
-      "dashboard",
-    );
+    // The new workspace starts empty, without the docker pane.
+    expect(activeWs().paneRoot).toBeNull();
   });
 
   it("renameWorkspace updates the name", () => {

@@ -41,6 +41,7 @@ import {
   Composer,
   InstallBanner,
   PermissionCard,
+  permissionButtonClass,
   StatusDot,
   Transcript,
 } from "../panels/AgentPanel";
@@ -54,6 +55,13 @@ const SUGGESTIONS = [
   "What's listening on port 3000?",
   "What's using the most memory?",
 ];
+
+const OPEN_MS = 280;
+const CLOSE_MS = 180;
+/** Overshoots then settles: the squish on open. */
+const SPRING_OUT = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+/** Pulls back a touch before closing: the wind-up on close. */
+const SPRING_IN = "cubic-bezier(0.36, 0, 0.66, -0.56)";
 
 /**
  * Right-hand Master agent panel (like VS Code's secondary side bar). One
@@ -73,7 +81,43 @@ export function MasterPanel() {
     rowRef.current = self.current?.parentElement ?? null;
   });
 
-  if (!open || !host) return null;
+  // Open/close with a springy width: mounted stays true through the close
+  // animation; `shown` drives the width; `animating` limits the transition
+  // to toggles so resizing with the splitter stays instant.
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open);
+  const [animating, setAnimating] = useState(false);
+  useEffect(() => {
+    setAnimating(true);
+    let raf = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    if (open) {
+      setMounted(true);
+      // Two frames: let it mount at width 0 before growing.
+      raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(() => setShown(true));
+      });
+      timer = setTimeout(() => setAnimating(false), OPEN_MS);
+    } else {
+      setShown(false);
+      timer = setTimeout(() => {
+        setMounted(false);
+        setAnimating(false);
+      }, CLOSE_MS);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [open]);
+
+  if (!mounted || !host) return null;
+
+  const transition = animating
+    ? open
+      ? `width ${OPEN_MS}ms ${SPRING_OUT}`
+      : `width ${CLOSE_MS}ms ${SPRING_IN}`
+    : undefined;
 
   return (
     <>
@@ -90,10 +134,25 @@ export function MasterPanel() {
       />
       <div
         ref={self}
-        style={{ width }}
-        className="flex shrink-0 flex-col border-l border-(--color-border) bg-(--color-surface)"
+        style={{ width: shown ? width : 0, transition }}
+        className="flex shrink-0 justify-end overflow-hidden border-l border-(--color-border) bg-(--color-surface) motion-reduce:transition-none!"
       >
-        <MasterBody hostId={host.id} />
+        {/* Fixed width inside so the content doesn't reflow while the
+            panel grows. It springs with the same curve instead of fading:
+            squashed while the panel is narrow, overshooting with it. */}
+        <div
+          style={{
+            width,
+            transition: animating
+              ? `transform ${open ? OPEN_MS : CLOSE_MS}ms ${open ? SPRING_OUT : SPRING_IN}`
+              : undefined,
+            transform: shown ? "scaleX(1)" : "scaleX(0.6)",
+            transformOrigin: "right center",
+          }}
+          className="flex h-full shrink-0 flex-col motion-reduce:transition-none!"
+        >
+          <MasterBody hostId={host.id} />
+        </div>
       </div>
     </>
   );
@@ -191,6 +250,30 @@ function MasterBody({ hostId }: { hostId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-xs">
+      {/* Same height and look as a pane header, so it lines up with them. */}
+      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 select-none">
+        <Sparkles size={12} className="shrink-0 text-(--color-accent)" />
+        <span className="font-medium">Master</span>
+        {agent && (
+          <>
+            <span className="opacity-40">·</span>
+            <span className="truncate text-(--color-fg-muted)">
+              {agent.name}
+            </span>
+          </>
+        )}
+        <MasterMenu
+          s={s}
+          agentId={agentId}
+          onAgent={setAgentId}
+          running={running}
+          showLogs={showLogs}
+          onLogs={() => setShowLogs((v) => !v)}
+          onStart={() => void start()}
+          onResume={(c) => void resume(c)}
+          onClose={() => setOpen(false)}
+        />
+      </div>
       {agent && !running && (installed === false || installRun) && (
         <InstallBanner
           agent={agent}
@@ -209,20 +292,10 @@ function MasterBody({ hostId }: { hostId: string }) {
       )}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <MasterMenu
-          s={s}
-          agentId={agentId}
-          onAgent={setAgentId}
-          running={running}
-          showLogs={showLogs}
-          onLogs={() => setShowLogs((v) => !v)}
-          onStart={() => void start()}
-          onResume={(c) => void resume(c)}
-          onClose={() => setOpen(false)}
-        />
         <Transcript
           s={s}
           empty={<EmptyState s={s} onStart={() => void start()} />}
+          waitingOn={approvals.length ? "Waiting for your approval" : null}
         />
       </div>
 
@@ -239,7 +312,7 @@ function MasterBody({ hostId }: { hostId: string }) {
   );
 }
 
-/** The panel's controls, tucked behind a ⋯ button in the top-right corner. */
+/** The panel's controls, behind the ⋯ button in its header. */
 function MasterMenu({
   s,
   agentId,
@@ -264,7 +337,8 @@ function MasterMenu({
   const agents = useAgentsStore((st) => st.agents);
   const allChats = useChatsStore((st) => st.chats);
   const removeChat = useChatsStore((st) => st.remove);
-  const chats = chatsFor(allChats, MASTER_KEY, agentId, s.deviceId);
+  const chats = chatsFor(allChats, MASTER_KEY, null, s.deviceId);
+  const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -290,11 +364,11 @@ function MasterMenu({
   const busy = s.status === "prompting" || s.status === "starting";
 
   return (
-    <div ref={ref} className="absolute top-1.5 right-2 z-20">
+    <div ref={ref} className="relative ml-auto">
       <button
         onClick={() => setOpen((v) => !v)}
         title="Master agent"
-        className={`relative flex h-6 w-6 items-center justify-center rounded-md bg-(--color-surface) text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) ${open ? "bg-(--color-surface-2) text-(--color-fg)" : ""}`}
+        className={`relative flex h-6 w-6 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) ${open ? "bg-(--color-surface-2) text-(--color-fg)" : ""}`}
       >
         <MoreHorizontal size={14} />
         <span className="absolute top-0.5 right-0.5">
@@ -333,6 +407,7 @@ function MasterMenu({
           <ChatList
             chats={chats}
             currentId={s.chatId}
+            agentName={agentName}
             onNew={canNew ? act(() => void newConversation(s)) : undefined}
             onOpen={(c) => {
               if (busy) return;
@@ -433,43 +508,48 @@ function EmptyState({ s, onStart }: { s: AgentSession; onStart: () => void }) {
 
 function ApprovalCard({ a }: { a: Approval }) {
   return (
-    <div className="shrink-0 border-t border-(--color-border) bg-(--color-warn)/10 px-3 py-2">
-      <div className="mb-1 flex items-start gap-1.5">
-        <ShieldAlert size={13} className="mt-px shrink-0 text-(--color-warn)" />
-        <div className="min-w-0">
-          <div className="font-semibold">{a.title}</div>
-          <div className="text-[11px] text-(--color-fg-muted)">
-            on <b className="text-(--color-fg)">{a.device}</b> ·{" "}
-            <span className="font-mono">{a.tool}</span>
+    <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
+      <div className="@container mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
+        <div className="mb-1.5 flex items-start gap-1.5">
+          <ShieldAlert
+            size={14}
+            className="mt-px shrink-0 text-(--color-warn)"
+          />
+          <div className="min-w-0">
+            <div className="font-semibold">{a.title}</div>
+            <div className="text-[11px] text-(--color-fg-muted)">
+              on <b className="text-(--color-fg)">{a.device}</b> ·{" "}
+              <span className="font-mono">{a.tool}</span>
+            </div>
           </div>
         </div>
-      </div>
-      <pre className="mb-2 max-h-40 overflow-auto rounded bg-(--color-bg) p-2 font-mono text-[11px] whitespace-pre-wrap break-all">
-        {a.detail}
-      </pre>
-      <div className="flex flex-wrap gap-1.5">
-        <button
-          autoFocus
-          className="rounded bg-(--color-accent) px-2 py-1 font-medium text-(--color-accent-fg) hover:opacity-90"
-          onClick={() => answerApproval(a, true)}
-        >
-          Allow once
-        </button>
-        {canAlwaysAllow(a.tool) && (
+        <pre className="max-h-32 overflow-auto rounded-lg bg-(--color-bg) px-2.5 py-1.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          {a.detail}
+        </pre>
+        <div className="mt-2 flex flex-col gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
           <button
-            className="rounded bg-(--color-surface-2) px-2 py-1 hover:opacity-90"
-            onClick={() => answerApproval(a, true, true)}
-            title="Until the agent is restarted"
+            className={permissionButtonClass("reject_once")}
+            onClick={() => answerApproval(a, false)}
           >
-            Always allow {a.tool}
+            Deny
           </button>
-        )}
-        <button
-          className="rounded bg-(--color-surface-2) px-2 py-1 hover:opacity-90"
-          onClick={() => answerApproval(a, false)}
-        >
-          Deny
-        </button>
+          {canAlwaysAllow(a.tool) && (
+            <button
+              className={permissionButtonClass("allow_always")}
+              onClick={() => answerApproval(a, true, true)}
+              title="Until the agent is restarted"
+            >
+              Always allow {a.tool}
+            </button>
+          )}
+          <button
+            autoFocus
+            className={permissionButtonClass("allow_once")}
+            onClick={() => answerApproval(a, true)}
+          >
+            Allow once
+          </button>
+        </div>
       </div>
     </div>
   );

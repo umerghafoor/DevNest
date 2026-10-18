@@ -25,6 +25,7 @@ import {
   type ToolCall,
 } from "./acp";
 import type { AgentDef } from "../store/agents-store";
+import type { WidgetSpec } from "./custom-widgets";
 import {
   chatTitle,
   compactItems,
@@ -50,6 +51,8 @@ export type TranscriptItem =
       /** Device the widget watches; the session's device if unset. */
       deviceId?: string;
       deviceName?: string;
+      /** A custom widget the agent designed (`create_widget`). */
+      spec?: WidgetSpec;
     };
 
 export type AgentStatus =
@@ -96,6 +99,8 @@ export interface AgentSession {
   permission: PendingPermission | null;
   /** A question form the agent is waiting on. */
   elicitation: PendingElicitation | null;
+  /** Prompts typed while a turn was running; sent in order once it ends. */
+  queued: { id: string; text: string }[];
   /** MCP servers handed to the agent with every new session. */
   mcpServers: McpServer[];
   /** Saved-chat scope: "pane", or the session key for app-wide agents. */
@@ -165,6 +170,7 @@ export function getAgentSession(key: string, deviceId: string): AgentSession {
       config: [],
       permission: null,
       elicitation: null,
+      queued: [],
       mcpServers: [],
       scope: key.startsWith("__") ? key : "pane",
       chatId: null,
@@ -314,6 +320,7 @@ export async function startAgent(
   s.agent = agent;
   s.cwd = cwd;
   s.items = [];
+  s.queued = [];
   s.stderr = [];
   s.authMethods = [];
   s.account = null;
@@ -382,6 +389,7 @@ export async function startAgent(
       if (!isCurrent()) return;
       conn.close();
       s.status = "exited";
+      s.queued = [];
       s.permission?.resolve({ outcome: "cancelled" });
       s.permission = null;
       s.elicitation?.resolve({ action: "cancel" });
@@ -574,6 +582,8 @@ export async function sendPrompt(s: AgentSession, text: string) {
   if (!s.conn || !s.sessionId || s.status !== "ready") return;
   s.items = [...s.items, { kind: "user", id: uid(), text }];
   s.status = "prompting";
+  // Save now so the chat is in the history even if the app closes mid-turn.
+  saveChat(s);
   notify(s);
   try {
     const { stopReason } = await s.conn.prompt(s.sessionId, text);
@@ -586,6 +596,25 @@ export async function sendPrompt(s: AgentSession, text: string) {
     saveChat(s);
     notify(s);
   }
+  // Next queued prompt, if the agent is still there to take it.
+  const next = s.status === "ready" ? s.queued[0] : undefined;
+  if (next) {
+    s.queued = s.queued.slice(1);
+    void sendPrompt(s, next.text);
+  }
+}
+
+/** Send now if the agent is idle, else queue it behind the running turn. */
+export function queuePrompt(s: AgentSession, text: string) {
+  if (s.status === "ready") return void sendPrompt(s, text);
+  if (s.status !== "prompting") return;
+  s.queued = [...s.queued, { id: uid(), text }];
+  notify(s);
+}
+
+export function unqueuePrompt(s: AgentSession, id: string) {
+  s.queued = s.queued.filter((q) => q.id !== id);
+  notify(s);
 }
 
 // ─── Saved chats ──────────────────────────────────────────────────────────────

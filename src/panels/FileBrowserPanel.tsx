@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { downloadDir, join } from "@tauri-apps/api/path";
+import { save as saveDialog } from "@tauri-apps/plugin-dialog";
 import {
   ArrowUp,
   ChevronRight,
   ChevronUp,
   ChevronDown,
+  Download,
   Eye,
   EyeOff,
   File as FileIcon,
@@ -28,6 +31,7 @@ import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { SkeletonTable } from "../components/Skeleton";
 import { DiskUsageTreemap } from "../components/DiskUsageTreemap";
+import { FilePreview } from "./files/FilePreview";
 
 interface FileEntry {
   name: string;
@@ -190,8 +194,12 @@ export function FileBrowserPanel({ deviceId }: Props) {
     void load(loadCwd(deviceId));
   }, [load, deviceId]);
 
+  /** Index into `previewFiles` of the file being previewed, if any. */
+  const [previewAt, setPreviewAt] = useState<number | null>(null);
+
   const navigate = (entry: FileEntry) => {
     if (entry.isDir) void load(entry.path);
+    else openPreview(entry);
   };
 
   const q = filter.trim().toLowerCase();
@@ -290,12 +298,27 @@ export function FileBrowserPanel({ deviceId }: Props) {
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Space previews the selected file (Quick Look), unless typing a filter.
+    if (e.key === " " && !filter) {
+      const entry = visible[selected];
+      if (entry && !entry.isDir) {
+        e.preventDefault();
+        openPreview(entry);
+        return;
+      }
+    }
     if (handleNavKey(e, false)) return;
     if (e.key.length === 1) {
       e.preventDefault();
       setFilter((f) => f + e.key);
       filterRef.current?.focus();
     }
+  };
+
+  const previewFiles = visible.filter((e) => !e.isDir);
+  const openPreview = (entry: FileEntry) => {
+    const i = previewFiles.findIndex((f) => f.path === entry.path);
+    if (i >= 0) setPreviewAt(i);
   };
 
   const goUp = () => {
@@ -330,6 +353,25 @@ export function FileBrowserPanel({ deviceId }: Props) {
       toast.error(`Save failed: ${errorMessage(e)}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  /** Save a file from this device to a place the user picks. */
+  const downloadEntry = async (entry: FileEntry) => {
+    try {
+      const dest = await saveDialog({
+        defaultPath: await join(await downloadDir(), entry.name),
+      });
+      if (!dest) return;
+      toast.info(`Downloading ${entry.name}…`);
+      await invoke<number>("sftp_download_to", {
+        deviceId,
+        path: entry.path,
+        dest,
+      });
+      toast.success(`Saved ${entry.name}`);
+    } catch (err) {
+      toast.error(`Download failed: ${errorMessage(err)}`);
     }
   };
 
@@ -542,6 +584,29 @@ export function FileBrowserPanel({ deviceId }: Props) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {previewAt !== null && previewFiles[previewAt] && (
+        <FilePreview
+          deviceId={deviceId}
+          files={previewFiles}
+          index={previewAt}
+          onIndex={(i) => {
+            setPreviewAt(i);
+            // Keep the list selection on the previewed file.
+            const at = visible.indexOf(previewFiles[i]);
+            if (at >= 0) setSelected(at);
+          }}
+          onClose={() => {
+            setPreviewAt(null);
+            rootRef.current?.focus();
+          }}
+          onDownload={(f) => void downloadEntry(f as FileEntry)}
+          onEdit={(f) => {
+            setPreviewAt(null);
+            void openEditor(f as FileEntry);
+          }}
+        />
+      )}
+
       {/* Hidden file input for Upload button */}
       <input
         type="file"
@@ -838,12 +903,26 @@ export function FileBrowserPanel({ deviceId }: Props) {
                             <ScanLine className="h-3.5 w-3.5" />
                           </IconButton>
                         ) : (
-                          <IconButton
-                            title="Edit"
-                            onClick={() => void openEditor(e)}
-                          >
-                            <FileCode className="h-3.5 w-3.5" />
-                          </IconButton>
+                          <>
+                            <IconButton
+                              title="Preview (Space)"
+                              onClick={() => openPreview(e)}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </IconButton>
+                            <IconButton
+                              title="Download"
+                              onClick={() => void downloadEntry(e)}
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                            </IconButton>
+                            <IconButton
+                              title="Edit"
+                              onClick={() => void openEditor(e)}
+                            >
+                              <FileCode className="h-3.5 w-3.5" />
+                            </IconButton>
+                          </>
                         )}
                         <IconButton
                           title="Rename"

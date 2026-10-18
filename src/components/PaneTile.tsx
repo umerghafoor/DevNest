@@ -1,4 +1,12 @@
-import { useRef, useCallback, lazy, Suspense, useState } from "react";
+import {
+  useRef,
+  useCallback,
+  lazy,
+  Suspense,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { createPortal } from "react-dom";
 import { iconForDeviceId } from "../lib/device-icon";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type {
@@ -30,6 +38,9 @@ import { GitGraphPanel } from "../panels/GitGraphPanel";
 import { SystemdPanel } from "../panels/SystemdPanel";
 import { HttpPanel } from "../panels/HttpPanel";
 import { NetworkPanel } from "../panels/NetworkPanel";
+import { WidgetsPanel } from "./CustomWidget";
+import { useWidgetsStore } from "../lib/custom-widgets";
+import { paneSlotId } from "../lib/pane-slot";
 import type { PanelKind } from "../store/app-store";
 
 const AgentPanel = lazy(() =>
@@ -66,6 +77,7 @@ export const PANEL_ICONS: Record<PanelKind, string> = {
   markdown: "◧",
   netmon: "⇅",
   agent: "✧",
+  widgets: "▦",
 };
 
 export const PANEL_LABELS: Record<PanelKind, string> = {
@@ -92,6 +104,7 @@ export const PANEL_LABELS: Record<PanelKind, string> = {
   markdown: "Markdown",
   netmon: "Ping & Speed",
   agent: "AI Agent",
+  widgets: "Widgets",
 };
 
 export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
@@ -118,6 +131,7 @@ export const PANEL_DESCRIPTIONS: Record<PanelKind, string> = {
   markdown: "Write and preview Markdown with live rendering",
   netmon: "Ping monitor and internet speed test",
   agent: "Claude Code, Codex, Gemini & other ACP agents",
+  widgets: "Custom widgets made with the Master agent",
 };
 
 export type PanelCategory =
@@ -154,6 +168,7 @@ export const PANEL_CATEGORY: Record<PanelKind, PanelCategory> = {
   markdown: "code",
   netmon: "network",
   agent: "code",
+  widgets: "overview",
 };
 
 export const CATEGORY_LABELS: Record<PanelCategory, string> = {
@@ -180,7 +195,8 @@ export const CATEGORY_ORDER: PanelCategory[] = [
 ];
 
 export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
-  overview: ["dashboard", "sysinfo"],
+  // No "dashboard": it's what an empty workspace shows, not a panel to open.
+  overview: ["sysinfo", "widgets"],
   remote: ["terminal", "files", "processes", "ports"],
   containers: ["docker"],
   observability: ["metrics", "logs"],
@@ -189,6 +205,20 @@ export const PANEL_ORDER_IN_CATEGORY: Record<PanelCategory, PanelKind[]> = {
   code: ["agent", "git", "gitGraph", "editor", "markdown", "sql"],
   app: ["settings"],
 };
+
+/** The pane's name: the panel, or the widget a single-widget pane shows. */
+function usePaneLabel(pane: Pane) {
+  const widgetName = useWidgetsStore((s) =>
+    pane.panel === "widgets" && pane.extra?.widgetId
+      ? s.saved.find((w) => w.spec.id === pane.extra?.widgetId)?.spec.name
+      : undefined,
+  );
+  return widgetName ?? PANEL_LABELS[pane.panel];
+}
+
+export function PaneTitle({ pane }: { pane: Pane }) {
+  return <>{usePaneLabel(pane)}</>;
+}
 
 export function PanelContent({ pane }: { pane: Pane }) {
   switch (pane.panel) {
@@ -240,6 +270,8 @@ export function PanelContent({ pane }: { pane: Pane }) {
           paneId={pane.id}
         />
       );
+    case "widgets":
+      return <WidgetsPanel widgetId={pane.extra?.widgetId} paneId={pane.id} />;
     case "netmon":
       return <NetworkPanel deviceId={pane.deviceId} paneId={pane.id} />;
     case "systemd":
@@ -276,6 +308,8 @@ const DEVICE_AGNOSTIC: Set<PanelKind> = new Set([
   "git",
   "http",
   "sql",
+  // Each widget names its own device.
+  "widgets",
 ]);
 
 const statusIconColor: Record<string, string> = {
@@ -285,7 +319,65 @@ const statusIconColor: Record<string, string> = {
   error: "text-(--color-error)",
 };
 
-const PANE_DRAG_MIME = "application/x-devnest-pane";
+// ─── Pane drag & dock ─────────────────────────────────────────────────────────
+//
+// Dragging a pane by its header uses pointer events, not HTML5 drag and
+// drop: the webview's native drop handling and panels with their own drag
+// handling (terminal, code editor, file browser) made HTML5 drops
+// unreliable. The pane under the cursor is found with elementFromPoint.
+
+interface PaneDrag {
+  paneId: string;
+  workspaceId: string;
+  label: string;
+  x: number;
+  y: number;
+  target: { paneId: string; label: string; position: DockPosition } | null;
+}
+
+let paneDrag: PaneDrag | null = null;
+const dragSubs = new Set<() => void>();
+function setPaneDrag(d: PaneDrag | null) {
+  paneDrag = d;
+  dragSubs.forEach((f) => f());
+}
+function usePaneDrag() {
+  return useSyncExternalStore(
+    (f) => {
+      dragSubs.add(f);
+      return () => dragSubs.delete(f);
+    },
+    () => paneDrag,
+  );
+}
+
+const DRAG_THRESHOLD = 5;
+
+/** The pane (other than the dragged one) under the point, and where in it. */
+function dropTargetAt(
+  x: number,
+  y: number,
+  sourceId: string,
+): PaneDrag["target"] {
+  const el = document
+    .elementFromPoint(x, y)
+    ?.closest<HTMLElement>("[data-pane-id]");
+  const id = el?.dataset.paneId;
+  if (!el || !id || id === sourceId) return null;
+  return {
+    paneId: id,
+    label: el.dataset.paneLabel ?? "pane",
+    position: getDockPosition(x, y, el.getBoundingClientRect()),
+  };
+}
+
+const POSITION_HINT: Record<DockPosition, string> = {
+  left: "Dock left",
+  right: "Dock right",
+  top: "Dock above",
+  bottom: "Dock below",
+  center: "Swap",
+};
 
 function dropIndicatorClass(position: DockPosition): string {
   switch (position) {
@@ -303,11 +395,12 @@ function dropIndicatorClass(position: DockPosition): string {
 }
 
 function getDockPosition(
-  event: React.DragEvent,
+  clientX: number,
+  clientY: number,
   rect: ReturnType<HTMLElement["getBoundingClientRect"]>,
 ): DockPosition {
-  const x = (event.clientX - rect.left) / rect.width;
-  const y = (event.clientY - rect.top) / rect.height;
+  const x = (clientX - rect.left) / rect.width;
+  const y = (clientY - rect.top) / rect.height;
   const threshold = 0.25;
   if (x < threshold) return "left";
   if (x > 1 - threshold) return "right";
@@ -420,6 +513,64 @@ function PaneHeader({
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
 
   const isActive = pane.id === ws.activePaneId;
+  const dockPane = useAppStore((s) => s.dockPane);
+  const drag = usePaneDrag();
+  const dragging = drag?.paneId === pane.id;
+  const label = usePaneLabel(pane);
+
+  /** Start tracking a possible drag from the header's empty space. */
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    if (
+      (e.target as HTMLElement).closest(
+        "button, a, input, select, textarea, [role=menu]",
+      )
+    )
+      return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let started = false;
+    const body = document.body;
+
+    const move = (ev: MouseEvent) => {
+      if (
+        !started &&
+        Math.hypot(ev.clientX - startX, ev.clientY - startY) < DRAG_THRESHOLD
+      )
+        return;
+      if (!started) {
+        started = true;
+        body.style.userSelect = "none";
+        body.style.cursor = "grabbing";
+      }
+      setPaneDrag({
+        paneId: pane.id,
+        workspaceId,
+        label,
+        x: ev.clientX,
+        y: ev.clientY,
+        target: dropTargetAt(ev.clientX, ev.clientY, pane.id),
+      });
+    };
+    const end = (commit: boolean) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("keydown", key);
+      body.style.userSelect = "";
+      body.style.cursor = "";
+      const d = paneDrag;
+      setPaneDrag(null);
+      if (commit && started && d?.target)
+        dockPane(workspaceId, pane.id, d.target.paneId, d.target.position);
+    };
+    const up = () => end(true);
+    const key = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") end(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("keydown", key);
+  };
 
   const makeNewPane = (panel: PanelKind): Pane => {
     const uid = Math.random().toString(36).slice(2, 10);
@@ -433,26 +584,23 @@ function PaneHeader({
 
   return (
     <div
-      draggable
-      className="relative flex h-8 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 text-xs select-none cursor-default"
+      className={`relative flex h-8 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 text-xs select-none ${dragging ? "cursor-grabbing opacity-60" : "cursor-grab"}`}
+      title="Drag to move this pane"
       onMouseDown={() => setActivePane(pane.id)}
-      onDragStart={(e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData(
-          PANE_DRAG_MIME,
-          JSON.stringify({ paneId: pane.id, workspaceId }),
-        );
-      }}
+      onPointerDown={onPointerDown}
     >
       {isActive && (
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-(--color-accent)" />
       )}
+      {dragging &&
+        drag &&
+        createPortal(<DragGhost drag={drag} />, document.body)}
 
       <span className="opacity-40 text-[10px]">{PANEL_ICONS[pane.panel]}</span>
       <span
-        className={`font-medium ${isActive ? "text-(--color-fg)" : "text-(--color-fg-muted)"}`}
+        className={`truncate font-medium ${isActive ? "text-(--color-fg)" : "text-(--color-fg-muted)"}`}
       >
-        {PANEL_LABELS[pane.panel]}
+        <PaneTitle pane={pane} />
       </span>
       {!DEVICE_AGNOSTIC.has(pane.panel) && (
         <>
@@ -461,7 +609,14 @@ function PaneHeader({
         </>
       )}
 
-      <div className="ml-auto flex items-center gap-0.5">
+      {/* Panels may put their own controls here (see pane-slot.ts). */}
+      <div
+        id={paneSlotId(pane.id)}
+        className="ml-auto flex min-w-0 items-center"
+        onMouseDown={(e) => e.stopPropagation()}
+      />
+
+      <div className="flex shrink-0 items-center gap-0.5">
         <button
           title="Split right"
           onClick={(e) => {
@@ -516,58 +671,60 @@ function PaneHeader({
 function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
   const ws = useAppStore(selectActiveWorkspace);
   const setActivePane = useAppStore((s) => s.setActivePane);
-  const dockPane = useAppStore((s) => s.dockPane);
   const isActive = pane.id === ws.activePaneId;
-  const [dropPosition, setDropPosition] = useState<DockPosition | null>(null);
-
-  const finishDrop = useCallback(() => setDropPosition(null), []);
+  const drag = usePaneDrag();
+  const label = usePaneLabel(pane);
+  const drop = drag?.target?.paneId === pane.id ? drag.target.position : null;
 
   return (
     <div
       key={pane.id}
+      data-pane-id={pane.id}
+      data-pane-label={label}
       className={`pane-enter ring-smooth relative flex h-full flex-col overflow-hidden ${
         isActive ? "ring-1 ring-inset ring-(--color-accent)/30" : ""
       }`}
       onMouseDown={() => setActivePane(pane.id)}
-      onDragOver={(e) => {
-        if (!e.dataTransfer.types.includes(PANE_DRAG_MIME)) return;
-        e.preventDefault();
-        setDropPosition(
-          getDockPosition(e, e.currentTarget.getBoundingClientRect()),
-        );
-      }}
-      onDragLeave={finishDrop}
-      onDrop={(e) => {
-        const raw = e.dataTransfer.getData(PANE_DRAG_MIME);
-        finishDrop();
-        if (!raw) return;
-        e.preventDefault();
-        try {
-          const payload = JSON.parse(raw) as { paneId?: string };
-          if (!payload.paneId) return;
-          dockPane(
-            workspaceId,
-            payload.paneId,
-            pane.id,
-            dropPosition ?? "center",
-          );
-        } catch {
-          // ignore malformed drag payloads
-        }
-      }}
     >
-      {dropPosition && (
+      {/* While dragging, keep panel content (terminals, editors) from
+          reacting to the pointer. */}
+      {drag && <div className="absolute inset-0 z-10" />}
+      {drop && (
         <>
           <div className="pointer-events-none absolute inset-0 z-20 bg-(--color-accent)/6" />
           <div
-            className={`pointer-events-none absolute z-[21] bg-(--color-accent)/16 shadow-[inset_0_0_0_2px_var(--color-accent)] ${dropIndicatorClass(dropPosition)}`}
-          />
+            className={`pointer-events-none absolute z-[21] flex items-center justify-center bg-(--color-accent)/16 shadow-[inset_0_0_0_2px_var(--color-accent)] ${dropIndicatorClass(drop)}`}
+          >
+            <span className="rounded-md bg-(--color-accent) px-2 py-1 text-[11px] font-medium text-(--color-accent-fg) shadow">
+              {POSITION_HINT[drop]}
+            </span>
+          </div>
         </>
       )}
       <PaneHeader pane={pane} workspaceId={workspaceId} />
       <div className="min-h-0 flex-1 overflow-hidden" key={pane.instanceId}>
         <PanelContent pane={pane} />
       </div>
+    </div>
+  );
+}
+
+/** Chip that follows the cursor while a pane is dragged. */
+function DragGhost({ drag }: { drag: PaneDrag }) {
+  const t = drag.target;
+  return (
+    <div
+      className="pointer-events-none fixed z-[100] flex items-center gap-1.5 rounded-md border border-(--color-border) bg-(--color-surface) px-2 py-1 text-[11px] shadow-lg"
+      style={{ left: drag.x + 12, top: drag.y + 12 }}
+    >
+      <span className="font-medium">{drag.label}</span>
+      <span className="text-(--color-fg-muted)">
+        {t
+          ? t.position === "center"
+            ? `→ swap with ${t.label}`
+            : `→ ${POSITION_HINT[t.position].toLowerCase()} of ${t.label}`
+          : "· drop on a pane · Esc to cancel"}
+      </span>
     </div>
   );
 }

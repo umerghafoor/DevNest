@@ -11,6 +11,7 @@ import {
 } from "./agent-sessions";
 import type { AgentDef } from "../store/agents-store";
 import type { PanelKind } from "../store/app-store";
+import type { WidgetSpec } from "./custom-widgets";
 
 /**
  * The Master agent: one app-wide agent session on the host device, shown in
@@ -23,7 +24,7 @@ import type { PanelKind } from "../store/app-store";
 export const MASTER_KEY = "__master__";
 
 /** Tools DevNest gates; "always allow" is offered only for the narrow ones. */
-const BROAD_TOOLS = new Set(["run_command", "write_file"]);
+const BROAD_TOOLS = new Set(["run_command", "write_file", "create_widget"]);
 
 export interface Approval {
   id: string;
@@ -208,4 +209,25 @@ function wire(s: AgentSession) {
         it.deviceId === e.payload.deviceId,
     );
   });
+  void listen<{ spec: WidgetSpec; deviceId: string; deviceName: string }>(
+    "master:custom-widget",
+    (e) => {
+      if (!wired) return;
+      const { spec, deviceId, deviceName } = e.payload;
+      addItem(
+        wired,
+        {
+          kind: "widget",
+          id: `${spec.id}:${Date.now()}`,
+          widget: "custom",
+          title: spec.name,
+          deviceId,
+          deviceName,
+          spec,
+        },
+        // A revision replaces the earlier preview and moves it down.
+        (it) => it.kind === "widget" && it.spec?.id === spec.id,
+      );
+    },
+  );
 }

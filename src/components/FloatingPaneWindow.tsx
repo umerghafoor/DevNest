@@ -7,7 +7,8 @@ import {
   syncAppStoreFromStorage,
   useAppStore,
 } from "../store/app-store";
-import { PanelContent, PANEL_ICONS, PANEL_LABELS } from "./PaneTile";
+import { PanelContent, PaneTitle, PANEL_ICONS } from "./PaneTile";
+import { paneSlotId } from "../lib/pane-slot";
 import { SudoPasswordDialog } from "./SudoPasswordDialog";
 import {
   getFloatingPaneIdFromLocation,
@@ -129,11 +130,17 @@ export function FloatingPaneWindow() {
         <span className="opacity-40 text-[10px]">
           {PANEL_ICONS[pane.panel]}
         </span>
-        <span className="font-medium">{PANEL_LABELS[pane.panel]}</span>
+        <span className="truncate font-medium">
+          <PaneTitle pane={pane} />
+        </span>
         <span className="ml-2 text-(--color-fg-muted)">
           {workspace?.name ?? "Floating pane"}
         </span>
-        <div className="ml-auto flex items-center gap-1">
+        <div
+          id={paneSlotId(pane.id)}
+          className="ml-auto flex min-w-0 items-center"
+        />
+        <div className="flex shrink-0 items-center gap-1">
           <button
             onClick={dockBack}
             onMouseDown={(e) => e.stopPropagation()}

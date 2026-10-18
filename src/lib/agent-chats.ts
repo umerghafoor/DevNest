@@ -77,16 +77,19 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
   },
 }));
 
-/** Chats for one agent on one device in one scope, newest first. */
+/** Chats on one device in one scope, newest first — for one agent, or for
+ *  every agent when `agentId` is null. */
 export function chatsFor(
   chats: ChatRecord[],
   scope: string,
-  agentId: string,
+  agentId: string | null,
   deviceId: string,
 ) {
   return chats.filter(
     (c) =>
-      c.scope === scope && c.agentId === agentId && c.deviceId === deviceId,
+      c.scope === scope &&
+      (agentId === null || c.agentId === agentId) &&
+      c.deviceId === deviceId,
   );
 }
 

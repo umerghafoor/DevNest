@@ -11,8 +11,9 @@ import {
   logout,
   newConversation,
   openChat,
+  queuePrompt,
   retryAfterLogin,
-  sendPrompt,
+  unqueuePrompt,
   setConfig,
   setMode,
   startAgent,
@@ -48,16 +49,22 @@ import { ChatHistoryButton } from "./agent/ChatHistory";
 import { chatsFor, useChatsStore, type ChatRecord } from "../lib/agent-chats";
 import { promptHistory, pushPrompt, stepHistory } from "../lib/prompt-history";
 import { MasterWidget } from "../components/MasterWidgets";
+import { CustomWidget } from "../components/CustomWidget";
 import {
   ArrowUp,
   ChevronDown,
+  Clock,
   FolderOpen,
+  Hand,
+  LoaderCircle,
   LogOut,
   Play,
   ScrollText,
   Settings2,
+  ShieldAlert,
   Square,
   SquareTerminal,
+  X,
 } from "lucide-react";
 
 /**
@@ -160,7 +167,8 @@ export function AgentPanel({
 
   const allChats = useChatsStore((st) => st.chats);
   const removeChat = useChatsStore((st) => st.remove);
-  const chats = chatsFor(allChats, "pane", agentId, deviceId);
+  const chats = chatsFor(allChats, "pane", null, deviceId);
+  const agentName = (id: string) => agents.find((a) => a.id === id)?.name ?? id;
 
   /** Open a saved chat, starting its agent in its folder if needed. */
   const resume = async (c: ChatRecord) => {
@@ -257,6 +265,7 @@ export function AgentPanel({
             chats={chats}
             currentId={s.chatId}
             showCwd
+            agentName={agentName}
             onNew={
               s.status === "ready" ? () => void newConversation(s) : undefined
             }
@@ -565,10 +574,14 @@ export function StatusDot({ status }: { status: AgentSession["status"] }) {
 export function Transcript({
   s,
   empty,
+  waitingOn,
 }: {
   s: AgentSession;
   /** Shown before the first message. */
   empty?: React.ReactNode;
+  /** Something outside the session the turn is blocked on (e.g. a DevNest
+   *  approval); shown in the working indicator. */
+  waitingOn?: string | null;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
@@ -605,8 +618,79 @@ export function Transcript({
           {s.items.map((it) => (
             <Item key={it.id} item={it} deviceId={s.deviceId} />
           ))}
+          {s.status === "prompting" && (
+            <WorkingIndicator
+              waitingOn={
+                waitingOn
+                  ? waitingOn
+                  : s.permission
+                    ? "Waiting for your approval"
+                    : s.elicitation
+                      ? "Waiting for your answer"
+                      : null
+              }
+            />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Live "the agent is busy" row at the end of the transcript. Mounted only
+ *  while a turn runs, so the timer restarts with each prompt. */
+const WORKING_WORDS = [
+  "Pondering",
+  "Cogitating",
+  "Mulling",
+  "Ruminating",
+  "Noodling",
+  "Brewing",
+  "Percolating",
+  "Tinkering",
+  "Conjuring",
+  "Crafting",
+  "Musing",
+  "Churning",
+  "Spelunking",
+  "Hatching",
+  "Nesting",
+  "Weaving",
+  "Simmering",
+  "Puzzling",
+];
+
+function WorkingIndicator({ waitingOn }: { waitingOn: string | null }) {
+  const [start] = useState(() => Date.now());
+  // One word per turn, like Claude Code's status line.
+  const [word] = useState(
+    () => WORKING_WORDS[Math.floor(Math.random() * WORKING_WORDS.length)],
+  );
+  const [now, setNow] = useState(start);
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const secs = Math.floor((now - start) / 1000);
+  const elapsed =
+    secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-2 text-(--color-fg-muted)"
+    >
+      {waitingOn ? (
+        <Hand size={13} className="text-(--color-warn)" />
+      ) : (
+        <LoaderCircle
+          size={13}
+          className="animate-spin text-(--color-accent)"
+        />
+      )}
+      <span className={waitingOn ? "text-(--color-warn)" : ""}>
+        {waitingOn ?? `${word}…`}
+      </span>
+      <span className="tabular-nums opacity-70">{elapsed}</span>
     </div>
   );
 }
@@ -614,6 +698,14 @@ export function Transcript({
 function Item({ item, deviceId }: { item: TranscriptItem; deviceId: string }) {
   switch (item.kind) {
     case "widget":
+      if (item.spec)
+        return (
+          <CustomWidget
+            spec={item.spec}
+            deviceId={item.deviceId ?? deviceId}
+            deviceName={item.deviceName}
+          />
+        );
       return (
         <MasterWidget
           widget={item.widget}
@@ -794,32 +886,84 @@ function simpleDiff(oldText: string, newText: string) {
 
 // ─── Permission prompt ────────────────────────────────────────────────────────
 
+/** What a tool call of this ACP kind is asking to do, for the prompt title. */
+const PERMISSION_VERB: Record<string, string> = {
+  execute: "run a command",
+  edit: "edit a file",
+  delete: "delete a file",
+  move: "move a file",
+  read: "read a file",
+  search: "search files",
+  fetch: "fetch a URL",
+};
+
+/** Rejections first, the one-off allow last — the primary action sits rightmost. */
+const OPTION_ORDER: Record<string, number> = {
+  reject_always: 0,
+  reject_once: 1,
+  allow_always: 2,
+  allow_once: 3,
+};
+
+/** Button look for a permission choice, shared with the Master agent's
+ *  DevNest approvals so both prompts read the same. */
+export function permissionButtonClass(kind: PermissionOption["kind"]) {
+  const look =
+    kind === "allow_once"
+      ? "bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
+      : kind === "allow_always"
+        ? "border border-(--color-accent)/50 text-(--color-accent) hover:bg-(--color-accent)/10"
+        : "border border-(--color-border) bg-(--color-surface) hover:bg-(--color-surface-2)";
+  return `min-h-7 rounded-md px-3 py-1 text-center leading-tight font-medium transition-colors @max-md:w-full ${look}`;
+}
+
 export function PermissionCard({ s }: { s: AgentSession }) {
   const { req } = s.permission!;
-  const style = (o: PermissionOption) =>
-    o.kind.startsWith("allow")
-      ? "bg-(--color-accent) text-(--color-accent-fg)"
-      : "bg-(--color-surface-2)";
+  const call = req.toolCall;
+  // DevNest's own tools read better by name than as mcp__devnest__x.
+  const devnest = devnestTool(call.title);
+  const verb = devnest
+    ? `use DevNest to ${devnest}`
+    : (PERMISSION_VERB[call.kind ?? ""] ?? "use a tool");
+  const detail = devnest
+    ? `DevNest · ${devnest}`
+    : (call.title ?? call.kind ?? call.toolCallId);
+  const options = [...req.options].sort(
+    (a, b) => (OPTION_ORDER[a.kind] ?? 9) - (OPTION_ORDER[b.kind] ?? 9),
+  );
   return (
-    <div className="shrink-0 border-t border-(--color-border) bg-(--color-warn)/10 px-3 py-2">
-      <div className="mb-1.5">
-        <span className="font-semibold">Permission requested: </span>
-        <span className="font-mono">
-          {req.toolCall.title ?? req.toolCall.kind ?? req.toolCall.toolCallId}
-        </span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {req.options.map((o) => (
-          <button
-            key={o.optionId}
-            className={`rounded px-2 py-1 hover:opacity-90 ${style(o)}`}
-            onClick={() =>
-              answerPermission(s, { outcome: "selected", optionId: o.optionId })
-            }
-          >
-            {o.name}
-          </button>
-        ))}
+    <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
+      <div className="@container mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <ShieldAlert size={14} className="shrink-0 text-(--color-warn)" />
+          <span className="font-semibold">
+            {s.agent?.name ?? "The agent"} wants to {verb}
+          </span>
+        </div>
+        <pre className="max-h-32 overflow-auto rounded-lg bg-(--color-bg) px-2.5 py-1.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          {detail}
+        </pre>
+        {call.locations && call.locations.length > 0 && (
+          <div className="mt-1 truncate font-mono text-[11px] text-(--color-fg-muted)">
+            {call.locations.map((l) => l.path).join(", ")}
+          </div>
+        )}
+        <div className="mt-2 flex flex-col gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
+          {options.map((o) => (
+            <button
+              key={o.optionId}
+              className={permissionButtonClass(o.kind)}
+              onClick={() =>
+                answerPermission(s, {
+                  outcome: "selected",
+                  optionId: o.optionId,
+                })
+              }
+            >
+              {o.name}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -841,7 +985,7 @@ function SettingsRow({ s }: { s: AgentSession }) {
   if (s.config.length === 0 && !s.modes) return null;
 
   return (
-    <div className="flex items-center">
+    <div className="flex min-w-0 flex-wrap items-center">
       {s.config.map((o) =>
         o.type === "boolean" ? (
           <button
@@ -1039,7 +1183,7 @@ export function Composer({
 
   const submit = () => {
     const t = text.trim();
-    if (!t || !ready) return;
+    if (!t || (!ready && !busy)) return;
     edit("");
     pushPrompt(t);
     if (runLocalCommand(s, t)) return;
@@ -1049,7 +1193,8 @@ export function Composer({
       note(s, `Opened ${t} in the ${s.agent?.name ?? "agent"} terminal →`);
       return;
     }
-    void sendPrompt(s, t);
+    // While a turn runs, this queues behind it.
+    queuePrompt(s, t);
   };
 
   /** Recall an earlier prompt with ↑ / ↓ (caret on the first / last line). */
@@ -1174,18 +1319,48 @@ export function Composer({
               </ul>
             )}
 
-            <div className="flex flex-wrap items-end gap-x-1 rounded-xl border border-(--color-border) bg-(--color-surface) p-1 pl-3 transition-colors focus-within:border-(--color-accent)">
+            {s.queued.length > 0 && (
+              <ul className="mb-1.5 space-y-1">
+                {s.queued.map((q, i) => (
+                  <li
+                    key={q.id}
+                    className="flex items-center gap-2 rounded-lg border border-dashed border-(--color-border) bg-(--color-surface) px-2.5 py-1"
+                  >
+                    <Clock
+                      size={12}
+                      className="shrink-0 text-(--color-fg-muted)"
+                    />
+                    <span className="min-w-0 flex-1 truncate" title={q.text}>
+                      {q.text}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-(--color-fg-muted)">
+                      {i === 0 ? "Next" : `Queued #${i + 1}`}
+                    </span>
+                    <button
+                      onClick={() => unqueuePrompt(s, q.id)}
+                      title="Remove from queue"
+                      aria-label="Remove from queue"
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+                    >
+                      <X size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex flex-col rounded-xl border border-(--color-border) bg-(--color-surface) p-1 transition-colors focus-within:border-(--color-accent)">
               <textarea
                 ref={ref}
                 rows={1}
-                className="no-focus-ring max-h-40 min-h-7 min-w-48 flex-1 resize-none bg-transparent py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
+                className="no-focus-ring max-h-40 min-h-7 w-full resize-none bg-transparent px-2 py-1.5 text-[13px] leading-snug text-(--color-fg) outline-none placeholder:text-(--color-fg-muted) disabled:cursor-not-allowed"
                 placeholder={
                   ready
                     ? commands.length
                       ? "Ask the agent… / for commands"
                       : "Ask the agent…"
                     : busy
-                      ? "Agent is working…"
+                      ? "Queue a message…"
                       : "Start an agent to chat"
                 }
                 value={text}
@@ -1193,9 +1368,11 @@ export function Composer({
                 onChange={(e) => edit(e.target.value)}
                 onKeyDown={onKeyDown}
               />
-              <div className="ml-auto flex shrink-0 items-center gap-0.5">
-                <SettingsRow s={s} />
-                {busy ? (
+              <div className="flex items-end gap-0.5">
+                <div className="flex min-w-0 flex-1 flex-wrap">
+                  <SettingsRow s={s} />
+                </div>
+                {busy && (
                   <button
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
                     onClick={() => cancelTurn(s)}
@@ -1203,12 +1380,17 @@ export function Composer({
                   >
                     <Square size={11} fill="currentColor" />
                   </button>
-                ) : (
+                )}
+                {(!busy || text.trim()) && (
                   <button
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
                     onClick={submit}
-                    disabled={!ready || !text.trim()}
-                    title="Send (Enter) · Newline (Shift+Enter)"
+                    disabled={(!ready && !busy) || !text.trim()}
+                    title={
+                      busy
+                        ? "Queue — sent when the agent finishes (Enter)"
+                        : "Send (Enter) · Newline (Shift+Enter)"
+                    }
                   >
                     <ArrowUp size={15} />
                   </button>

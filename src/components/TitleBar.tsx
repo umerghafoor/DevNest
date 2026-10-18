@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { enableMacModernWindowStyle } from "../lib/mac-window-style";
-import { useAppStore, selectActiveWorkspace } from "../store/app-store";
+import { useAppStore } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
 import { useRecentsStore } from "../store/recents-store";
 import { usePaletteStore } from "../store/palette-store";
@@ -173,6 +173,13 @@ function WorkspaceTab({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tabRef = useRef<HTMLDivElement>(null);
+
+  // Keep the active tab visible when the strip scrolls.
+  useEffect(() => {
+    if (active)
+      tabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active]);
 
   useEffect(() => {
     setDraft(name);
@@ -188,6 +195,7 @@ function WorkspaceTab({
   return (
     // Intentionally no data-tauri-drag-region — tabs must be clickable
     <div
+      ref={tabRef}
       className="group flex shrink-0 items-center px-0.5 select-none"
       onClick={() => !editing && setActiveWorkspace(id)}
     >
@@ -293,8 +301,13 @@ function NewPanelMenu() {
     const used = new Set<PanelKind>();
 
     // Recents first
-    if (recents.length > 0) {
-      recents.forEach((kind, i) => {
+    // Recents can hold panels no longer offered (e.g. "dashboard").
+    const offered = new Set(
+      CATEGORY_ORDER.flatMap((c) => PANEL_ORDER_IN_CATEGORY[c]),
+    );
+    const shownRecents = recents.filter((k) => offered.has(k));
+    if (shownRecents.length > 0) {
+      shownRecents.forEach((kind, i) => {
         used.add(kind);
         result.push({
           kind,
@@ -414,7 +427,7 @@ function NewPanelMenu() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search panels…"
-              className="w-full bg-transparent px-2 py-1 text-xs outline-none placeholder:text-(--color-fg-muted)"
+              className="no-focus-ring w-full bg-transparent px-2 py-1 text-xs outline-none placeholder:text-(--color-fg-muted)"
             />
           </div>
 
@@ -567,61 +580,6 @@ function PaletteButton() {
   );
 }
 
-// ─── Split / close active pane ────────────────────────────────────────────────
-
-function PaneActions() {
-  const ws = useAppStore(selectActiveWorkspace);
-  const splitPane = useAppStore((s) => s.splitPane);
-  const closePane = useAppStore((s) => s.closePane);
-  const activeDeviceId = useAppStore((s) => s.activeDeviceId);
-
-  const { activePaneId, paneRoot } = ws;
-  if (!activePaneId || !paneRoot) return null;
-
-  const findPane = (n: typeof paneRoot): Pane | undefined => {
-    if (!n) return undefined;
-    if (n.type === "leaf")
-      return n.pane.id === activePaneId ? n.pane : undefined;
-    return findPane(n.first) ?? findPane(n.second);
-  };
-  const activePaneData = findPane(paneRoot);
-
-  const doSplit = (dir: "horizontal" | "vertical") => {
-    if (!activePaneId || !activeDeviceId) return;
-    splitPane(
-      activePaneId,
-      dir,
-      makePane(activeDeviceId, activePaneData?.panel ?? "terminal"),
-    );
-  };
-
-  return (
-    <div className="flex items-center border-l border-(--color-border)">
-      <button
-        title="Split right (⌘\)"
-        onClick={() => doSplit("horizontal")}
-        className="flex h-full items-center px-2 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-      >
-        <SplitHIcon />
-      </button>
-      <button
-        title="Split down (⌘–)"
-        onClick={() => doSplit("vertical")}
-        className="flex h-full items-center px-2 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-      >
-        <SplitVIcon />
-      </button>
-      <button
-        title="Close pane (⌘W)"
-        onClick={() => closePane(activePaneId)}
-        className="flex h-full items-center px-2 text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error) transition-colors"
-      >
-        <CloseIcon />
-      </button>
-    </div>
-  );
-}
-
 // ─── Full title bar ───────────────────────────────────────────────────────────
 
 export function TitleBar() {
@@ -662,8 +620,8 @@ export function TitleBar() {
       )}
 
       {/* Workspace tabs — each tab is individually clickable, no drag attr */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 px-3">
+      <div className="flex min-w-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2 pr-2 pl-3">
           <CradleMark size={22} stroke="var(--color-fg)" />
           <span
             style={{ letterSpacing: "-0.03em", fontWeight: 400 }}
@@ -674,7 +632,15 @@ export function TitleBar() {
           </span>
         </div>
 
-        <div className="flex items-center overflow-x-auto overflow-y-hidden py-1">
+        {/* Tabs scroll sideways (wheel works too) rather than pushing the
+            right-hand actions out of the window. */}
+        <div
+          className="no-scrollbar flex min-w-0 items-center overflow-x-auto overflow-y-hidden py-1"
+          onWheel={(e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX))
+              e.currentTarget.scrollLeft += e.deltaY;
+          }}
+        >
           {workspaces.map((ws) => (
             <WorkspaceTab
               key={ws.id}
@@ -683,24 +649,24 @@ export function TitleBar() {
               active={ws.id === activeWorkspaceId}
             />
           ))}
-          <button
-            onClick={addWorkspace}
-            title="New workspace"
-            className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-          >
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-          </button>
         </div>
+        <button
+          onClick={addWorkspace}
+          title="New workspace"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+        >
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+        </button>
       </div>
 
       {/* Draggable center gap */}
@@ -710,8 +676,9 @@ export function TitleBar() {
       <div className="flex items-stretch border-l border-(--color-border)">
         <PaletteButton />
         <NewPanelMenu />
-        <PaneActions />
         <MasterButton />
+        {/* Keep clear of the window's rounded corner. */}
+        {isMac && <div className="w-1.5 shrink-0" />}
       </div>
 
       {/* Linux/Windows window controls */}
@@ -721,55 +688,5 @@ export function TitleBar() {
         </div>
       )}
     </header>
-  );
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function SplitHIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <rect x="1" y="1" width="4" height="10" rx="1" />
-      <rect x="7" y="1" width="4" height="10" rx="1" />
-    </svg>
-  );
-}
-
-function SplitVIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <rect x="1" y="1" width="10" height="4" rx="1" />
-      <rect x="1" y="7" width="10" height="4" rx="1" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 11 11"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    >
-      <path d="M1 1l9 9M10 1L1 10" />
-    </svg>
   );
 }

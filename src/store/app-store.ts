@@ -25,7 +25,8 @@ export type PanelKind =
   | "sql"
   | "markdown"
   | "netmon"
-  | "agent";
+  | "agent"
+  | "widgets";
 
 // ─── Pane leaf ───────────────────────────────────────────────────────────────
 
@@ -146,20 +147,14 @@ export function findPaneInTree(
 
 // ─── Workspace helpers ────────────────────────────────────────────────────────
 
+/** A new workspace starts empty, which shows the Dashboard. */
 function defaultWorkspace(name?: string): Workspace {
-  const paneId = uid();
-  const dashboard: Pane = {
-    id: paneId,
-    instanceId: paneId,
-    deviceId: "local",
-    panel: "dashboard",
-  };
   return {
     id: uid(),
     name: name ?? randomWorkspaceName(),
-    paneRoot: makeLeaf(dashboard),
+    paneRoot: null,
     floatingPanes: [],
-    activePaneId: paneId,
+    activePaneId: null,
   };
 }
 
@@ -626,6 +621,26 @@ export const useAppStore = create<AppState>((set, get) => ({
           };
         }
         if (!targetExists) return {};
+
+        // Dropping on the middle of a pane swaps the two (both in the tree);
+        // replacing would silently close the target.
+        const targetPane = findPaneInTree(w.paneRoot!, targetPaneId);
+        const sourceInTree = !!findPaneInTree(w.paneRoot!, paneId);
+        if (position === "center" && sourceInTree && targetPane) {
+          const swapped = replaceLeaf(
+            replaceLeaf(
+              w.paneRoot!,
+              paneId,
+              makeLeaf({ ...targetPane, id: "__swap__" }),
+            ),
+            targetPaneId,
+            makeLeaf(sourcePane),
+          );
+          return {
+            paneRoot: replaceLeaf(swapped, "__swap__", makeLeaf(targetPane)),
+            activePaneId: sourcePane.id,
+          };
+        }
 
         const removed = removeFromWorkspace(w, paneId);
         const nextWorkspace = removed.workspace;

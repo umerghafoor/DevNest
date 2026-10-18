@@ -12,7 +12,9 @@
 /// the user answers in the panel (`master_resolve`), so the gate holds no
 /// matter which permission mode the agent itself is in. `show_widget` emits
 /// `master:widget`; the panel renders a live widget in the transcript.
-use std::collections::HashMap;
+/// `create_widget` emits `master:custom-widget`: a widget the agent designs
+/// (a command plus a layout of blocks) that the user can save and reuse.
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::process::{Command, Stdio};
@@ -35,6 +37,11 @@ const APPROVAL_TIMEOUT: Duration = Duration::from_secs(600);
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const MAX_OUTPUT: usize = 30_000;
 const MAX_BODY: usize = 8 * 1024 * 1024;
+/// Widget commands run on every refresh: keep them quick.
+const WIDGET_TIMEOUT: Duration = Duration::from_secs(30);
+const WIDGET_BLOCKS: &[&str] = &[
+    "stat", "stats", "gauge", "bars", "donut", "line", "table", "list", "kv", "status", "text",
+];
 pub const BRIDGE_FLAG: &str = "--mcp-bridge";
 pub const ENV_URL: &str = "DEVNEST_MCP_URL";
 pub const ENV_TOKEN: &str = "DEVNEST_MCP_TOKEN";
@@ -53,6 +60,9 @@ pub struct Endpoint {
 pub struct MasterHub {
     endpoint: Mutex<Option<Endpoint>>,
     pending: Arc<Mutex<HashMap<String, mpsc::Sender<bool>>>>,
+    /// (device id, cwd, command) of widget commands the user already
+    /// approved this run, so redesigning a widget doesn't ask again.
+    widget_ok: Mutex<HashSet<(String, String, String)>>,
 }
 
 impl MasterHub {
@@ -320,6 +330,16 @@ tool you have, so every change goes through DevNest's approval.\n\
 - When the user wants to see or watch something (system load, processes, Tailscale, Docker), \
 call show_widget with the right `device`: it shows a live widget in the chat, so don't repeat \
 its numbers unless asked.\n\
+- When the user wants a NEW or custom widget (\"make a widget that shows…\"), design one with \
+create_widget. First ask the questions that matter, in one short message, offering concrete \
+choices: which device; the exact scope (folder, service, file, URL…); what to highlight; the \
+layout (suggest 2-3 options such as headline numbers, bar/donut breakdown, table, gauge, \
+trend line); how often it should refresh. Skip questions the request already answers. Then \
+check the tool exists on that device (e.g. `command -v cloc`) and look at its real output with \
+run_command; offer to install a missing tool. Prefer a command that prints JSON. The command \
+re-runs on every refresh, so it must be read-only, finish in a few seconds and never need \
+sudo or input. Call create_widget; the user sees a live preview with a Save button. To revise \
+it, call create_widget again with the same `id`. Explain in one line what each block shows.\n\
 Commands run non-interactively with a {timeout}s timeout and no TTY: never start editors, \
 pagers or anything that waits for input; sudo cannot prompt for a password.",
         os = std::env::consts::OS,
@@ -383,6 +403,19 @@ fn tool_defs() -> Value {
             "type": "object", "properties": {
                 "widget": { "type": "string", "enum": ["system_monitor", "processes", "tailscale", "docker"] },
                 "title": { "type": "string" } }, "required": ["widget"] } },
+        { "name": "create_widget", "description": WIDGET_TOOL_DOC, "inputSchema": {
+            "type": "object", "properties": {
+                "id": { "type": "string", "description": "Pass the id of a widget you created earlier to revise it in place." },
+                "name": { "type": "string", "description": "Short title, e.g. \"Beetle-Eye lines of code\"." },
+                "description": { "type": "string" },
+                "command": { "type": "string", "description": "Read-only shell command whose stdout feeds the widget. Prefer JSON output." },
+                "cwd": { "type": "string", "description": "Working directory (default: home)." },
+                "parse": { "type": "string", "enum": ["json", "lines", "table", "kv", "number", "text"], "description": "How to read stdout (default json)." },
+                "interval": { "type": "integer", "minimum": 0, "description": "Refresh every N seconds; 0 = only on demand. Default 30." },
+                "params": { "type": "object", "description": "Settings the user can change when reusing the widget, e.g. {\"dir\": {\"label\": \"Folder\", \"default\": \"~/DevNest\"}}. Reference them as {{dir}} in command/cwd, without quotes (DevNest quotes them)." },
+                "blocks": { "type": "array", "minItems": 1, "items": { "type": "object" }, "description": "Layout, top to bottom. See the tool description." },
+                "reason": reason },
+            "required": ["name", "command", "blocks", "reason"] } },
     ]);
     let list = tools.as_array_mut().expect("array");
     for t in list.iter_mut() {
@@ -390,10 +423,18 @@ fn tool_defs() -> Value {
     }
     // A widget is always about one machine: make the agent say which, so it
     // can't silently show the host when the user meant another device.
-    if let Some(w) = list.iter_mut().find(|t| t["name"] == "show_widget") {
-        w["inputSchema"]["required"] = json!(["widget", "device"]);
-        w["inputSchema"]["properties"]["device"]["description"] =
-            json!("Device name from list_devices, or \"host\" for this computer.");
+    for (tool, required) in [
+        ("show_widget", json!(["widget", "device"])),
+        (
+            "create_widget",
+            json!(["name", "command", "blocks", "reason", "device"]),
+        ),
+    ] {
+        if let Some(w) = list.iter_mut().find(|t| t["name"] == tool) {
+            w["inputSchema"]["required"] = required;
+            w["inputSchema"]["properties"]["device"]["description"] =
+                json!("Device name from list_devices, or \"host\" for this computer.");
+        }
     }
     list.insert(
         0,
@@ -793,8 +834,135 @@ fn call_tool(app: &AppHandle, name: &str, args: &Value) -> Result<String, String
 updating by itself; don't call show_widget again for the same device and widget."
             ))
         }
+        "create_widget" => {
+            if args.get("device").and_then(Value::as_str).is_none() {
+                return Err("Pass `device`: a name from list_devices, or \"host\".".into());
+            }
+            let spec = widget_spec(args)?;
+            let (command, cwd) = resolve_widget(&spec);
+            let (command, cwd) = (command.as_str(), cwd.as_deref());
+            let key = (
+                device.id.clone(),
+                cwd.unwrap_or("").to_string(),
+                command.to_string(),
+            );
+            if !hub.widget_ok.lock().contains(&key) {
+                let every = match spec["interval"].as_u64().unwrap_or(0) {
+                    0 => "when refreshed".to_string(),
+                    n => format!("every {n}s"),
+                };
+                let detail = match cwd {
+                    Some(dir) => format!("runs {every}:\ncd {dir}\n{command}"),
+                    None => format!("runs {every}:\n{command}"),
+                };
+                gate(
+                    non_empty(
+                        &reason,
+                        &format!("Create widget “{}”", spec["name"].as_str().unwrap_or("")),
+                    ),
+                    detail,
+                )?;
+                hub.widget_ok.lock().insert(key);
+            }
+            let sample = exec(app, &device, command, cwd, WIDGET_TIMEOUT, false)
+                .map(|o| format_output(&o))
+                .map_err(|e| e.to_string())?;
+            let _ = app.emit(
+                "master:custom-widget",
+                json!({ "spec": spec, "deviceId": device.id, "deviceName": device.name }),
+            );
+            Ok(format!(
+                "Widget \"{}\" (id {}) is live in the chat for {on}; the user can save it. \
+Check the first run below; if a block points at the wrong path, call create_widget again with \
+the same id.\n\n{}",
+                spec["name"].as_str().unwrap_or(""),
+                spec["id"].as_str().unwrap_or(""),
+                truncate(&sample, 4000)
+            ))
+        }
         _ => Err(format!("unknown tool: {name}")),
     }
+}
+
+const WIDGET_TOOL_DOC: &str = "Create (or revise) a custom live widget the user can save and \
+reuse. DevNest runs `command` on the device every `interval` seconds, parses stdout, and draws \
+`blocks` from it (user approval required for the command).\n\
+Parse modes: json (default; the first {…} or […] in stdout), lines (array of strings), table \
+(whitespace columns, first line is the header → array of objects), kv (`key: value` or \
+`key=value` lines → object), number, text.\n\
+Paths pick values from the parsed data: \"\" is the root, \"SUM.code\", \"items[0].name\", \
+\"length\" of an array. A path to an OBJECT used as a list becomes rows {key, …fields} (or \
+{key, value} for plain values), so cloc --json's {\"Python\": {…}, \"SUM\": {…}} works directly \
+with exclude [\"header\",\"SUM\"].\n\
+format (optional anywhere a value is shown): number, compact (12.3k), bytes, percent, \
+duration (seconds), text.\n\
+Blocks:\n\
+- {type:\"stat\", label, value, format?, unit?, sub?: path, trend?: bool} one headline number\n\
+- {type:\"stats\", items:[{label, value, format?, unit?}]} a row of headline numbers\n\
+- {type:\"gauge\", label, value, max: number|path, format?, warn?: n, danger?: n} meter\n\
+- {type:\"bars\", label?, items, labelKey?=\"key\", valueKey, format?, sort?: desc|asc|none, \
+limit?, exclude?: [keys]} horizontal bar chart\n\
+- {type:\"donut\", label?, items, labelKey?, valueKey, format?, limit?, exclude?} share of a whole\n\
+- {type:\"line\", label, value, format?, max?} trend of a number across refreshes\n\
+- {type:\"table\", label?, items, columns:[{key, label?, format?}], sortBy?, sort?, limit?, exclude?}\n\
+- {type:\"list\", label?, items, primary, secondary?, badge?, limit?, exclude?}\n\
+- {type:\"kv\", label?, items:[{label, value, format?}]} key/value facts\n\
+- {type:\"status\", label, value, ok?: [values]} green/red health pill (truthy = ok if no `ok`)\n\
+- {type:\"text\", label?, value?, mono?: bool, maxLines?} raw text / log tail\n\
+Make it reusable: put what the user may change later (folder, service, host, URL) in \
+`params` and reference it as {{name}} in command/cwd, unquoted.";
+
+/// Check and normalise a `create_widget` call into the spec the UI renders.
+fn widget_spec(args: &Value) -> Result<Value, String> {
+    let name = str_arg(args, "name")?.trim();
+    let command = str_arg(args, "command")?.trim();
+    if name.is_empty() || command.is_empty() {
+        return Err("`name` and `command` can't be empty.".into());
+    }
+    let parse = args.get("parse").and_then(Value::as_str).unwrap_or("json");
+    if !["json", "lines", "table", "kv", "number", "text"].contains(&parse) {
+        return Err(format!("unknown parse mode: {parse}"));
+    }
+    let blocks = args
+        .get("blocks")
+        .and_then(Value::as_array)
+        .filter(|b| !b.is_empty())
+        .ok_or("`blocks` must be a non-empty array.")?;
+    for (i, b) in blocks.iter().enumerate() {
+        let t = b.get("type").and_then(Value::as_str).unwrap_or("");
+        if !WIDGET_BLOCKS.contains(&t) {
+            return Err(format!(
+                "blocks[{i}]: unknown type \"{t}\". Use one of: {}.",
+                WIDGET_BLOCKS.join(", ")
+            ));
+        }
+    }
+    let params = match args.get("params") {
+        None | Some(Value::Null) => json!({}),
+        Some(Value::Object(m)) if m.values().all(Value::is_object) => Value::Object(m.clone()),
+        Some(_) => return Err(
+            "`params` must map names to {label, default}, e.g. {\"dir\": {\"default\": \"~/x\"}}."
+                .into(),
+        ),
+    };
+    let id = args
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().simple().to_string()[..12].to_string());
+    Ok(json!({
+        "id": id,
+        "name": name,
+        "description": args.get("description").and_then(Value::as_str),
+        "command": command,
+        "cwd": args.get("cwd").and_then(Value::as_str).filter(|s| !s.trim().is_empty()),
+        "parse": parse,
+        "interval": args.get("interval").and_then(Value::as_u64).unwrap_or(30),
+        "params": params,
+        "blocks": blocks,
+    }))
 }
 
 fn non_empty(s: &str, fallback: &str) -> String {
@@ -1102,6 +1270,66 @@ pub fn host_stats(app: AppHandle, device_id: Option<String>) -> AppResult<HostSt
     stats_for(&app, &device)
 }
 
+/// Command and cwd with `{{param}}` defaults filled in: shell-quoted in the
+/// command, as-is in the cwd. Mirrors `resolveSpec` in custom-widgets.ts.
+fn resolve_widget(spec: &Value) -> (String, Option<String>) {
+    let value = |key: &str| {
+        spec["params"][key]["default"]
+            .as_str()
+            .unwrap_or("")
+            .to_string()
+    };
+    let fill = |text: &str, quote: bool| {
+        let mut out = String::new();
+        let mut rest = text;
+        while let Some(start) = rest.find("{{") {
+            let Some(len) = rest[start..].find("}}") else {
+                break;
+            };
+            let key = rest[start + 2..start + len].trim();
+            let ok = !key.is_empty()
+                && key
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+            out.push_str(&rest[..start]);
+            if ok {
+                let v = value(key);
+                out.push_str(&if quote { q(&v) } else { v });
+            } else {
+                out.push_str(&rest[start..start + len + 2]);
+            }
+            rest = &rest[start + len + 2..];
+        }
+        out.push_str(rest);
+        out
+    };
+    (
+        fill(spec["command"].as_str().unwrap_or(""), true),
+        spec["cwd"].as_str().map(|c| fill(c, false)),
+    )
+}
+
+/// Run a saved widget's command on a device: login shell, no sudo, short
+/// timeout. Used by the widget renderer on every refresh.
+#[tauri::command(async)]
+pub fn widget_run(
+    app: AppHandle,
+    device_id: String,
+    command: String,
+    cwd: Option<String>,
+) -> AppResult<CommandOutput> {
+    let all = devices::list(&app.state::<AppState>().db)?;
+    let device = pick_device(all, &device_id).map_err(AppError::Invalid)?;
+    exec(
+        &app,
+        &device,
+        &command,
+        cwd.as_deref(),
+        WIDGET_TIMEOUT,
+        false,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1196,6 +1424,54 @@ disk=1000 400\nnet=123 456\nuptime=3600\nproc=42|12.5|1.0|/usr/bin/Google Chrome
             widget["inputSchema"]["required"],
             json!(["widget", "device"])
         );
+    }
+
+    #[test]
+    fn widget_specs_are_checked() {
+        let ok = widget_spec(&json!({
+            "name": " LOC ", "command": "cloc --json .", "reason": "r",
+            "blocks": [{ "type": "bars", "items": "", "valueKey": "code" }]
+        }))
+        .unwrap();
+        assert_eq!(ok["name"], "LOC");
+        assert_eq!(ok["parse"], "json");
+        assert_eq!(ok["interval"], 30);
+        assert_eq!(ok["id"].as_str().unwrap().len(), 12);
+
+        let kept = widget_spec(&json!({
+            "id": "abc", "name": "x", "command": "y", "interval": 0,
+            "blocks": [{ "type": "text" }]
+        }))
+        .unwrap();
+        assert_eq!(
+            (kept["id"].as_str(), kept["interval"].as_u64()),
+            (Some("abc"), Some(0))
+        );
+
+        let tpl = widget_spec(&json!({
+            "name": "x", "command": "cloc {{dir}} {{ nope", "cwd": "{{dir}}",
+            "params": { "dir": { "default": "~/a b" } },
+            "blocks": [{ "type": "text" }]
+        }))
+        .unwrap();
+        let (cmd, cwd) = resolve_widget(&tpl);
+        assert_eq!(cmd, format!("cloc {} {{{{ nope", q("~/a b")));
+        assert_eq!(cwd.as_deref(), Some("~/a b"));
+
+        let bad = |v: Value| widget_spec(&v).unwrap_err();
+        assert!(bad(
+            json!({ "name": "x", "command": "y", "params": [1], "blocks": [{ "type": "text" }] })
+        )
+        .contains("params"));
+        assert!(bad(json!({ "name": "x", "command": "y", "blocks": [] })).contains("blocks"));
+        assert!(
+            bad(json!({ "name": "x", "command": "y", "blocks": [{ "type": "pie" }] }))
+                .contains("unknown type")
+        );
+        assert!(bad(
+            json!({ "name": "x", "command": "y", "parse": "xml", "blocks": [{ "type": "text" }] })
+        )
+        .contains("parse"));
     }
 
     fn dev(name: &str, host: &str, local: bool) -> Device {

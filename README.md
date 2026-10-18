@@ -1,6 +1,6 @@
 # DevNest
 
-Version 1.3.0 · Website: [devnest.optikflows.com](https://devnest.optikflows.com)
+Version 1.3.1 · Website: [devnest.optikflows.com](https://devnest.optikflows.com)
 
 A unified desktop control panel for developers and self-hosters. Manage Docker
 containers, Tailscale nodes, SSH connections, system services, logs, files, and
@@ -63,13 +63,18 @@ Pushes to `main` automatically create a GitHub Release with installables for:
 - Windows (bundled desktop artifacts)
 - Android (`.apk` debug build)
 
-macOS builds are **not code-signed or notarized** (that requires a paid Apple
-Developer account). Gatekeeper will refuse to open them with a "damaged" or
-"can't be opened" dialog. After downloading, either:
+macOS builds are **ad-hoc signed but not notarized** (notarization needs a
+paid Apple Developer account). The first time you open DevNest, macOS blocks
+it: go to **System Settings → Privacy & Security**, scroll to the message
+about DevNest and click **Open Anyway**. You only need to do this once.
 
-- Right-click the app in Finder → **Open** → confirm in the dialog (instead
-  of double-clicking), or
-- Run once in Terminal: `xattr -cr /Applications/DevNest.app`
+If macOS says the app **"is damaged and can't be opened"** (builds from
+before 1.3.1 weren't signed at all), remove the download quarantine flag
+once in Terminal:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/DevNest.app
+```
 
 ## Layout
 
