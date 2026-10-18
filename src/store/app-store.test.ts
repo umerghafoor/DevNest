@@ -56,6 +56,26 @@ describe("app-store — panes", () => {
     expect([leafId(parent.first), leafId(parent.second)]).toEqual(["c", "a"]);
   });
 
+  it("dropping on a pane's centre swaps the two", () => {
+    const { openPane, splitPane, dockPane } = useAppStore.getState();
+    const pane = (id: string) => ({
+      id,
+      deviceId: "d1",
+      panel: "docker" as const,
+      instanceId: id,
+    });
+    openPane(pane("a"));
+    splitPane("a", "horizontal", pane("b"));
+    dockPane("w1", "a", "b", "center");
+    const root = activeWs().paneRoot as PaneNode;
+    expect(root.type).toBe("split");
+    if (root.type !== "split") return;
+    const ids = [root.first, root.second].map((n) =>
+      n.type === "leaf" ? n.pane.id : null,
+    );
+    expect(ids).toEqual(["b", "a"]);
+  });
+
   it("opens a pane and makes it active", () => {
     useAppStore.getState().openPane({
       id: "p1",
