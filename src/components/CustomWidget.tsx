@@ -274,34 +274,62 @@ export function CustomWidget({
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 
+/**
+ * Last result per widget (device + spec + resolved command), kept across
+ * unmounts so switching workspaces or scrolling a widget back into view
+ * shows it straight away and only re-runs when its interval is due.
+ */
+interface FeedCache {
+  data: unknown;
+  updatedAt: number;
+  history: Record<number, number[]>;
+}
+const feedCache = new Map<string, FeedCache>();
+
 function useWidgetFeed(
   spec: WidgetSpec,
   run: { command: string; cwd: string | null },
   deviceId: string,
   live: boolean,
 ) {
-  const [data, setData] = useState<unknown>(undefined);
+  const key = JSON.stringify([deviceId, spec, run]);
+  const [data, setData] = useState<unknown>(() => feedCache.get(key)?.data);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(
+    () => feedCache.get(key)?.updatedAt ?? null,
+  );
   const [nonce, setNonce] = useState(0);
+  /** Manual refreshes already run; a newer nonce means "run now". */
+  const ranNonce = useRef(0);
   /** Per-block numeric history for trend / line blocks. */
-  const history = useRef<Record<number, number[]>>({});
-  const specKey = JSON.stringify([spec, run]);
+  const history = useRef<Record<number, number[]>>(
+    feedCache.get(key)?.history ?? {},
+  );
   const specRef = useRef(spec);
   specRef.current = spec;
   const runRef = useRef(run);
   runRef.current = run;
 
-  // A revised spec starts fresh.
-  useEffect(() => {
-    history.current = {};
-  }, [specKey]);
+  // A revised spec, new params or another device: show what we have for it.
+  const shownKey = useRef(key);
+  if (shownKey.current !== key) {
+    shownKey.current = key;
+    const c = feedCache.get(key);
+    history.current = c?.history ?? {};
+    setData(c?.data);
+    setUpdatedAt(c?.updatedAt ?? null);
+    setError(null);
+  }
 
   useEffect(() => {
     if (!live) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout>;
+    const every = (specRef.current.interval ?? 30) * 1000;
+    const schedule = (ms: number) => {
+      if (!stop) timer = setTimeout(() => void tick(), ms);
+    };
     const tick = async () => {
       const s = specRef.current;
       setLoading(true);
@@ -321,24 +349,35 @@ function useWidgetFeed(
           const h = [...(history.current[i] ?? []), v];
           history.current[i] = h.slice(-HISTORY);
         });
+        const at = Date.now();
+        feedCache.set(key, {
+          data: parsed,
+          updatedAt: at,
+          history: history.current,
+        });
         setData(parsed);
         setError(null);
-        setUpdatedAt(Date.now());
+        setUpdatedAt(at);
       } catch (e) {
         if (!stop) setError(errorMessage(e));
       } finally {
         if (!stop) setLoading(false);
       }
-      const every = specRef.current.interval ?? 30;
-      if (!stop && every > 0)
-        timer = setTimeout(() => void tick(), Math.max(2, every) * 1000);
+      if (every > 0) schedule(Math.max(2000, every));
     };
-    void tick();
+
+    const cached = feedCache.get(key);
+    const forced = nonce !== ranNonce.current;
+    ranNonce.current = nonce;
+    if (forced || !cached) schedule(0);
+    else if (every > 0)
+      schedule(Math.max(0, cached.updatedAt + every - Date.now()));
+    // On-demand widgets with a cached result wait for Refresh.
     return () => {
       stop = true;
       clearTimeout(timer);
     };
-  }, [live, deviceId, specKey, nonce]);
+  }, [live, deviceId, key, nonce]);
 
   return {
     data,
