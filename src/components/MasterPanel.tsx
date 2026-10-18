@@ -56,8 +56,8 @@ const SUGGESTIONS = [
   "What's using the most memory?",
 ];
 
-const OPEN_MS = 420;
-const CLOSE_MS = 260;
+const OPEN_MS = 280;
+const CLOSE_MS = 180;
 /** Overshoots then settles: the squish on open. */
 const SPRING_OUT = "cubic-bezier(0.34, 1.56, 0.64, 1)";
 /** Pulls back a touch before closing: the wind-up on close. */
