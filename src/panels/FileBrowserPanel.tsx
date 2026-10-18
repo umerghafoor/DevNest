@@ -31,6 +31,7 @@ import { toast } from "../components/Toast";
 import { confirm } from "../components/ConfirmDialog";
 import { SkeletonTable } from "../components/Skeleton";
 import { DiskUsageTreemap } from "../components/DiskUsageTreemap";
+import { FilePreview } from "./files/FilePreview";
 
 interface FileEntry {
   name: string;
@@ -193,8 +194,12 @@ export function FileBrowserPanel({ deviceId }: Props) {
     void load(loadCwd(deviceId));
   }, [load, deviceId]);
 
+  /** Index into `previewFiles` of the file being previewed, if any. */
+  const [previewAt, setPreviewAt] = useState<number | null>(null);
+
   const navigate = (entry: FileEntry) => {
     if (entry.isDir) void load(entry.path);
+    else openPreview(entry);
   };
 
   const q = filter.trim().toLowerCase();
@@ -293,12 +298,27 @@ export function FileBrowserPanel({ deviceId }: Props) {
       return;
     }
     if (e.ctrlKey || e.metaKey || e.altKey) return;
+    // Space previews the selected file (Quick Look), unless typing a filter.
+    if (e.key === " " && !filter) {
+      const entry = visible[selected];
+      if (entry && !entry.isDir) {
+        e.preventDefault();
+        openPreview(entry);
+        return;
+      }
+    }
     if (handleNavKey(e, false)) return;
     if (e.key.length === 1) {
       e.preventDefault();
       setFilter((f) => f + e.key);
       filterRef.current?.focus();
     }
+  };
+
+  const previewFiles = visible.filter((e) => !e.isDir);
+  const openPreview = (entry: FileEntry) => {
+    const i = previewFiles.findIndex((f) => f.path === entry.path);
+    if (i >= 0) setPreviewAt(i);
   };
 
   const goUp = () => {
@@ -564,6 +584,29 @@ export function FileBrowserPanel({ deviceId }: Props) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {previewAt !== null && previewFiles[previewAt] && (
+        <FilePreview
+          deviceId={deviceId}
+          files={previewFiles}
+          index={previewAt}
+          onIndex={(i) => {
+            setPreviewAt(i);
+            // Keep the list selection on the previewed file.
+            const at = visible.indexOf(previewFiles[i]);
+            if (at >= 0) setSelected(at);
+          }}
+          onClose={() => {
+            setPreviewAt(null);
+            rootRef.current?.focus();
+          }}
+          onDownload={(f) => void downloadEntry(f as FileEntry)}
+          onEdit={(f) => {
+            setPreviewAt(null);
+            void openEditor(f as FileEntry);
+          }}
+        />
+      )}
+
       {/* Hidden file input for Upload button */}
       <input
         type="file"
@@ -861,6 +904,12 @@ export function FileBrowserPanel({ deviceId }: Props) {
                           </IconButton>
                         ) : (
                           <>
+                            <IconButton
+                              title="Preview (Space)"
+                              onClick={() => openPreview(e)}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </IconButton>
                             <IconButton
                               title="Download"
                               onClick={() => void downloadEntry(e)}

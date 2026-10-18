@@ -181,6 +181,20 @@ pub fn download_file_bytes(device: &Device, path: &str) -> AppResult<Vec<u8>> {
     Ok(buf)
 }
 
+/// The first `max` bytes of a remote file, for previews.
+pub fn read_head(device: &Device, path: &str, max: u64) -> AppResult<Vec<u8>> {
+    use std::io::Read;
+    let sftp = open_sftp(device)?;
+    let f = sftp
+        .open(std::path::Path::new(path))
+        .map_err(|e| AppError::Ssh(format!("open {path}: {e}")))?;
+    let mut buf = Vec::new();
+    f.take(max)
+        .read_to_end(&mut buf)
+        .map_err(|e| AppError::Ssh(format!("read {path}: {e}")))?;
+    Ok(buf)
+}
+
 /// Stream a remote file into a local one (no size limit, constant memory).
 /// Returns the number of bytes written.
 pub fn download_to_file(device: &Device, path: &str, dest: &str) -> AppResult<u64> {

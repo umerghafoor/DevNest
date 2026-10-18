@@ -258,6 +258,34 @@ fn sftp_download_file_bytes(
     sftp::download_file_bytes(&device, &path)
 }
 
+/// Hard ceiling on preview reads, whatever the UI asks for.
+const PREVIEW_MAX: u64 = 64 * 1024 * 1024;
+
+/// The first `max_bytes` of a file on a device, as raw bytes (an
+/// ArrayBuffer in JS, not a JSON number array), for the file preview.
+#[tauri::command(async)]
+fn file_preview(
+    state: tauri::State<'_, AppState>,
+    device_id: String,
+    path: String,
+    max_bytes: u64,
+) -> error::AppResult<tauri::ipc::Response> {
+    let device =
+        devices::get(&state.db, &device_id)?.ok_or(error::AppError::NotFound(device_id))?;
+    let max = max_bytes.min(PREVIEW_MAX);
+    let bytes = if device.is_localhost {
+        use std::io::Read;
+        let mut buf = Vec::new();
+        std::fs::File::open(&path)?
+            .take(max)
+            .read_to_end(&mut buf)?;
+        buf
+    } else {
+        sftp::read_head(&device, &path, max)?
+    };
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
 /// Save a file from a device to a local path the user picked.
 #[tauri::command(async)]
 fn sftp_download_to(
@@ -399,6 +427,7 @@ pub fn run() {
             sftp_disk_usage,
             sftp_download_file_bytes,
             sftp_download_to,
+            file_preview,
             sftp_upload_file_bytes,
             tailscale_status,
             tailscale_set_exit_node,
