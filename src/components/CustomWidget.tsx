@@ -198,7 +198,7 @@ export function CustomWidget({
       className={`@container bg-(--color-bg) text-xs ${
         frameless
           ? "flex h-full flex-col overflow-hidden"
-          : "overflow-hidden rounded-lg border border-(--color-border)"
+          : "flex flex-col overflow-hidden rounded-lg border border-(--color-border)"
       }`}
     >
       {inPane ? (
@@ -249,7 +249,7 @@ export function CustomWidget({
       )}
 
       <div
-        className={`grid content-start gap-3 p-3 @3xl:grid-cols-2 ${frameless ? "min-h-0 flex-1 overflow-y-auto" : ""}`}
+        className={`grid flex-1 content-start gap-3 p-3 @3xl:grid-cols-2 ${frameless ? "min-h-0 overflow-y-auto" : ""}`}
       >
         {feed.error && (
           <div className="rounded-md bg-(--color-error)/10 px-2.5 py-1.5 font-mono text-[11px] break-all whitespace-pre-wrap text-(--color-error)">
@@ -479,19 +479,8 @@ function Block({
         );
       case "status":
         return <StatusBlock b={b} data={data} />;
-      case "text": {
-        const v = pick(data, b.value);
-        const text = typeof v === "string" ? v : JSON.stringify(v, null, 2);
-        const lines = (text ?? "").split("\n");
-        const shown = b.maxLines ? lines.slice(-b.maxLines) : lines;
-        return (
-          <pre
-            className={`max-h-60 overflow-auto rounded-md bg-(--color-surface) p-2 text-[11px] whitespace-pre-wrap ${b.mono === false ? "" : "font-mono"}`}
-          >
-            {shown.join("\n")}
-          </pre>
-        );
-      }
+      case "text":
+        return <TextBlock b={b} data={data} />;
       default:
         return (
           <div className="text-(--color-fg-muted)">
@@ -513,6 +502,39 @@ function Block({
       )}
       {body}
     </section>
+  );
+}
+
+/** Raw text / log tail. Starts scrolled to the end — the newest lines — and
+ *  keeps following unless the user scrolled up to read. */
+function TextBlock({
+  b,
+  data,
+}: {
+  b: Extract<WidgetBlock, { type: "text" }>;
+  data: unknown;
+}) {
+  const v = pick(data, b.value);
+  const text = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+  const lines = (text ?? "").split("\n");
+  const shown = (b.maxLines ? lines.slice(-b.maxLines) : lines).join("\n");
+  const ref = useRef<React.ComponentRef<"pre">>(null);
+  const follow = useRef(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (el && follow.current) el.scrollTop = el.scrollHeight;
+  }, [shown]);
+  return (
+    <pre
+      ref={ref}
+      onScroll={(e) => {
+        const el = e.currentTarget;
+        follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+      }}
+      className={`max-h-72 overflow-auto rounded-md bg-(--color-surface) px-2.5 py-2 text-[11px] leading-relaxed break-words whitespace-pre-wrap ${b.mono === false ? "" : "font-mono"}`}
+    >
+      {shown}
+    </pre>
   );
 }
 
@@ -980,27 +1002,35 @@ export function WidgetsPanel({
     );
   }
 
+  const actions = !widgetId && (
+    <div className="flex items-center gap-0.5">
+      <span className="mr-1 text-[11px] whitespace-nowrap text-(--color-fg-muted) tabular-nums">
+        {saved.length} saved
+      </span>
+      <ToolbarButton onClick={() => void importWidgets()}>
+        <Upload size={12} /> Import
+      </ToolbarButton>
+      {saved.length > 0 && (
+        <ToolbarButton
+          onClick={() => void exportToFile(saved, "devnest-widgets")}
+        >
+          <Download size={12} /> Export all
+        </ToolbarButton>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col text-xs">
-      {!widgetId && (
-        <div className="flex h-8 shrink-0 items-center gap-1 border-b border-(--color-border) px-2">
-          <span className="text-(--color-fg-muted)">
-            {saved.length} saved widget{saved.length === 1 ? "" : "s"}
-          </span>
-          <div className="ml-auto flex items-center gap-0.5">
-            <ToolbarButton onClick={() => void importWidgets()}>
-              <Upload size={12} /> Import
-            </ToolbarButton>
-            {saved.length > 0 && (
-              <ToolbarButton
-                onClick={() => void exportToFile(saved, "devnest-widgets")}
-              >
-                <Download size={12} /> Export all
-              </ToolbarButton>
-            )}
+      {/* In the pane header when there is one, else its own bar. */}
+      {actions &&
+        (paneId ? (
+          <HeaderSlot slotId={paneSlotId(paneId)}>{actions}</HeaderSlot>
+        ) : (
+          <div className="flex h-8 shrink-0 items-center justify-end border-b border-(--color-border) px-2">
+            {actions}
           </div>
-        </div>
-      )}
+        ))}
       {shown.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1.5 p-6 text-center text-(--color-fg-muted)">
           <LayoutDashboard size={22} strokeWidth={1.5} />
@@ -1027,6 +1057,21 @@ export function WidgetsPanel({
   );
 }
 
+/** Render children into a pane-header slot once it exists. */
+function HeaderSlot({
+  slotId,
+  children,
+}: {
+  slotId: string;
+  children: React.ReactNode;
+}) {
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => setSlot(document.getElementById(slotId)), [slotId]);
+  return slot
+    ? createPortal(<div className="ml-auto pl-2">{children}</div>, slot)
+    : null;
+}
+
 function WidgetGrid({
   widgets,
   className = "",
@@ -1036,7 +1081,7 @@ function WidgetGrid({
 }) {
   return (
     <div className={className}>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] items-start gap-2">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,360px),1fr))] gap-2">
         {widgets.map((w) => (
           <SavedWidgetView key={w.spec.id} w={w} />
         ))}
