@@ -167,7 +167,11 @@ export function CustomWidget({
           <button
             className={`${iconBtn} ${entry?.pinned ? "text-(--color-accent)" : ""}`}
             onClick={() => togglePin(spec.id)}
-            title={entry?.pinned ? "Unpin from Dashboard" : "Pin to Dashboard"}
+            title={
+              entry?.pinned
+                ? "Unpin from command palette"
+                : "Pin to command palette"
+            }
           >
             <Pin
               size={12}

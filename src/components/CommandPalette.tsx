@@ -13,9 +13,28 @@ import {
   PANEL_ORDER_IN_CATEGORY,
 } from "./PaneTile";
 import { fuzzyScore } from "../lib/fuzzy";
+import { useWidgetsStore, type SavedWidget } from "../lib/custom-widgets";
+
+function widgetItem(
+  w: SavedWidget,
+  sectionLabel: string,
+  isSectionStart: boolean,
+): PaletteItem {
+  return {
+    kind: "widgets",
+    widget: { id: w.spec.id, deviceId: w.deviceId },
+    label: w.spec.name,
+    description: w.spec.description || `Widget on ${w.deviceName}`,
+    category: "Widget",
+    sectionLabel,
+    isSectionStart,
+  };
+}
 
 interface PaletteItem {
   kind: PanelKind;
+  /** A saved custom widget: opens it in its own pane on its device. */
+  widget?: { id: string; deviceId: string };
   label: string;
   description: string;
   category: string;
@@ -35,6 +54,7 @@ export function CommandPalette() {
   const pushRecent = useRecentsStore((s) => s.push);
   const activeDeviceId = useAppStore((s) => s.activeDeviceId);
   const openPane = useAppStore((s) => s.openPane);
+  const savedWidgets = useWidgetsStore((s) => s.saved);
 
   const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
@@ -71,7 +91,7 @@ export function CommandPalette() {
         if (best !== null) scored.push({ kind, score: best });
       }
       scored.sort((a, b) => b.score - a.score);
-      return scored.map(({ kind }, i) => ({
+      const panels: PaletteItem[] = scored.map(({ kind }, i) => ({
         kind,
         label: PANEL_LABELS[kind],
         description: PANEL_DESCRIPTIONS[kind],
@@ -79,10 +99,19 @@ export function CommandPalette() {
         sectionLabel: "Results",
         isSectionStart: i === 0,
       }));
+      // Saved widgets by name, after the panels.
+      const widgets = savedWidgets
+        .map((w) => ({ w, score: fuzzyScore(q, w.spec.name) }))
+        .filter((x) => x.score !== null)
+        .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+        .map(({ w }, i) => widgetItem(w, "Widgets", i === 0));
+      return [...panels, ...widgets];
     }
 
-    // No query: Recents first, then category-ordered list.
-    const out: PaletteItem[] = [];
+    // No query: pinned widgets, then Recents, then category-ordered list.
+    const out: PaletteItem[] = savedWidgets
+      .filter((w) => w.pinned)
+      .map((w, i) => widgetItem(w, "Pinned widgets", i === 0));
     const used = new Set<PanelKind>();
     recents.forEach((kind, i) => {
       used.add(kind);
@@ -110,7 +139,7 @@ export function CommandPalette() {
       });
     }
     return out;
-  }, [query, recents]);
+  }, [query, recents, savedWidgets]);
 
   // Keep cursor in bounds when items change.
   useEffect(() => {
@@ -128,12 +157,23 @@ export function CommandPalette() {
 
   if (!open) return null;
 
-  const pick = (kind: PanelKind) => {
-    const deviceId = activeDeviceId ?? "local";
+  const pick = (item: PaletteItem) => {
     const uid = Math.random().toString(36).slice(2, 10);
-    const pane: Pane = { id: uid, instanceId: uid, deviceId, panel: kind };
+    if (item.widget) {
+      openPane({
+        id: uid,
+        instanceId: uid,
+        deviceId: item.widget.deviceId,
+        panel: "widgets",
+        extra: { widgetId: item.widget.id },
+      });
+      hide();
+      return;
+    }
+    const deviceId = activeDeviceId ?? "local";
+    const pane: Pane = { id: uid, instanceId: uid, deviceId, panel: item.kind };
     openPane(pane);
-    pushRecent(kind);
+    pushRecent(item.kind);
     hide();
   };
 
@@ -147,7 +187,7 @@ export function CommandPalette() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const item = items[activeIdx];
-      if (item) pick(item.kind);
+      if (item) pick(item);
     } else if (e.key === "Escape") {
       e.preventDefault();
       hide();
@@ -188,7 +228,7 @@ export function CommandPalette() {
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Type to search panels…"
+            placeholder="Search panels and widgets…"
             className="flex-1 bg-transparent text-sm outline-none placeholder:text-(--color-fg-muted)"
           />
           <kbd className="rounded border border-(--color-border) bg-(--color-surface) px-1.5 py-0.5 font-mono text-[10px] text-(--color-fg-muted)">
@@ -208,13 +248,13 @@ export function CommandPalette() {
           ) : (
             items.map((it, i) => (
               <Row
-                key={`${it.kind}-${i}`}
+                key={`${it.widget?.id ?? it.kind}-${i}`}
                 item={it}
                 idx={i}
                 active={i === activeIdx}
                 searching={query.trim().length > 0}
                 onHover={() => setActiveIdx(i)}
-                onPick={() => pick(it.kind)}
+                onPick={() => pick(it)}
               />
             ))
           )}

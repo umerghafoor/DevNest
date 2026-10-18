@@ -137,7 +137,7 @@ export interface SavedWidget {
   savedAt: number;
   /** Values for `spec.params`; defaults fill the gaps. */
   params?: Record<string, string>;
-  /** Shown on the Dashboard. */
+  /** Listed first in the command palette. */
   pinned?: boolean;
 }
 
