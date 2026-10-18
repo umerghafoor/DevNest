@@ -1,4 +1,5 @@
-import { Clock, LayoutDashboard, Pin, Search } from "lucide-react";
+import { useState } from "react";
+import { Clock, LayoutDashboard, Pin, Search, X } from "lucide-react";
 import { useAppStore } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
 import {
@@ -10,9 +11,9 @@ import {
   PANEL_ORDER_IN_CATEGORY,
 } from "../components/PaneTile";
 import { useWidgetsStore } from "../lib/custom-widgets";
-import { usePaletteStore } from "../store/palette-store";
 import { useRecentsStore } from "../store/recents-store";
-import { formatBinding, useShortcutsStore } from "../store/shortcuts-store";
+import { fuzzyScore } from "../lib/fuzzy";
+import type { SavedWidget } from "../lib/custom-widgets";
 
 interface Props {
   deviceId: string;
@@ -45,10 +46,7 @@ export function DashboardPanel({ deviceId }: Props) {
   const saved = useWidgetsStore((s) => s.saved);
   const recents = useRecentsStore((s) => s.recents);
   const pushRecent = useRecentsStore((s) => s.push);
-  const showPalette = usePaletteStore((s) => s.show);
-  const paletteKey = useShortcutsStore((s) =>
-    s.getBinding("openCommandPalette"),
-  );
+  const [query, setQuery] = useState("");
   const ws = workspaces.find((w) => w.id === activeWorkspaceId);
   // Prefer the live sidebar selection so newly-opened panes target the device
   // the user is currently looking at, not the one this dashboard was pinned to.
@@ -63,6 +61,39 @@ export function DashboardPanel({ deviceId }: Props) {
   const open = (kind: PanelKind) => {
     openPane(makePane(launchDeviceId, kind));
     pushRecent(kind);
+  };
+  const openWidget = (w: SavedWidget) => {
+    const id = Math.random().toString(36).slice(2, 10);
+    openPane({
+      id,
+      instanceId: id,
+      deviceId: w.deviceId,
+      panel: "widgets",
+      extra: { widgetId: w.spec.id },
+    });
+  };
+
+  // Searching filters the dashboard in place: panels by name or
+  // description, saved widgets by name.
+  const q = query.trim();
+  /** Name matches rank above description matches; null = no match. */
+  const panelScore = (k: PanelKind) => {
+    const name = fuzzyScore(q, PANEL_LABELS[k]);
+    return name !== null ? name * 2 : fuzzyScore(q, PANEL_DESCRIPTIONS[k]);
+  };
+  const panelHits = q
+    ? [...OFFERED]
+        .map((k) => ({ k, score: panelScore(k) }))
+        .filter((x): x is { k: PanelKind; score: number } => x.score !== null)
+        .sort((a, b) => b.score - a.score)
+        .map((x) => x.k)
+    : [];
+  const widgetHits = q
+    ? saved.filter((w) => fuzzyScore(q, w.spec.name) !== null)
+    : [];
+  const openFirst = () => {
+    if (panelHits[0]) open(panelHits[0]);
+    else if (widgetHits[0]) openWidget(widgetHits[0]);
   };
 
   return (
@@ -87,44 +118,59 @@ export function DashboardPanel({ deviceId }: Props) {
           </div>
         </header>
 
-        <button
-          onClick={showPalette}
-          className="flex h-10 w-full items-center gap-2.5 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 text-left text-sm text-(--color-fg-muted) transition-colors hover:border-(--color-accent)/50"
-        >
-          <Search size={15} />
-          <span className="flex-1">Search panels and widgets…</span>
-          <kbd className="rounded border border-(--color-border) bg-(--color-bg) px-1.5 py-0.5 font-mono text-[10px]">
-            {formatBinding(paletteKey)}
-          </kbd>
-        </button>
+        <label className="flex h-10 w-full items-center gap-2.5 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 text-sm text-(--color-fg-muted) transition-colors focus-within:border-(--color-accent)">
+          <Search size={15} className="shrink-0" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") openFirst();
+              if (e.key === "Escape") setQuery("");
+            }}
+            placeholder="Search panels and widgets…"
+            className="no-focus-ring min-w-0 flex-1 bg-transparent text-(--color-fg) outline-none placeholder:text-(--color-fg-muted)"
+          />
+          {query && (
+            <button
+              onClick={() => setQuery("")}
+              title="Clear"
+              className="flex h-6 w-6 items-center justify-center rounded hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+            >
+              <X size={13} />
+            </button>
+          )}
+        </label>
 
-        {pinned.length > 0 && (
+        {q && (
+          <Section title="Results">
+            {panelHits.length + widgetHits.length === 0 ? (
+              <p className="text-xs text-(--color-fg-muted)">
+                Nothing matches “{q}”.
+              </p>
+            ) : (
+              <div className={GRID}>
+                {panelHits.map((kind) => (
+                  <PanelCard key={kind} kind={kind} onOpen={open} />
+                ))}
+                {widgetHits.map((w) => (
+                  <WidgetCard key={w.spec.id} w={w} onOpen={openWidget} />
+                ))}
+              </div>
+            )}
+          </Section>
+        )}
+
+        {!q && pinned.length > 0 && (
           <Section icon={<Pin size={11} />} title="Pinned widgets">
             <div className={GRID}>
               {pinned.map((w) => (
-                <Card
-                  key={w.spec.id}
-                  icon={<LayoutDashboard size={15} strokeWidth={1.75} />}
-                  title={w.spec.name}
-                  subtitle={w.deviceName}
-                  hint={w.spec.description ?? undefined}
-                  onClick={() => {
-                    const id = Math.random().toString(36).slice(2, 10);
-                    openPane({
-                      id,
-                      instanceId: id,
-                      deviceId: w.deviceId,
-                      panel: "widgets",
-                      extra: { widgetId: w.spec.id },
-                    });
-                  }}
-                />
+                <WidgetCard key={w.spec.id} w={w} onOpen={openWidget} />
               ))}
             </div>
           </Section>
         )}
 
-        {recent.length > 0 && (
+        {!q && recent.length > 0 && (
           <Section icon={<Clock size={11} />} title="Recent">
             <div className={GRID}>
               {recent.map((kind) => (
@@ -136,7 +182,7 @@ export function DashboardPanel({ deviceId }: Props) {
 
         {CATEGORY_ORDER.map((category) => {
           const panels = PANEL_ORDER_IN_CATEGORY[category];
-          if (panels.length === 0) return null;
+          if (q || panels.length === 0) return null;
           return (
             <Section key={category} title={CATEGORY_LABELS[category]}>
               <div className={GRID}>
@@ -220,6 +266,24 @@ function PanelCard({
       title={PANEL_LABELS[kind]}
       subtitle={PANEL_DESCRIPTIONS[kind]}
       onClick={() => onOpen(kind)}
+    />
+  );
+}
+
+function WidgetCard({
+  w,
+  onOpen,
+}: {
+  w: SavedWidget;
+  onOpen: (w: SavedWidget) => void;
+}) {
+  return (
+    <Card
+      icon={<LayoutDashboard size={15} strokeWidth={1.75} />}
+      title={w.spec.name}
+      subtitle={w.deviceName}
+      hint={w.spec.description ?? undefined}
+      onClick={() => onOpen(w)}
     />
   );
 }
