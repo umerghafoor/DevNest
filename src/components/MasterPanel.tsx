@@ -56,6 +56,13 @@ const SUGGESTIONS = [
   "What's using the most memory?",
 ];
 
+const OPEN_MS = 420;
+const CLOSE_MS = 260;
+/** Overshoots then settles: the squish on open. */
+const SPRING_OUT = "cubic-bezier(0.34, 1.56, 0.64, 1)";
+/** Pulls back a touch before closing: the wind-up on close. */
+const SPRING_IN = "cubic-bezier(0.36, 0, 0.66, -0.56)";
+
 /**
  * Right-hand Master agent panel (like VS Code's secondary side bar). One
  * agent for the whole app, running on the host device rather than in a
@@ -74,7 +81,43 @@ export function MasterPanel() {
     rowRef.current = self.current?.parentElement ?? null;
   });
 
-  if (!open || !host) return null;
+  // Open/close with a springy width: mounted stays true through the close
+  // animation; `shown` drives the width; `animating` limits the transition
+  // to toggles so resizing with the splitter stays instant.
+  const [mounted, setMounted] = useState(open);
+  const [shown, setShown] = useState(open);
+  const [animating, setAnimating] = useState(false);
+  useEffect(() => {
+    setAnimating(true);
+    let raf = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    if (open) {
+      setMounted(true);
+      // Two frames: let it mount at width 0 before growing.
+      raf = requestAnimationFrame(() => {
+        raf = requestAnimationFrame(() => setShown(true));
+      });
+      timer = setTimeout(() => setAnimating(false), OPEN_MS);
+    } else {
+      setShown(false);
+      timer = setTimeout(() => {
+        setMounted(false);
+        setAnimating(false);
+      }, CLOSE_MS);
+    }
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timer);
+    };
+  }, [open]);
+
+  if (!mounted || !host) return null;
+
+  const transition = animating
+    ? open
+      ? `width ${OPEN_MS}ms ${SPRING_OUT}`
+      : `width ${CLOSE_MS}ms ${SPRING_IN}`
+    : undefined;
 
   return (
     <>
@@ -91,10 +134,25 @@ export function MasterPanel() {
       />
       <div
         ref={self}
-        style={{ width }}
-        className="flex shrink-0 flex-col border-l border-(--color-border) bg-(--color-surface)"
+        style={{ width: shown ? width : 0, transition }}
+        className="flex shrink-0 justify-end overflow-hidden border-l border-(--color-border) bg-(--color-surface) motion-reduce:transition-none!"
       >
-        <MasterBody hostId={host.id} />
+        {/* Fixed width inside so the content doesn't reflow while the
+            panel grows; it squashes a little instead. */}
+        <div
+          style={{
+            width,
+            transition: animating
+              ? `transform ${open ? OPEN_MS : CLOSE_MS}ms ${open ? SPRING_OUT : SPRING_IN}, opacity ${open ? OPEN_MS : CLOSE_MS}ms ease`
+              : undefined,
+            transform: shown ? "scaleX(1)" : "scaleX(0.9)",
+            opacity: shown ? 1 : 0,
+            transformOrigin: "right center",
+          }}
+          className="flex h-full shrink-0 flex-col motion-reduce:transition-none!"
+        >
+          <MasterBody hostId={host.id} />
+        </div>
       </div>
     </>
   );
