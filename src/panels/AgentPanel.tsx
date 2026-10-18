@@ -52,10 +52,13 @@ import {
   ArrowUp,
   ChevronDown,
   FolderOpen,
+  Hand,
+  LoaderCircle,
   LogOut,
   Play,
   ScrollText,
   Settings2,
+  ShieldAlert,
   Square,
   SquareTerminal,
 } from "lucide-react";
@@ -605,8 +608,52 @@ export function Transcript({
           {s.items.map((it) => (
             <Item key={it.id} item={it} deviceId={s.deviceId} />
           ))}
+          {s.status === "prompting" && (
+            <WorkingIndicator
+              waitingOn={
+                s.permission
+                  ? "Waiting for your approval"
+                  : s.elicitation
+                    ? "Waiting for your answer"
+                    : null
+              }
+            />
+          )}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Live "the agent is busy" row at the end of the transcript. Mounted only
+ *  while a turn runs, so the timer restarts with each prompt. */
+function WorkingIndicator({ waitingOn }: { waitingOn: string | null }) {
+  const [start] = useState(() => Date.now());
+  const [now, setNow] = useState(start);
+  useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, []);
+  const secs = Math.floor((now - start) / 1000);
+  const elapsed =
+    secs < 60 ? `${secs}s` : `${Math.floor(secs / 60)}m ${secs % 60}s`;
+  return (
+    <div
+      role="status"
+      className="flex items-center gap-2 text-(--color-fg-muted)"
+    >
+      {waitingOn ? (
+        <Hand size={13} className="text-(--color-warn)" />
+      ) : (
+        <LoaderCircle
+          size={13}
+          className="animate-spin text-(--color-accent)"
+        />
+      )}
+      <span className={waitingOn ? "text-(--color-warn)" : ""}>
+        {waitingOn ?? "Working…"}
+      </span>
+      <span className="tabular-nums opacity-70">{elapsed}</span>
     </div>
   );
 }
@@ -794,32 +841,72 @@ function simpleDiff(oldText: string, newText: string) {
 
 // ─── Permission prompt ────────────────────────────────────────────────────────
 
+/** What a tool call of this ACP kind is asking to do, for the prompt title. */
+const PERMISSION_VERB: Record<string, string> = {
+  execute: "run a command",
+  edit: "edit a file",
+  delete: "delete a file",
+  move: "move a file",
+  read: "read a file",
+  search: "search files",
+  fetch: "fetch a URL",
+};
+
+/** Rejections first, the one-off allow last — the primary action sits rightmost. */
+const OPTION_ORDER: Record<string, number> = {
+  reject_always: 0,
+  reject_once: 1,
+  allow_always: 2,
+  allow_once: 3,
+};
+
 export function PermissionCard({ s }: { s: AgentSession }) {
   const { req } = s.permission!;
+  const call = req.toolCall;
+  const verb = PERMISSION_VERB[call.kind ?? ""] ?? "use a tool";
+  const detail = call.title ?? call.kind ?? call.toolCallId;
+  const options = [...req.options].sort(
+    (a, b) => (OPTION_ORDER[a.kind] ?? 9) - (OPTION_ORDER[b.kind] ?? 9),
+  );
   const style = (o: PermissionOption) =>
-    o.kind.startsWith("allow")
-      ? "bg-(--color-accent) text-(--color-accent-fg)"
-      : "bg-(--color-surface-2)";
+    o.kind === "allow_once"
+      ? "bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90"
+      : o.kind === "allow_always"
+        ? "border border-(--color-accent)/50 text-(--color-accent) hover:bg-(--color-accent)/10"
+        : "border border-(--color-border) bg-(--color-surface) hover:bg-(--color-surface-2)";
   return (
-    <div className="shrink-0 border-t border-(--color-border) bg-(--color-warn)/10 px-3 py-2">
-      <div className="mb-1.5">
-        <span className="font-semibold">Permission requested: </span>
-        <span className="font-mono">
-          {req.toolCall.title ?? req.toolCall.kind ?? req.toolCall.toolCallId}
-        </span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {req.options.map((o) => (
-          <button
-            key={o.optionId}
-            className={`rounded px-2 py-1 hover:opacity-90 ${style(o)}`}
-            onClick={() =>
-              answerPermission(s, { outcome: "selected", optionId: o.optionId })
-            }
-          >
-            {o.name}
-          </button>
-        ))}
+    <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
+      <div className="mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
+        <div className="mb-1.5 flex items-center gap-1.5">
+          <ShieldAlert size={14} className="shrink-0 text-(--color-warn)" />
+          <span className="font-semibold">
+            {s.agent?.name ?? "The agent"} wants to {verb}
+          </span>
+        </div>
+        <pre className="max-h-32 overflow-auto rounded-lg bg-(--color-bg) px-2.5 py-1.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+          {detail}
+        </pre>
+        {call.locations && call.locations.length > 0 && (
+          <div className="mt-1 truncate font-mono text-[11px] text-(--color-fg-muted)">
+            {call.locations.map((l) => l.path).join(", ")}
+          </div>
+        )}
+        <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+          {options.map((o) => (
+            <button
+              key={o.optionId}
+              className={`h-7 rounded-md px-3 font-medium transition-colors ${style(o)}`}
+              onClick={() =>
+                answerPermission(s, {
+                  outcome: "selected",
+                  optionId: o.optionId,
+                })
+              }
+            >
+              {o.name}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
