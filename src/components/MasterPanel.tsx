@@ -192,6 +192,30 @@ function MasterBody({ hostId }: { hostId: string }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col text-xs">
+      {/* Same height and look as a pane header, so it lines up with them. */}
+      <div className="flex h-8 shrink-0 items-center gap-1.5 border-b border-(--color-border) bg-(--color-surface) px-2 select-none">
+        <Sparkles size={12} className="shrink-0 text-(--color-accent)" />
+        <span className="font-medium">Master</span>
+        {agent && (
+          <>
+            <span className="opacity-40">·</span>
+            <span className="truncate text-(--color-fg-muted)">
+              {agent.name}
+            </span>
+          </>
+        )}
+        <MasterMenu
+          s={s}
+          agentId={agentId}
+          onAgent={setAgentId}
+          running={running}
+          showLogs={showLogs}
+          onLogs={() => setShowLogs((v) => !v)}
+          onStart={() => void start()}
+          onResume={(c) => void resume(c)}
+          onClose={() => setOpen(false)}
+        />
+      </div>
       {agent && !running && (installed === false || installRun) && (
         <InstallBanner
           agent={agent}
@@ -210,17 +234,6 @@ function MasterBody({ hostId }: { hostId: string }) {
       )}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <MasterMenu
-          s={s}
-          agentId={agentId}
-          onAgent={setAgentId}
-          running={running}
-          showLogs={showLogs}
-          onLogs={() => setShowLogs((v) => !v)}
-          onStart={() => void start()}
-          onResume={(c) => void resume(c)}
-          onClose={() => setOpen(false)}
-        />
         <Transcript
           s={s}
           empty={<EmptyState s={s} onStart={() => void start()} />}
@@ -241,7 +254,7 @@ function MasterBody({ hostId }: { hostId: string }) {
   );
 }
 
-/** The panel's controls, tucked behind a ⋯ button in the top-right corner. */
+/** The panel's controls, behind the ⋯ button in its header. */
 function MasterMenu({
   s,
   agentId,
@@ -293,11 +306,11 @@ function MasterMenu({
   const busy = s.status === "prompting" || s.status === "starting";
 
   return (
-    <div ref={ref} className="absolute top-1.5 right-2 z-20">
+    <div ref={ref} className="relative ml-auto">
       <button
         onClick={() => setOpen((v) => !v)}
         title="Master agent"
-        className={`relative flex h-6 w-6 items-center justify-center rounded-md bg-(--color-surface) text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) ${open ? "bg-(--color-surface-2) text-(--color-fg)" : ""}`}
+        className={`relative flex h-6 w-6 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) ${open ? "bg-(--color-surface-2) text-(--color-fg)" : ""}`}
       >
         <MoreHorizontal size={14} />
         <span className="absolute top-0.5 right-0.5">

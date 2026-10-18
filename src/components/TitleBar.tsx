@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { enableMacModernWindowStyle } from "../lib/mac-window-style";
-import { useAppStore, selectActiveWorkspace } from "../store/app-store";
+import { useAppStore } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
 import { useRecentsStore } from "../store/recents-store";
 import { usePaletteStore } from "../store/palette-store";
@@ -567,61 +567,6 @@ function PaletteButton() {
   );
 }
 
-// ─── Split / close active pane ────────────────────────────────────────────────
-
-function PaneActions() {
-  const ws = useAppStore(selectActiveWorkspace);
-  const splitPane = useAppStore((s) => s.splitPane);
-  const closePane = useAppStore((s) => s.closePane);
-  const activeDeviceId = useAppStore((s) => s.activeDeviceId);
-
-  const { activePaneId, paneRoot } = ws;
-  if (!activePaneId || !paneRoot) return null;
-
-  const findPane = (n: typeof paneRoot): Pane | undefined => {
-    if (!n) return undefined;
-    if (n.type === "leaf")
-      return n.pane.id === activePaneId ? n.pane : undefined;
-    return findPane(n.first) ?? findPane(n.second);
-  };
-  const activePaneData = findPane(paneRoot);
-
-  const doSplit = (dir: "horizontal" | "vertical") => {
-    if (!activePaneId || !activeDeviceId) return;
-    splitPane(
-      activePaneId,
-      dir,
-      makePane(activeDeviceId, activePaneData?.panel ?? "terminal"),
-    );
-  };
-
-  return (
-    <div className="flex items-center border-l border-(--color-border)">
-      <button
-        title="Split right (⌘\)"
-        onClick={() => doSplit("horizontal")}
-        className="flex h-full items-center px-2 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-      >
-        <SplitHIcon />
-      </button>
-      <button
-        title="Split down (⌘–)"
-        onClick={() => doSplit("vertical")}
-        className="flex h-full items-center px-2 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-      >
-        <SplitVIcon />
-      </button>
-      <button
-        title="Close pane (⌘W)"
-        onClick={() => closePane(activePaneId)}
-        className="flex h-full items-center px-2 text-(--color-fg-muted) hover:bg-(--color-error)/15 hover:text-(--color-error) transition-colors"
-      >
-        <CloseIcon />
-      </button>
-    </div>
-  );
-}
-
 // ─── Full title bar ───────────────────────────────────────────────────────────
 
 export function TitleBar() {
@@ -710,8 +655,9 @@ export function TitleBar() {
       <div className="flex items-stretch border-l border-(--color-border)">
         <PaletteButton />
         <NewPanelMenu />
-        <PaneActions />
         <MasterButton />
+        {/* Keep clear of the window's rounded corner. */}
+        {isMac && <div className="w-1.5 shrink-0" />}
       </div>
 
       {/* Linux/Windows window controls */}
@@ -721,55 +667,5 @@ export function TitleBar() {
         </div>
       )}
     </header>
-  );
-}
-
-// ─── Icons ────────────────────────────────────────────────────────────────────
-
-function SplitHIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <rect x="1" y="1" width="4" height="10" rx="1" />
-      <rect x="7" y="1" width="4" height="10" rx="1" />
-    </svg>
-  );
-}
-
-function SplitVIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <rect x="1" y="1" width="10" height="4" rx="1" />
-      <rect x="1" y="7" width="10" height="4" rx="1" />
-    </svg>
-  );
-}
-
-function CloseIcon() {
-  return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 11 11"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      strokeLinecap="round"
-    >
-      <path d="M1 1l9 9M10 1L1 10" />
-    </svg>
   );
 }
