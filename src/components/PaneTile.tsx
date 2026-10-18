@@ -1,4 +1,11 @@
-import { useRef, useCallback, lazy, Suspense, useState } from "react";
+import {
+  useRef,
+  useCallback,
+  lazy,
+  Suspense,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { iconForDeviceId } from "../lib/device-icon";
 import { useAppStore, selectActiveWorkspace } from "../store/app-store";
 import type {
@@ -308,6 +315,32 @@ const statusIconColor: Record<string, string> = {
 
 const PANE_DRAG_MIME = "application/x-devnest-pane";
 
+// Whether a pane is being dragged. While it is, every pane gets a
+// transparent shield over its content: terminals, code editors and the file
+// browser handle drag events themselves and would otherwise swallow the
+// drop before the pane can dock.
+let paneDragging = false;
+const dragSubs = new Set<() => void>();
+function setPaneDragging(v: boolean) {
+  if (paneDragging === v) return;
+  paneDragging = v;
+  dragSubs.forEach((f) => f());
+}
+function usePaneDragging() {
+  return useSyncExternalStore(
+    (f) => {
+      dragSubs.add(f);
+      return () => dragSubs.delete(f);
+    },
+    () => paneDragging,
+  );
+}
+// A drop or cancel anywhere ends the drag (dragend may not fire if the
+// source pane moved during the drop).
+for (const ev of ["dragend", "drop"] as const) {
+  window.addEventListener(ev, () => setPaneDragging(false), true);
+}
+
 function dropIndicatorClass(position: DockPosition): string {
   switch (position) {
     case "left":
@@ -463,7 +496,10 @@ function PaneHeader({
           PANE_DRAG_MIME,
           JSON.stringify({ paneId: pane.id, workspaceId }),
         );
+        // Next tick: changing the DOM inside dragstart can cancel the drag.
+        setTimeout(() => setPaneDragging(true), 0);
       }}
+      onDragEnd={() => setPaneDragging(false)}
     >
       {isActive && (
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-(--color-accent)" />
@@ -547,6 +583,7 @@ function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
   const dockPane = useAppStore((s) => s.dockPane);
   const isActive = pane.id === ws.activePaneId;
   const [dropPosition, setDropPosition] = useState<DockPosition | null>(null);
+  const dragging = usePaneDragging();
 
   const finishDrop = useCallback(() => setDropPosition(null), []);
 
@@ -584,6 +621,7 @@ function LeafPane({ pane, workspaceId }: { pane: Pane; workspaceId: string }) {
         }
       }}
     >
+      {dragging && <div className="absolute inset-0 z-10" />}
       {dropPosition && (
         <>
           <div className="pointer-events-none absolute inset-0 z-20 bg-(--color-accent)/6" />
