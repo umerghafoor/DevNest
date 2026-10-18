@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Clock, LayoutDashboard, Pin, Search, X } from "lucide-react";
 import { useAppStore } from "../store/app-store";
 import type { PanelKind, Pane } from "../store/app-store";
@@ -47,6 +47,33 @@ export function DashboardPanel({ deviceId }: Props) {
   const recents = useRecentsStore((s) => s.recents);
   const pushRecent = useRecentsStore((s) => s.push);
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Type anywhere to search: a printable key pressed while nothing editable
+  // has focus goes into the search box.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.length !== 1 || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      // Space still presses a focused button.
+      if (e.key === " " && t?.closest("button, a")) return;
+      if (
+        t?.closest(
+          "input, textarea, select, [contenteditable=''], [contenteditable=true], .xterm, .monaco-editor, .cm-editor",
+        )
+      )
+        return;
+      const input = searchRef.current;
+      // Skip if this dashboard isn't on screen (e.g. another workspace).
+      if (!input || input.offsetParent === null) return;
+      e.preventDefault();
+      input.focus();
+      setQuery((v) => v + e.key);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const ws = workspaces.find((w) => w.id === activeWorkspaceId);
   // Prefer the live sidebar selection so newly-opened panes target the device
   // the user is currently looking at, not the one this dashboard was pinned to.
@@ -121,13 +148,17 @@ export function DashboardPanel({ deviceId }: Props) {
         <label className="flex h-10 w-full items-center gap-2.5 rounded-lg border border-(--color-border) bg-(--color-surface) px-3 text-sm text-(--color-fg-muted) transition-colors focus-within:border-(--color-accent)">
           <Search size={15} className="shrink-0" />
           <input
+            ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") openFirst();
-              if (e.key === "Escape") setQuery("");
+              if (e.key === "Escape") {
+                setQuery("");
+                e.currentTarget.blur();
+              }
             }}
-            placeholder="Search panels and widgets…"
+            placeholder="Start typing to search panels and widgets…"
             className="no-focus-ring min-w-0 flex-1 bg-transparent text-(--color-fg) outline-none placeholder:text-(--color-fg-muted)"
           />
           {query && (
