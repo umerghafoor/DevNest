@@ -438,7 +438,7 @@ function EmptyState({ s, onStart }: { s: AgentSession; onStart: () => void }) {
 function ApprovalCard({ a }: { a: Approval }) {
   return (
     <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
-      <div className="mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
+      <div className="@container mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
         <div className="mb-1.5 flex items-start gap-1.5">
           <ShieldAlert
             size={14}
@@ -455,7 +455,7 @@ function ApprovalCard({ a }: { a: Approval }) {
         <pre className="max-h-32 overflow-auto rounded-lg bg-(--color-bg) px-2.5 py-1.5 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
           {a.detail}
         </pre>
-        <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+        <div className="mt-2 flex flex-col-reverse gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
           <button
             className={permissionButtonClass("reject_once")}
             onClick={() => answerApproval(a, false)}

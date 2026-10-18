@@ -914,20 +914,26 @@ export function permissionButtonClass(kind: PermissionOption["kind"]) {
       : kind === "allow_always"
         ? "border border-(--color-accent)/50 text-(--color-accent) hover:bg-(--color-accent)/10"
         : "border border-(--color-border) bg-(--color-surface) hover:bg-(--color-surface-2)";
-  return `h-7 rounded-md px-3 font-medium transition-colors ${look}`;
+  return `min-h-7 rounded-md px-3 py-1 text-center leading-tight font-medium transition-colors @max-md:w-full ${look}`;
 }
 
 export function PermissionCard({ s }: { s: AgentSession }) {
   const { req } = s.permission!;
   const call = req.toolCall;
-  const verb = PERMISSION_VERB[call.kind ?? ""] ?? "use a tool";
-  const detail = call.title ?? call.kind ?? call.toolCallId;
+  // DevNest's own tools read better by name than as mcp__devnest__x.
+  const devnest = devnestTool(call.title);
+  const verb = devnest
+    ? `use DevNest to ${devnest}`
+    : (PERMISSION_VERB[call.kind ?? ""] ?? "use a tool");
+  const detail = devnest
+    ? `DevNest · ${devnest}`
+    : (call.title ?? call.kind ?? call.toolCallId);
   const options = [...req.options].sort(
     (a, b) => (OPTION_ORDER[a.kind] ?? 9) - (OPTION_ORDER[b.kind] ?? 9),
   );
   return (
     <div className="shrink-0 border-t border-(--color-border) px-3 py-2">
-      <div className="mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
+      <div className="@container mx-auto max-w-3xl rounded-xl border border-(--color-warn)/40 bg-(--color-warn)/10 p-2.5">
         <div className="mb-1.5 flex items-center gap-1.5">
           <ShieldAlert size={14} className="shrink-0 text-(--color-warn)" />
           <span className="font-semibold">
@@ -942,7 +948,7 @@ export function PermissionCard({ s }: { s: AgentSession }) {
             {call.locations.map((l) => l.path).join(", ")}
           </div>
         )}
-        <div className="mt-2 flex flex-wrap justify-end gap-1.5">
+        <div className="mt-2 flex flex-col-reverse gap-1.5 @md:flex-row @md:flex-wrap @md:justify-end">
           {options.map((o) => (
             <button
               key={o.optionId}
@@ -979,7 +985,7 @@ function SettingsRow({ s }: { s: AgentSession }) {
   if (s.config.length === 0 && !s.modes) return null;
 
   return (
-    <div className="flex shrink-0 items-center">
+    <div className="flex min-w-0 flex-wrap items-center">
       {s.config.map((o) =>
         o.type === "boolean" ? (
           <button
@@ -1362,8 +1368,8 @@ export function Composer({
                 onChange={(e) => edit(e.target.value)}
                 onKeyDown={onKeyDown}
               />
-              <div className="flex items-center gap-0.5">
-                <div className="flex min-w-0 flex-1 overflow-x-auto">
+              <div className="flex items-end gap-0.5">
+                <div className="flex min-w-0 flex-1 flex-wrap">
                   <SettingsRow s={s} />
                 </div>
                 {busy && (
