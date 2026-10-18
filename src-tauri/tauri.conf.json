@@ -32,6 +32,9 @@
     "publisher": "DevNest",
     "copyright": "Copyright © 2026 DevNest Contributors",
     "shortDescription": "Unified desktop control panel for developers and self-hosters",
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "windows": {
       "nsis": {
         "installMode": "currentUser",
