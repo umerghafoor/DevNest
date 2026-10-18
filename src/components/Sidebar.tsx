@@ -198,10 +198,14 @@ export function Sidebar() {
                       <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-(--color-surface-2) pl-1 opacity-0 shadow-[-8px_0_8px_var(--color-surface-2)] transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
                         <button
                           onClick={() => void onToggleSudo(d)}
-                          aria-label={d.useSudo ? "Disable sudo" : "Enable sudo"}
+                          aria-label={
+                            d.useSudo ? "Disable sudo" : "Enable sudo"
+                          }
                           title={d.useSudo ? "Disable sudo" : "Enable sudo"}
                           className={`flex h-6 w-6 items-center justify-center rounded hover:bg-(--color-bg) transition-colors ${
-                            d.useSudo ? "text-(--color-warn)" : "text-(--color-fg-muted) hover:text-(--color-fg)"
+                            d.useSudo
+                              ? "text-(--color-warn)"
+                              : "text-(--color-fg-muted) hover:text-(--color-fg)"
                           }`}
                         >
                           <ShieldCheck size={13} strokeWidth={1.75} />
@@ -220,7 +224,9 @@ export function Sidebar() {
                                 : "Enable SSH keep-alive (reconnect to apply)"
                             }
                             className={`flex h-6 w-6 items-center justify-center rounded hover:bg-(--color-bg) transition-colors ${
-                              d.keepAlive ? "text-(--color-accent)" : "text-(--color-fg-muted) hover:text-(--color-fg)"
+                              d.keepAlive
+                                ? "text-(--color-accent)"
+                                : "text-(--color-fg-muted) hover:text-(--color-fg)"
                             }`}
                           >
                             <HeartPulse size={13} strokeWidth={1.75} />
