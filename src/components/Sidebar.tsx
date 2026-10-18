@@ -146,7 +146,7 @@ export function Sidebar() {
               return (
                 <li key={d.id}>
                   <div
-                    className={`group relative flex h-8 items-center rounded-lg text-sm
+                    className={`group relative flex h-8 items-center overflow-hidden rounded-lg text-sm
                       transition-colors hover:bg-(--color-surface-2) ${
                         active
                           ? "bg-(--color-surface-2) text-(--color-fg)"
@@ -263,7 +263,7 @@ export function Sidebar() {
                 }}
                 title={expanded ? undefined : "Add device"}
                 aria-label="Add device"
-                className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+                className="flex h-8 w-full items-center gap-2 overflow-hidden rounded-lg px-2 text-left text-sm text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
               >
                 <Plus size={16} strokeWidth={1.75} className="shrink-0" />
                 <span className="whitespace-nowrap">Add device</span>
