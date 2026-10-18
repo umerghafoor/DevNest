@@ -119,6 +119,14 @@ body {
   height: 10px;
 }
 
+/* Scrolls without showing a bar (e.g. the workspace tab strip). */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }

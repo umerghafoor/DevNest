@@ -173,6 +173,13 @@ function WorkspaceTab({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(name);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tabRef = useRef<HTMLDivElement>(null);
+
+  // Keep the active tab visible when the strip scrolls.
+  useEffect(() => {
+    if (active)
+      tabRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [active]);
 
   useEffect(() => {
     setDraft(name);
@@ -188,6 +195,7 @@ function WorkspaceTab({
   return (
     // Intentionally no data-tauri-drag-region — tabs must be clickable
     <div
+      ref={tabRef}
       className="group flex shrink-0 items-center px-0.5 select-none"
       onClick={() => !editing && setActiveWorkspace(id)}
     >
@@ -612,8 +620,8 @@ export function TitleBar() {
       )}
 
       {/* Workspace tabs — each tab is individually clickable, no drag attr */}
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 px-3">
+      <div className="flex min-w-0 items-center gap-1">
+        <div className="flex shrink-0 items-center gap-2 pr-2 pl-3">
           <CradleMark size={22} stroke="var(--color-fg)" />
           <span
             style={{ letterSpacing: "-0.03em", fontWeight: 400 }}
@@ -624,7 +632,15 @@ export function TitleBar() {
           </span>
         </div>
 
-        <div className="flex items-center overflow-x-auto overflow-y-hidden py-1">
+        {/* Tabs scroll sideways (wheel works too) rather than pushing the
+            right-hand actions out of the window. */}
+        <div
+          className="no-scrollbar flex min-w-0 items-center overflow-x-auto overflow-y-hidden py-1"
+          onWheel={(e) => {
+            if (Math.abs(e.deltaY) > Math.abs(e.deltaX))
+              e.currentTarget.scrollLeft += e.deltaY;
+          }}
+        >
           {workspaces.map((ws) => (
             <WorkspaceTab
               key={ws.id}
@@ -633,24 +649,24 @@ export function TitleBar() {
               active={ws.id === activeWorkspaceId}
             />
           ))}
-          <button
-            onClick={addWorkspace}
-            title="New workspace"
-            className="ml-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-          >
-            <svg
-              width="11"
-              height="11"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <path d="M8 3v10M3 8h10" />
-            </svg>
-          </button>
         </div>
+        <button
+          onClick={addWorkspace}
+          title="New workspace"
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+        >
+          <svg
+            width="11"
+            height="11"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+          >
+            <path d="M8 3v10M3 8h10" />
+          </svg>
+        </button>
       </div>
 
       {/* Draggable center gap */}
