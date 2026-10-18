@@ -11,8 +11,9 @@ import {
   logout,
   newConversation,
   openChat,
+  queuePrompt,
   retryAfterLogin,
-  sendPrompt,
+  unqueuePrompt,
   setConfig,
   setMode,
   startAgent,
@@ -51,6 +52,7 @@ import { MasterWidget } from "../components/MasterWidgets";
 import {
   ArrowUp,
   ChevronDown,
+  Clock,
   FolderOpen,
   Hand,
   LoaderCircle,
@@ -61,6 +63,7 @@ import {
   ShieldAlert,
   Square,
   SquareTerminal,
+  X,
 } from "lucide-react";
 
 /**
@@ -1138,7 +1141,7 @@ export function Composer({
 
   const submit = () => {
     const t = text.trim();
-    if (!t || !ready) return;
+    if (!t || (!ready && !busy)) return;
     edit("");
     pushPrompt(t);
     if (runLocalCommand(s, t)) return;
@@ -1148,7 +1151,8 @@ export function Composer({
       note(s, `Opened ${t} in the ${s.agent?.name ?? "agent"} terminal →`);
       return;
     }
-    void sendPrompt(s, t);
+    // While a turn runs, this queues behind it.
+    queuePrompt(s, t);
   };
 
   /** Recall an earlier prompt with ↑ / ↓ (caret on the first / last line). */
@@ -1273,6 +1277,36 @@ export function Composer({
               </ul>
             )}
 
+            {s.queued.length > 0 && (
+              <ul className="mb-1.5 space-y-1">
+                {s.queued.map((q, i) => (
+                  <li
+                    key={q.id}
+                    className="flex items-center gap-2 rounded-lg border border-dashed border-(--color-border) bg-(--color-surface) px-2.5 py-1"
+                  >
+                    <Clock
+                      size={12}
+                      className="shrink-0 text-(--color-fg-muted)"
+                    />
+                    <span className="min-w-0 flex-1 truncate" title={q.text}>
+                      {q.text}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-(--color-fg-muted)">
+                      {i === 0 ? "Next" : `Queued #${i + 1}`}
+                    </span>
+                    <button
+                      onClick={() => unqueuePrompt(s, q.id)}
+                      title="Remove from queue"
+                      aria-label="Remove from queue"
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+                    >
+                      <X size={12} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
             <div className="flex flex-wrap items-end gap-x-1 rounded-xl border border-(--color-border) bg-(--color-surface) p-1 pl-3 transition-colors focus-within:border-(--color-accent)">
               <textarea
                 ref={ref}
@@ -1284,7 +1318,7 @@ export function Composer({
                       ? "Ask the agent… / for commands"
                       : "Ask the agent…"
                     : busy
-                      ? "Agent is working…"
+                      ? "Agent is working… type to queue a message"
                       : "Start an agent to chat"
                 }
                 value={text}
@@ -1294,7 +1328,7 @@ export function Composer({
               />
               <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 <SettingsRow s={s} />
-                {busy ? (
+                {busy && (
                   <button
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-surface-2) hover:opacity-80"
                     onClick={() => cancelTurn(s)}
@@ -1302,12 +1336,17 @@ export function Composer({
                   >
                     <Square size={11} fill="currentColor" />
                   </button>
-                ) : (
+                )}
+                {(!busy || text.trim()) && (
                   <button
                     className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--color-accent) text-(--color-accent-fg) hover:opacity-90 disabled:opacity-30"
                     onClick={submit}
-                    disabled={!ready || !text.trim()}
-                    title="Send (Enter) · Newline (Shift+Enter)"
+                    disabled={(!ready && !busy) || !text.trim()}
+                    title={
+                      busy
+                        ? "Queue — sent when the agent finishes (Enter)"
+                        : "Send (Enter) · Newline (Shift+Enter)"
+                    }
                   >
                     <ArrowUp size={15} />
                   </button>
