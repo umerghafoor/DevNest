@@ -8,6 +8,7 @@ import { toast } from "./Toast";
 import { confirm } from "./ConfirmDialog";
 import { iconForDeviceId } from "../lib/device-icon";
 import { useUiStore } from "../store/ui-store";
+import { Plus } from "lucide-react";
 
 type Status = ConnectionStatus | "connecting" | "error";
 
@@ -19,40 +20,6 @@ const statusIconColor: Record<Status, string> = {
 };
 
 const HOVER_EXPAND_DELAY_MS = 1200;
-
-function CradleMark({
-  size = 28,
-  stroke = "currentColor",
-  accent = "oklch(0.74 0.17 58)",
-}: {
-  size?: number;
-  stroke?: string;
-  accent?: string;
-}) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      fill="none"
-      aria-label="DevNest"
-    >
-      <path
-        d="M 8 60 Q 50 92 92 60"
-        stroke={accent}
-        strokeWidth="9"
-        strokeLinecap="round"
-      />
-      <path
-        d="M 22 50 Q 50 76 78 50"
-        stroke={stroke}
-        strokeWidth="9"
-        strokeLinecap="round"
-      />
-      <ellipse cx="50" cy="34" rx="11" ry="13" fill={accent} />
-    </svg>
-  );
-}
 
 export function Sidebar() {
   const devices = useAppStore((s) => s.devices);
@@ -166,119 +133,74 @@ export function Sidebar() {
         className="flex h-full shrink-0 flex-col border-r border-(--color-border) bg-(--color-surface)
           overflow-hidden transition-[width] duration-200 ease-in-out"
       >
-        {/* Header */}
-        <div
-          className={`flex shrink-0 items-center border-b border-(--color-border) py-2.5 ${
-            expanded ? "gap-2 px-3" : "justify-center px-0"
-          }`}
-        >
-          {/* Logo — always visible */}
-          <CradleMark size={22} stroke="var(--color-fg)" />
-
-          {/* Items that fade out when collapsed */}
-          {expanded && (
-            <>
-              <div
-                className="flex flex-1 items-center gap-1 overflow-hidden transition-opacity duration-150"
-                style={{ opacity: 1 }}
-              >
-                <div className="flex-1" />
-                <button
-                  onClick={() => {
-                    setEditingDevice(null);
-                    setDialogOpen(true);
-                  }}
-                  title="Add device"
-                  className="rounded px-1.5 py-0.5 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors whitespace-nowrap"
-                >
-                  +
-                </button>
-              </div>
-
-              <button
-                onClick={() => {
-                  setCollapsed(!collapsed);
-                  setHoverExpanded(false);
-                }}
-                title="Collapse sidebar"
-                className="shrink-0 rounded px-1 py-0.5 text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-                aria-label="Collapse sidebar"
-              >
-                <Chevron direction="left" />
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Device list */}
-        <nav className="flex-1 overflow-y-auto py-2">
-          {devices.length === 0 && expanded ? (
-            <div className="px-4 py-8 text-center text-xs text-(--color-fg-muted) whitespace-nowrap">
-              No devices yet.
-              <br />
-              Add one to get started.
-            </div>
-          ) : expanded ? (
-            <ul className="space-y-0.5 px-2">
-              {devices.map((d) => {
-                const status: Status = d.isLocalhost
-                  ? "connected"
-                  : (statuses[d.id] ?? "offline");
-                const active = activeDeviceId === d.id;
-                return (
-                  <li key={d.id}>
-                    <div
-                      className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm
-                        transition-colors hover:bg-(--color-surface-2) ${
-                          active
-                            ? "bg-(--color-surface-2) text-(--color-fg)"
-                            : "text-(--color-fg-muted)"
-                        }`}
+        {/* Device list — one layout for both widths so icons never move;
+            the aside's overflow-hidden clips the labels when collapsed. */}
+        <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2">
+          <ul className="space-y-0.5 px-2">
+            {devices.map((d) => {
+              const status: Status = d.isLocalhost
+                ? "connected"
+                : (statuses[d.id] ?? "offline");
+              const active = activeDeviceId === d.id;
+              const Icon = iconForDeviceId(d.id);
+              return (
+                <li key={d.id}>
+                  <div
+                    className={`group relative flex h-8 items-center rounded-lg text-sm
+                      transition-colors hover:bg-(--color-surface-2) ${
+                        active
+                          ? "bg-(--color-surface-2) text-(--color-fg)"
+                          : "text-(--color-fg-muted)"
+                      }`}
+                  >
+                    <button
+                      onClick={() => void onSelect(d.id)}
+                      title={expanded ? undefined : d.name}
+                      aria-label={d.name}
+                      className="flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left"
                     >
-                      <button
-                        onClick={() => void onSelect(d.id)}
-                        className="flex flex-1 items-center gap-2 text-left min-w-0"
-                      >
-                        {(() => {
-                          const Icon = iconForDeviceId(d.id);
-                          return (
-                            <Icon
-                              size={14}
-                              strokeWidth={1.75}
-                              className={`shrink-0 transition-colors ${statusIconColor[status]}`}
-                              aria-label={status}
-                            />
-                          );
-                        })()}
-                        <span className="truncate font-medium whitespace-nowrap">
-                          {d.name}
+                      <span className="relative shrink-0">
+                        <Icon
+                          size={16}
+                          strokeWidth={1.75}
+                          className={`transition-colors ${statusIconColor[status]}`}
+                          aria-label={status}
+                        />
+                        {status === "connecting" && (
+                          <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-(--color-warn) animate-pulse" />
+                        )}
+                        {status === "error" && (
+                          <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-(--color-error)" />
+                        )}
+                      </span>
+                      <span className="truncate font-medium whitespace-nowrap">
+                        {d.name}
+                      </span>
+                      {d.useSudo && (
+                        <span
+                          title="sudo enabled"
+                          className="shrink-0 rounded bg-(--color-warn)/20 px-1 text-[9px] font-semibold uppercase text-(--color-warn) whitespace-nowrap"
+                        >
+                          sudo
                         </span>
-                        {d.useSudo && (
-                          <span
-                            title="sudo enabled"
-                            className="shrink-0 rounded bg-(--color-warn)/20 px-1 text-[9px] font-semibold uppercase text-(--color-warn) whitespace-nowrap"
-                          >
-                            sudo
-                          </span>
-                        )}
-                        {d.keepAlive && !d.isLocalhost && (
-                          <span
-                            title="SSH keep-alive enabled"
-                            className="shrink-0 rounded bg-(--color-accent)/15 px-1 text-[9px] font-semibold uppercase text-(--color-accent) whitespace-nowrap"
-                          >
-                            alive
-                          </span>
-                        )}
-                      </button>
+                      )}
+                      {d.keepAlive && !d.isLocalhost && (
+                        <span
+                          title="SSH keep-alive enabled"
+                          className="shrink-0 rounded bg-(--color-accent)/15 px-1 text-[9px] font-semibold uppercase text-(--color-accent) whitespace-nowrap"
+                        >
+                          alive
+                        </span>
+                      )}
+                    </button>
 
-                      <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100">
+                    {expanded && (
+                      <div className="pointer-events-none absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-(--color-surface-2) pl-1 opacity-0 shadow-[-8px_0_8px_var(--color-surface-2)] transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100">
                         <button
                           onClick={() => void onToggleSudo(d)}
-                          aria-label={
-                            d.useSudo ? "Disable sudo" : "Enable sudo"
-                          }
+                          aria-label={d.useSudo ? "Disable sudo" : "Enable sudo"}
                           title={d.useSudo ? "Disable sudo" : "Enable sudo"}
-                          className={`rounded px-1 text-[10px] hover:bg-(--color-bg) transition-colors ${
+                          className={`flex h-5 w-5 items-center justify-center rounded text-[11px] hover:bg-(--color-bg) transition-colors ${
                             d.useSudo ? "text-(--color-warn)" : ""
                           }`}
                         >
@@ -297,7 +219,7 @@ export function Sidebar() {
                                 ? "Disable SSH keep-alive"
                                 : "Enable SSH keep-alive (reconnect to apply)"
                             }
-                            className={`rounded px-1 text-[10px] hover:bg-(--color-bg) transition-colors ${
+                            className={`flex h-5 w-5 items-center justify-center rounded text-[11px] hover:bg-(--color-bg) transition-colors ${
                               d.keepAlive ? "text-(--color-accent)" : ""
                             }`}
                           >
@@ -312,7 +234,7 @@ export function Sidebar() {
                             }}
                             aria-label="Edit device"
                             title="Edit device"
-                            className="rounded px-1 text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-fg) transition-colors"
+                            className="flex h-5 w-5 items-center justify-center rounded text-[11px] text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-fg) transition-colors"
                           >
                             ✎
                           </button>
@@ -322,70 +244,32 @@ export function Sidebar() {
                             onClick={() => void onDelete(d.id)}
                             aria-label="Delete device"
                             title="Delete"
-                            className="rounded px-1 text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-error) transition-colors"
+                            className="flex h-5 w-5 items-center justify-center rounded text-[11px] text-(--color-fg-muted) hover:bg-(--color-bg) hover:text-(--color-error) transition-colors"
                           >
                             ×
                           </button>
                         )}
                       </div>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            // ── Collapsed: icon column ─────────────────────────────────
-            <ul className="flex flex-col items-center gap-1.5">
-              {devices.map((d) => {
-                const status: Status = d.isLocalhost
-                  ? "connected"
-                  : (statuses[d.id] ?? "offline");
-                const active = activeDeviceId === d.id;
-                const Icon = iconForDeviceId(d.id);
-                return (
-                  <li key={d.id}>
-                    <button
-                      onClick={() => void onSelect(d.id)}
-                      title={d.name}
-                      aria-label={d.name}
-                      className={`relative flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-                        active
-                          ? "bg-(--color-accent)/15 ring-1 ring-(--color-accent)/40"
-                          : "hover:bg-(--color-surface-2)"
-                      }`}
-                    >
-                      <Icon
-                        size={16}
-                        strokeWidth={1.75}
-                        className={
-                          active ? "text-(--color-fg)" : statusIconColor[status]
-                        }
-                      />
-                      {status === "connecting" && (
-                        <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--color-warn) animate-pulse" />
-                      )}
-                      {status === "error" && (
-                        <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full bg-(--color-error)" />
-                      )}
-                    </button>
-                  </li>
-                );
-              })}
-              <li>
-                <button
-                  onClick={() => {
-                    setEditingDevice(null);
-                    setDialogOpen(true);
-                  }}
-                  title="Add device"
-                  aria-label="Add device"
-                  className="flex h-8 w-8 items-center justify-center rounded-lg text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
-                >
-                  +
-                </button>
-              </li>
-            </ul>
-          )}
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+            <li>
+              <button
+                onClick={() => {
+                  setEditingDevice(null);
+                  setDialogOpen(true);
+                }}
+                title={expanded ? undefined : "Add device"}
+                aria-label="Add device"
+                className="flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-sm text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+              >
+                <Plus size={16} strokeWidth={1.75} className="shrink-0" />
+                <span className="whitespace-nowrap">Add device</span>
+              </button>
+            </li>
+          </ul>
         </nav>
 
         {/* Footer */}
@@ -396,9 +280,17 @@ export function Sidebar() {
         >
           {expanded ? (
             <>
-              <span className="text-[10px] text-(--color-fg-muted) font-mono tracking-wide whitespace-nowrap">
-                v0.1
-              </span>
+              <button
+                onClick={() => {
+                  setCollapsed(!collapsed);
+                  setHoverExpanded(false);
+                }}
+                title="Collapse sidebar"
+                className="flex h-7 w-7 items-center justify-center rounded text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg) transition-colors"
+                aria-label="Collapse sidebar"
+              >
+                <Chevron direction="left" />
+              </button>
               <ThemeToggle />
             </>
           ) : (
