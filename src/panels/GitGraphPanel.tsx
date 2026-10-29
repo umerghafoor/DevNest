@@ -24,6 +24,7 @@ import {
   ArrowLeft,
   Check,
   Cloud,
+  CloudDownload,
   Minus,
   Plus,
   GitBranch,
@@ -252,6 +253,21 @@ export function GitGraphPanel({ repoPath, paneId, deviceId }: Props) {
     void reload();
   }, [reload]);
 
+  const [fetching, setFetching] = useState(false);
+  const fetchRemotes = useCallback(async () => {
+    if (!repoPath) return;
+    setFetching(true);
+    try {
+      await api.gitFetch(deviceId, repoPath);
+      toast.success("Fetched");
+      void reload();
+    } catch (e) {
+      toast.error(`Fetch failed: ${errorMessage(e)}`);
+    } finally {
+      setFetching(false);
+    }
+  }, [deviceId, repoPath, reload]);
+
   // Load commit detail when selection changes.
   useEffect(() => {
     if (!repoPath || !selected || selected === WORKTREE) {
@@ -407,6 +423,8 @@ export function GitGraphPanel({ repoPath, paneId, deviceId }: Props) {
         onQuery={setQuery}
         loading={loading}
         onReload={() => void reload()}
+        fetching={fetching}
+        onFetch={() => void fetchRemotes()}
         detailCollapsed={detailCollapsed}
         onToggleDetail={() => setDetailCollapsed(!detailCollapsed)}
         narrow={layout === "narrow"}
@@ -472,6 +490,8 @@ function Header({
   onQuery,
   loading,
   onReload,
+  fetching,
+  onFetch,
   detailCollapsed,
   onToggleDetail,
   narrow,
@@ -485,6 +505,8 @@ function Header({
   onQuery: (q: string) => void;
   loading: boolean;
   onReload: () => void;
+  fetching: boolean;
+  onFetch: () => void;
   detailCollapsed: boolean;
   onToggleDetail: () => void;
   narrow: boolean;
@@ -541,6 +563,17 @@ function Header({
             ) : (
               <PanelRightClose size={13} />
             )}
+          </button>
+          <button
+            onClick={onFetch}
+            disabled={fetching}
+            className={TOOL_BTN}
+            title="Fetch from remotes"
+          >
+            <CloudDownload
+              size={13}
+              className={fetching ? "animate-pulse" : ""}
+            />
           </button>
           <button
             onClick={onReload}

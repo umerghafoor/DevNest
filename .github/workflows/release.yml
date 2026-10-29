@@ -62,6 +62,8 @@ jobs:
 
       - run: npm ci
       - run: npm run package
+        env:
+          VITE_GITHUB_CLIENT_ID: ${{ vars.VITE_GITHUB_CLIENT_ID }}
 
       - name: Upload desktop bundles
         uses: actions/upload-artifact@v4

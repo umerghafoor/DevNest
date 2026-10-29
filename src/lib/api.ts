@@ -489,6 +489,8 @@ export const api = {
     call<void>("git_unstage", { deviceId, path, files }),
   gitCommit: (deviceId: string, path: string, message: string, amend = false) =>
     call<string>("git_commit", { deviceId, path, message, amend }),
+  gitFetch: (deviceId: string, path: string) =>
+    call<void>("git_fetch", { deviceId, path }),
 
   fsReadText: (path: string) => call<string>("fs_read_text", { path }),
   fsWriteText: (path: string, content: string) =>
@@ -500,6 +502,7 @@ export const api = {
     call<string | null>("github_device_poll", { clientId, deviceCode }),
   githubSignedIn: () => call<boolean>("github_signed_in"),
   githubSignOut: () => call<void>("github_sign_out"),
+  githubSetToken: (token: string) => call<void>("github_set_token", { token }),
   githubUser: () => call<GhUser>("github_user"),
   githubListRepos: () => call<GhRepo[]>("github_list_repos"),
 

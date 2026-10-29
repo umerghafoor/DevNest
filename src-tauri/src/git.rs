@@ -6,6 +6,7 @@ use tauri::State;
 use crate::devices::{self, Device};
 use crate::error::{AppError, AppResult};
 use crate::local_shell;
+use crate::secrets;
 use crate::ssh;
 use crate::state::AppState;
 
@@ -59,6 +60,8 @@ fn run_git_raw(
 ) -> AppResult<GitOutput> {
     if device.is_localhost {
         let mut cmd = local_shell::command("git");
+        // No terminal to answer a credential prompt: fail instead of hanging.
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
         cmd.args(args);
         if let Some(dir) = cwd {
             cmd.current_dir(Path::new(dir));
@@ -94,7 +97,7 @@ fn run_git_raw(
 }
 
 /// POSIX single-quoting: wrap in `'…'`, escape `'` as `'\''`.
-fn single_quote(s: &str) -> String {
+pub(crate) fn single_quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('\'');
     for ch in s.chars() {
@@ -690,6 +693,129 @@ pub fn git_commit(
         args.push("--amend");
     }
     run_git_for(&state, &device, &args, Some(&path))
+}
+
+/// Fetch every remote. With a GitHub token in the keychain, github.com remotes
+/// (HTTPS or SSH-style) authenticate with it on every device; otherwise auth
+/// comes from the device's own git setup (SSH keys, credential helper).
+#[tauri::command(async)]
+pub fn git_fetch(state: State<'_, AppState>, device_id: String, path: String) -> AppResult<()> {
+    let device = require_device(&state, &device_id)?;
+    let args = ["fetch", "--all", "--prune"];
+    let Ok(token) = secrets::get_github_token() else {
+        return run_git_for(&state, &device, &args, Some(&path)).map(|_| ());
+    };
+    let header = github_auth_header(&token);
+
+    let out = if device.is_localhost {
+        let mut cmd = local_shell::command("git");
+        cmd.env("GIT_TERMINAL_PROMPT", "0")
+            .env("GIT_CONFIG_COUNT", GITHUB_CONFIG.len().to_string())
+            .args(args)
+            .current_dir(Path::new(&path));
+        for (i, (key, value)) in GITHUB_CONFIG.iter().enumerate() {
+            let value = if value.is_empty() {
+                header.as_str()
+            } else {
+                value
+            };
+            cmd.env(format!("GIT_CONFIG_KEY_{i}"), key)
+                .env(format!("GIT_CONFIG_VALUE_{i}"), value);
+        }
+        let out = cmd
+            .output()
+            .map_err(|e| AppError::Invalid(format!("git not available: {e}")))?;
+        GitOutput {
+            exit_code: out.status.code().unwrap_or(-1),
+            stdout: String::from_utf8_lossy(&out.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&out.stderr).to_string(),
+        }
+    } else {
+        // The header travels on stdin, so it never shows up in the remote's
+        // process list or touches its disk. `sh -c` because the login shell
+        // may not be POSIX.
+        let mut script = String::from("IFS= read -r H; cd ");
+        script.push_str(&single_quote(&path));
+        script.push_str(" && GIT_TERMINAL_PROMPT=0");
+        script.push_str(&format!(" GIT_CONFIG_COUNT={}", GITHUB_CONFIG.len()));
+        for (i, (key, value)) in GITHUB_CONFIG.iter().enumerate() {
+            let value = if value.is_empty() {
+                "\"$H\"".to_string()
+            } else {
+                single_quote(value)
+            };
+            script.push_str(&format!(
+                " GIT_CONFIG_KEY_{i}={} GIT_CONFIG_VALUE_{i}={value}",
+                single_quote(key)
+            ));
+        }
+        script.push_str(" git");
+        for a in args {
+            script.push(' ');
+            script.push_str(a);
+        }
+        let shell = format!("sh -c {}", single_quote(&script));
+        let out = ssh::run_command_no_sudo_with_stdin(
+            &state.pool,
+            &device,
+            &shell,
+            Some(&format!("{header}\n")),
+        )?;
+        GitOutput {
+            exit_code: out.exit_code,
+            stdout: out.stdout,
+            stderr: out.stderr,
+        }
+    };
+    if out.exit_code != 0 {
+        return Err(git_error(&out));
+    }
+    Ok(())
+}
+
+/// Config passed through `GIT_CONFIG_*` env (git 2.31+), so nothing is written
+/// to any gitconfig. An empty value is filled with the auth header. The
+/// `insteadOf` rewrites send SSH-style GitHub remotes over HTTPS so the token
+/// covers them too.
+pub(crate) const GITHUB_CONFIG: [(&str, &str); 3] = [
+    ("http.https://github.com/.extraheader", ""),
+    ("url.https://github.com/.insteadOf", "git@github.com:"),
+    ("url.https://github.com/.insteadOf", "ssh://git@github.com/"),
+];
+
+/// Printed by `github_terminal_bootstrap` once echo is off and it's waiting
+/// for the auth header. An OSC sequence, so a terminal would ignore it anyway.
+pub(crate) const TERM_GIT_AUTH_READY: &[u8] = b"\x1b]devnest;git-auth\x07";
+
+/// Script for a remote terminal: read the auth header from the pty with echo
+/// off, export it as `GIT_CONFIG_*` and exec the login shell. The token lives
+/// only in that shell's environment and is gone when the terminal closes.
+pub(crate) fn github_terminal_bootstrap() -> String {
+    let mut exports = format!("export GIT_CONFIG_COUNT={}", GITHUB_CONFIG.len());
+    for (i, (key, value)) in GITHUB_CONFIG.iter().enumerate() {
+        let value = if value.is_empty() {
+            "\"$H\"".to_string()
+        } else {
+            single_quote(value)
+        };
+        exports.push_str(&format!(
+            " GIT_CONFIG_KEY_{i}={} GIT_CONFIG_VALUE_{i}={value}",
+            single_quote(key)
+        ));
+    }
+    let script = format!(
+        "stty -echo; printf '\\033]devnest;git-auth\\007'; IFS= read -r H; stty echo; \
+         [ -n \"$H\" ] && {exports}; unset H; exec \"${{SHELL:-/bin/sh}}\" -l"
+    );
+    format!("sh -c {}", single_quote(&script))
+}
+
+pub(crate) fn github_auth_header(token: &str) -> String {
+    use base64::{engine::general_purpose::STANDARD as B64, Engine};
+    format!(
+        "Authorization: Basic {}",
+        B64.encode(format!("x-access-token:{}", token.trim()))
+    )
 }
 
 #[cfg(test)]
