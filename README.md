@@ -1,6 +1,6 @@
 # DevNest
 
-Version 1.3.1 · Website: [devnest.optikflows.com](https://devnest.optikflows.com)
+Version 1.4.0 · Website: [devnest.optikflows.com](https://devnest.optikflows.com)
 
 A unified desktop control panel for developers and self-hosters. Manage Docker
 containers, Tailscale nodes, SSH connections, system services, logs, files, and
