@@ -550,6 +550,44 @@ function IntegrationsTab() {
             </button>
           )}
         </div>
+        <details className="mt-3 text-xs text-(--color-fg-muted)">
+          <summary className="cursor-pointer select-none hover:text-(--color-fg)">
+            Setup guide
+          </summary>
+          <ol className="mt-2 list-decimal space-y-1.5 pl-5">
+            <li>
+              Open{" "}
+              <button
+                onClick={() =>
+                  void openUrl("https://github.com/settings/applications/new")
+                }
+                className="underline hover:text-(--color-fg)"
+              >
+                github.com/settings/applications/new
+              </button>{" "}
+              (Settings → Developer settings → OAuth Apps → New OAuth App).
+            </li>
+            <li>
+              Fill in any <strong>Application name</strong> (e.g.{" "}
+              <code className="font-mono">DevNest</code>) and use{" "}
+              <code className="font-mono">http://localhost</code> for both{" "}
+              <strong>Homepage URL</strong> and{" "}
+              <strong>Authorization callback URL</strong> — they aren't used.
+            </li>
+            <li>
+              Tick <strong>Enable Device Flow</strong>, then click{" "}
+              <strong>Register application</strong>.
+            </li>
+            <li>
+              Copy the <strong>Client ID</strong> from the app page (no client
+              secret needed), paste it above and click <strong>Save</strong>.
+            </li>
+            <li>
+              In the Git panel, click <strong>Sign in to GitHub</strong> and
+              enter the code it shows on the page that opens.
+            </li>
+          </ol>
+        </details>
       </div>
     </div>
   );
