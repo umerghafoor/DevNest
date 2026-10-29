@@ -173,6 +173,8 @@ struct RemoteParams {
     key_path: Option<String>,
     passphrase: Option<String>,
     keep_alive: bool,
+    /// GitHub auth header to hand the shell, when a token is saved.
+    git_header: Option<String>,
 }
 
 /// Spawn a remote SSH shell. The entire SSH session + channel is created
@@ -196,6 +198,9 @@ where
         key_path: device.key_path.clone(),
         passphrase: secrets::get(&device.id).ok(),
         keep_alive: device.keep_alive,
+        git_header: secrets::get_github_token()
+            .ok()
+            .map(|t| crate::git::github_auth_header(&t)),
     };
 
     let (tx, rx) = mpsc::sync_channel::<TermInput>(256);
@@ -230,9 +235,16 @@ where
                 tracing::error!("terminal request_pty: {e}");
                 return true;
             }
-            if let Err(e) = channel.shell() {
+            let started = match &params.git_header {
+                Some(_) => channel.exec(&crate::git::github_terminal_bootstrap()),
+                None => channel.shell(),
+            };
+            if let Err(e) = started {
                 tracing::error!("terminal shell: {e}");
                 return true;
+            }
+            if let Some(header) = &params.git_header {
+                send_git_header(&session, &mut channel, header, &on_output);
             }
             session.set_blocking(false);
 
@@ -279,6 +291,45 @@ where
         Ok(Some(e)) => Err(e),
         Err(_) => Err(AppError::Ssh("terminal connect timed out".into())),
     }
+}
+
+/// Wait for the bootstrap's ready marker, then send the auth header on the
+/// pty (echo is off by then). Output around the marker is passed through.
+/// If the marker never shows, send an empty line so the bootstrap doesn't
+/// swallow the user's first command; the shell just starts without the token.
+fn send_git_header<F: Fn(Vec<u8>)>(
+    session: &ssh2::Session,
+    channel: &mut ssh2::Channel,
+    header: &str,
+    on_output: &F,
+) {
+    let marker = crate::git::TERM_GIT_AUTH_READY;
+    session.set_timeout(10_000);
+    let mut seen = Vec::new();
+    let mut buf = [0u8; 4096];
+    let ready = loop {
+        match channel.read(&mut buf) {
+            Ok(0) | Err(_) => break false,
+            Ok(n) => seen.extend_from_slice(&buf[..n]),
+        }
+        if let Some(i) = seen.windows(marker.len()).position(|w| w == marker) {
+            let mut out = seen[..i].to_vec();
+            out.extend_from_slice(&seen[i + marker.len()..]);
+            seen = out;
+            break true;
+        }
+    };
+    session.set_timeout(0);
+    if !seen.is_empty() {
+        on_output(seen);
+    }
+    let line = if ready {
+        format!("{header}\n")
+    } else {
+        tracing::warn!("terminal git auth: bootstrap not ready, starting without token");
+        "\n".to_string()
+    };
+    let _ = channel.write_all(line.as_bytes());
 }
 
 fn open_ssh_session(params: &RemoteParams, _cols: u32, _rows: u32) -> AppResult<ssh2::Session> {

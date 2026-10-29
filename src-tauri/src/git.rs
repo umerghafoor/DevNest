@@ -97,7 +97,7 @@ fn run_git_raw(
 }
 
 /// POSIX single-quoting: wrap in `'…'`, escape `'` as `'\''`.
-fn single_quote(s: &str) -> String {
+pub(crate) fn single_quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('\'');
     for ch in s.chars() {
@@ -777,13 +777,40 @@ pub fn git_fetch(state: State<'_, AppState>, device_id: String, path: String) ->
 /// to any gitconfig. An empty value is filled with the auth header. The
 /// `insteadOf` rewrites send SSH-style GitHub remotes over HTTPS so the token
 /// covers them too.
-const GITHUB_CONFIG: [(&str, &str); 3] = [
+pub(crate) const GITHUB_CONFIG: [(&str, &str); 3] = [
     ("http.https://github.com/.extraheader", ""),
     ("url.https://github.com/.insteadOf", "git@github.com:"),
     ("url.https://github.com/.insteadOf", "ssh://git@github.com/"),
 ];
 
-fn github_auth_header(token: &str) -> String {
+/// Printed by `github_terminal_bootstrap` once echo is off and it's waiting
+/// for the auth header. An OSC sequence, so a terminal would ignore it anyway.
+pub(crate) const TERM_GIT_AUTH_READY: &[u8] = b"\x1b]devnest;git-auth\x07";
+
+/// Script for a remote terminal: read the auth header from the pty with echo
+/// off, export it as `GIT_CONFIG_*` and exec the login shell. The token lives
+/// only in that shell's environment and is gone when the terminal closes.
+pub(crate) fn github_terminal_bootstrap() -> String {
+    let mut exports = format!("export GIT_CONFIG_COUNT={}", GITHUB_CONFIG.len());
+    for (i, (key, value)) in GITHUB_CONFIG.iter().enumerate() {
+        let value = if value.is_empty() {
+            "\"$H\"".to_string()
+        } else {
+            single_quote(value)
+        };
+        exports.push_str(&format!(
+            " GIT_CONFIG_KEY_{i}={} GIT_CONFIG_VALUE_{i}={value}",
+            single_quote(key)
+        ));
+    }
+    let script = format!(
+        "stty -echo; printf '\\033]devnest;git-auth\\007'; IFS= read -r H; stty echo; \
+         [ -n \"$H\" ] && {exports}; unset H; exec \"${{SHELL:-/bin/sh}}\" -l"
+    );
+    format!("sh -c {}", single_quote(&script))
+}
+
+pub(crate) fn github_auth_header(token: &str) -> String {
     use base64::{engine::general_purpose::STANDARD as B64, Engine};
     format!(
         "Authorization: Basic {}",
