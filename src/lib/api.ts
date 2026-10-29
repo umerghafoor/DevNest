@@ -489,6 +489,8 @@ export const api = {
     call<void>("git_unstage", { deviceId, path, files }),
   gitCommit: (deviceId: string, path: string, message: string, amend = false) =>
     call<string>("git_commit", { deviceId, path, message, amend }),
+  gitFetch: (deviceId: string, path: string) =>
+    call<void>("git_fetch", { deviceId, path }),
 
   fsReadText: (path: string) => call<string>("fs_read_text", { path }),
   fsWriteText: (path: string, content: string) =>

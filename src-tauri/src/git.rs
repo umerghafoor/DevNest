@@ -59,6 +59,8 @@ fn run_git_raw(
 ) -> AppResult<GitOutput> {
     if device.is_localhost {
         let mut cmd = local_shell::command("git");
+        // No terminal to answer a credential prompt: fail instead of hanging.
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
         cmd.args(args);
         if let Some(dir) = cwd {
             cmd.current_dir(Path::new(dir));
@@ -690,6 +692,14 @@ pub fn git_commit(
         args.push("--amend");
     }
     run_git_for(&state, &device, &args, Some(&path))
+}
+
+/// Fetch every remote. Auth comes from the user's own git setup (SSH keys,
+/// credential helper), so private repos work wherever `git fetch` does.
+#[tauri::command(async)]
+pub fn git_fetch(state: State<'_, AppState>, device_id: String, path: String) -> AppResult<()> {
+    let device = require_device(&state, &device_id)?;
+    run_git_for(&state, &device, &["fetch", "--all", "--prune"], Some(&path)).map(|_| ())
 }
 
 #[cfg(test)]

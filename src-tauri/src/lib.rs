@@ -458,6 +458,7 @@ pub fn run() {
             git::git_stage,
             git::git_unstage,
             git::git_commit,
+            git::git_fetch,
             github::github_device_start,
             github::github_device_poll,
             github::github_signed_in,
