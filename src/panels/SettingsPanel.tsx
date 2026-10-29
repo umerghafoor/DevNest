@@ -575,7 +575,7 @@ function IntegrationsTab() {
               <code className="font-mono">DevNest</code>) and use{" "}
               <code className="font-mono">http://localhost</code> for both{" "}
               <strong>Homepage URL</strong> and{" "}
-              <strong>Authorization callback URL</strong> — they aren't used.
+              <strong>Authorization callback URL</strong> — they aren’t used.
             </li>
             <li>
               Tick <strong>Enable Device Flow</strong>, then click{" "}
