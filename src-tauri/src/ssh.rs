@@ -240,17 +240,28 @@ pub fn run_command_no_sudo(
     device: &Device,
     cmd: &str,
 ) -> AppResult<CommandOutput> {
+    run_command_no_sudo_with_stdin(pool, device, cmd, None)
+}
+
+/// `run_command_no_sudo`, feeding `stdin` to the command (e.g. a secret that
+/// shouldn't appear in argv).
+pub fn run_command_no_sudo_with_stdin(
+    pool: &SessionPool,
+    device: &Device,
+    cmd: &str,
+    stdin: Option<&str>,
+) -> AppResult<CommandOutput> {
     let raw = if let Some(prefix) = device.sudo_prefix.as_deref() {
         format!("{prefix} {cmd}")
     } else {
         cmd.to_string()
     };
     if device.is_localhost {
-        run_local(&raw, None)
+        run_local(&raw, stdin)
     } else {
         let sess = pool.get_or_connect(device)?;
         let mut guard = sess.lock();
-        guard.run_with_stdin(&raw, None)
+        guard.run_with_stdin(&raw, stdin)
     }
 }
 

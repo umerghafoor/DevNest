@@ -463,6 +463,7 @@ pub fn run() {
             github::github_device_poll,
             github::github_signed_in,
             github::github_sign_out,
+            github::github_set_token,
             github::github_user,
             github::github_list_repos,
             http_client::http_request,

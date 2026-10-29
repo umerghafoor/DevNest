@@ -502,6 +502,7 @@ export const api = {
     call<string | null>("github_device_poll", { clientId, deviceCode }),
   githubSignedIn: () => call<boolean>("github_signed_in"),
   githubSignOut: () => call<void>("github_sign_out"),
+  githubSetToken: (token: string) => call<void>("github_set_token", { token }),
   githubUser: () => call<GhUser>("github_user"),
   githubListRepos: () => call<GhRepo[]>("github_list_repos"),
 

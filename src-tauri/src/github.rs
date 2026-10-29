@@ -139,6 +139,17 @@ pub fn github_signed_in() -> AppResult<bool> {
     Ok(secrets::get_github_token().ok().is_some())
 }
 
+/// Store a personal access token pasted by the user, in place of the OAuth
+/// device flow. Same keychain slot, so everything that uses the token works.
+#[tauri::command(async)]
+pub fn github_set_token(token: String) -> AppResult<()> {
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(AppError::Invalid("Token is empty".into()));
+    }
+    secrets::set_github_token(token)
+}
+
 #[tauri::command(async)]
 pub fn github_sign_out() -> AppResult<()> {
     secrets::delete_github_token()

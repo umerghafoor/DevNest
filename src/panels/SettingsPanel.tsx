@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useThemeStore, type Theme } from "../store/theme-store";
 import { useUiStore, type Density, type FontSize } from "../store/ui-store";
 import {
@@ -15,6 +15,8 @@ import {
 import { THEME_TEMPLATES, type ThemeTemplate } from "../lib/theme-templates";
 import { checkForUpdates, useUpdateStore } from "../lib/updates";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { api, errorMessage } from "../lib/api";
+import { toast } from "../components/Toast";
 
 type Tab = "appearance" | "shortcuts" | "integrations" | "about";
 
@@ -516,7 +518,8 @@ function IntegrationsTab() {
   return (
     <div className="mx-auto max-w-2xl">
       <SectionTitle>GitHub</SectionTitle>
-      <div className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+      <GithubTokenCard />
+      <div className="mt-3 rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
         <div className="text-sm font-medium text-(--color-fg)">
           OAuth Client ID
         </div>
@@ -589,6 +592,106 @@ function IntegrationsTab() {
           </ol>
         </details>
       </div>
+    </div>
+  );
+}
+
+/** One token that authenticates git fetch on every device. */
+function GithubTokenCard() {
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [token, setToken] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .githubSignedIn()
+      .then(setSignedIn)
+      .catch(() => setSignedIn(false));
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.githubSetToken(token);
+      const user = await api.githubUser().catch(() => null);
+      setToken("");
+      setSignedIn(true);
+      if (user) toast.success(`Token saved for ${user.login}`);
+      else toast.error("Token saved, but GitHub rejected it — check it");
+    } catch (e) {
+      toast.error(`Could not save token: ${errorMessage(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    try {
+      await api.githubSignOut();
+      setSignedIn(false);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-(--color-border) bg-(--color-surface) p-4">
+      <div className="flex items-center gap-2 text-sm font-medium text-(--color-fg)">
+        Access token
+        {signedIn && (
+          <span className="rounded bg-(--color-accent)/12 px-1.5 text-[11px] font-normal text-(--color-accent)">
+            saved
+          </span>
+        )}
+      </div>
+      <p className="mt-1 text-xs text-(--color-fg-muted)">
+        Used to fetch private GitHub repos on every device — local and over SSH
+        — without setting up git credentials on each machine. It stays in your
+        OS keychain and is only passed to a device for the duration of a fetch.
+        Signing in from the Git panel sets it too.
+      </p>
+      <div className="mt-3 flex gap-2">
+        <input
+          className="input"
+          type="password"
+          placeholder={
+            signedIn ? "•••••••• (replace)" : "ghp_… or github_pat_…"
+          }
+          value={token}
+          onChange={(e) => setToken(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && token.trim() && void save()}
+          spellCheck={false}
+        />
+        <button
+          onClick={() => void save()}
+          disabled={busy || !token.trim()}
+          className="shrink-0 rounded bg-(--color-accent) px-3 py-1 text-xs font-medium text-(--color-accent-fg) hover:opacity-90 disabled:opacity-40"
+        >
+          Save
+        </button>
+        {signedIn && (
+          <button
+            onClick={() => void remove()}
+            className="shrink-0 rounded border border-(--color-border) px-3 py-1 text-xs text-(--color-fg-muted) hover:bg-(--color-surface-2) hover:text-(--color-fg)"
+          >
+            Remove
+          </button>
+        )}
+      </div>
+      <p className="mt-2 text-xs text-(--color-fg-muted)">
+        Create one at{" "}
+        <button
+          onClick={() =>
+            void openUrl(
+              "https://github.com/settings/tokens/new?scopes=repo&description=DevNest",
+            )
+          }
+          className="underline hover:text-(--color-fg)"
+        >
+          github.com/settings/tokens
+        </button>{" "}
+        with the <code className="font-mono">repo</code> scope.
+      </p>
     </div>
   );
 }
